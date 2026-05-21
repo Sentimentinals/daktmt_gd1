@@ -1,0 +1,84 @@
+{
+  "schema": "humanoid_17dof_parametric_gait_v1",
+  "notes": [
+    "This file maps the 17 servo IDs to mathematical walking roles.",
+    "IDs 1-8 are treated as the right side, ID 16 as head, and IDs 25-32 as the left side.",
+    "Only enabled joint pairs are modified by the gait generator. Disabled/fixed servos keep their standing pulse from group 0.",
+    "If a joint moves in the wrong physical direction, flip its right_sign or left_sign between 1 and -1.",
+    "The first version is conservative. Tune amplitude_deg only after checking servo directions one by one."
+  ],
+  "pulse_per_degree": 11.1111111111,
+  "global_min_pulse": 500,
+  "global_max_pulse": 2500,
+  "frame_count": 8,
+  "default_t_ms": 1000,
+  "default_d_ms": 80,
+  "generated_group_id": 1,
+  "generated_group_alias": "Math_Walking_8Frame_MinJerk",
+  "fixed_servo_ids": [6, 7, 8, 16, 25, 26, 27],
+  "gait_parameters": {
+    "hip_pitch_deg": 6.0,
+    "knee_pitch_deg": 10.0,
+    "body_roll_deg": 3.0,
+    "ankle_roll_gain": -0.65,
+    "ankle_pitch_hip_gain": -0.45,
+    "ankle_pitch_knee_gain": -0.65,
+    "arm_swing_deg": 0.0
+  },
+  "joint_pairs": [
+    {
+      "role": "hip_roll",
+      "right_id": 1,
+      "left_id": 32,
+      "right_sign": 1,
+      "left_sign": -1,
+      "enabled": true,
+      "description": "Lateral weight shift. If robot leans wrong way, flip both signs."
+    },
+    {
+      "role": "hip_pitch",
+      "right_id": 2,
+      "left_id": 30,
+      "right_sign": -1,
+      "left_sign": -1,
+      "enabled": true,
+      "description": "Forward/back leg swing. Inferred from original XML: right 2 and left 30 decrease during swing."
+    },
+    {
+      "role": "knee_pitch",
+      "right_id": 3,
+      "left_id": 31,
+      "right_sign": 1,
+      "left_sign": 1,
+      "enabled": true,
+      "description": "Knee bend during swing. Inferred from original XML: right 3 and left 31 increase during swing."
+    },
+    {
+      "role": "ankle_pitch",
+      "right_id": 4,
+      "left_id": 29,
+      "right_sign": -1,
+      "left_sign": 1,
+      "enabled": true,
+      "description": "Foot pitch compensation. If toes dig into ground, reduce ankle_pitch_knee_gain."
+    },
+    {
+      "role": "ankle_roll",
+      "right_id": 5,
+      "left_id": 28,
+      "right_sign": -1,
+      "left_sign": -1,
+      "enabled": true,
+      "description": "Ankle/side roll compensation for body roll. Conservative amplitude to reduce fall risk."
+    },
+    {
+      "role": "shoulder_pitch",
+      "right_id": 6,
+      "left_id": 25,
+      "right_sign": -1,
+      "left_sign": 1,
+      "enabled": false,
+      "description": "Arm swing is disabled by default because left output 25-32 had hardware issues and ID 25 stands at 2500."
+    }
+  ]
+}
