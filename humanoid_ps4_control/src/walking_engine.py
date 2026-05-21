@@ -10,95 +10,14 @@ from .leg_ik import leg_ik
 from .zmp_controller import ZMPPreviewController
 
 
-ROBOT = {
-    "com_height": 147.4,
-    "half_hip": 28.0,
-    "upper_leg": 80.0,
-    "lower_leg": 75.0,
-    "step_height": 24.0,
-}
-
-GAIT = {
-    # Shift weight mainly through ankle roll. Hip roll is only a counter-roll
-    # to keep the torso upright instead of throwing the pelvis outward.
-    "zmp_support_ratio": 0.88,
-    "hip_abduct_gain": 0.35,
-    "swing_hip_roll_scale": 0.0,
-    "ankle_roll_gain": -0.30,
-    "swing_ankle_roll_scale": 0.0,
-    "step_x_ratio": 0.62,
-    "thigh_lift_forward_mm": 3.0,
-    "left_swing_x_scale": 1.45,
-    "left_step_height_scale": 1.25,
-    "landing_gap_mm": 18.0,
-    "right_swing_x_scale": 1.45,
-    "right_step_height_scale": 1.25,
-    "lift_start_phase": 0.0,
-    "swing_advance_end_phase": 0.60,
-    "lift_end_phase": 0.96,
-    "landing_roll_release_start": 0.62,
-    "command_deadzone": 0.02,
-    "arm_swing_pwm": 260,
-    "arm_right_dir": 1,
-    "arm_left_dir": 1,
-    "arm_elbow_ratio": 0.0,
-    "arm_lift_ratio": 0.0,
-    "arm_smooth_tau": 0.22,
-    "arm_min_pwm": 30,
-    "arm_quantum_pwm": 5,
-    "max_side_step_len": 8.0,
-    "max_turn_step_len": 7.0,
-    "stop_extra_steps": 2,
-}
-
-# Calibrated standing pulse widths. Keep shoulder/upper-arm values exactly as
-# tuned on hardware.
-STANDING = {
-    1: 1500,    # Right ankle roll
-    2: 1500,    # Right ankle pitch
-    3: 1500,    # Right knee
-    4: 1500,    # Right hip pitch, standing forward bias
-    5: 1500,    # Right hip roll/abduction
-    6: 1500,    # Right elbow
-    7: 500,     # Right upper arm down
-    8: 1470,    # Right shoulder swing
-    16: 1500,   # Head
-    17: 1500,   # Left shoulder swing
-    18: 2450,   # Left upper arm down
-    19: 1500,   # Left elbow
-    20: 1500,   # Left hip roll/abduction
-    21: 1500,   # Left hip pitch, standing forward bias
-    22: 1500,   # Left knee
-    23: 1500,   # Left ankle pitch
-    24: 1500,   # Left ankle roll
-}
-
-STAND_ANG = {
-    "hip_roll": 0.0,
-    "R_hip_pitch": 18.0,
-    "R_knee": 36.0,
-    "R_ankle": 18.0,
-    "R_hip_abduct": 0.0,
-    "L_hip_pitch": 18.0,
-    "L_knee": 36.0,
-    "L_ankle": 18.0,
-    "L_hip_abduct": 0.0,
-}
-
-PWM_PER_DEG = 2000.0 / 180.0
-
-DIR = {
-    1: -1,
-    2: -1,
-    3: -1,
-    4: -1,
-    5: -1,
-    20: +1,
-    21: +1,
-    22: +1,
-    23: +1,
-    24: +1,
-}
+from .config import (
+    DIR,
+    GAIT,
+    PWM_PER_DEG,
+    ROBOT,
+    STAND_ANG,
+    STANDING,
+)
 
 
 def angle_to_pwm(sid: int, base_ang: float, new_ang: float, base_pwm: int) -> int:
