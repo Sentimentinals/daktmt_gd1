@@ -647,11 +647,11 @@ class DynamicWalkingEngine:
             self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
             pose[1] = self._support_roll_hold["right"][1]
             pose[5] = self._support_roll_hold["right"][5]
-            # Blend Left thigh pitch to IK target
-            swing_blend_thigh = self._smooth01(lift_factor_now)
+            # Blend Left thigh pitch to IK target over the swing progress
+            t = max(0.0, min(1.0, landing_t_now))
+            swing_blend_thigh = self._smooth01(t)
             pose[21] = round(self.prev_pose.get(21, pose[21]) + (pose[21] - self.prev_pose.get(21, pose[21])) * swing_blend_thigh)
             # Manual swing override for Left leg knee & ankle (bell curve over swing phase)
-            t = max(0.0, min(1.0, landing_t_now))
             swing_lift = 4.0 * t * (1.0 - t)
             knee_delta = round(110 * swing_lift)
             ankle_delta = round(110 * swing_lift)
@@ -665,11 +665,11 @@ class DynamicWalkingEngine:
             self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
             pose[24] = self._support_roll_hold["left"][24]
             pose[20] = self._support_roll_hold["left"][20]
-            # Blend Right thigh pitch to IK target
-            swing_blend_thigh = self._smooth01(lift_factor_now)
+            # Blend Right thigh pitch to IK target over the swing progress
+            t = max(0.0, min(1.0, landing_t_now))
+            swing_blend_thigh = self._smooth01(t)
             pose[4] = round(self.prev_pose.get(4, pose[4]) + (pose[4] - self.prev_pose.get(4, pose[4])) * swing_blend_thigh)
             # Manual swing override for Right leg knee & ankle (bell curve over swing phase)
-            t = max(0.0, min(1.0, landing_t_now))
             swing_lift = 4.0 * t * (1.0 - t)
             knee_delta = round(110 * swing_lift)
             ankle_delta = round(110 * swing_lift)
@@ -683,19 +683,13 @@ class DynamicWalkingEngine:
             hold = self._support_roll_hold["right"]
             pose[1] = blend_pwm(hold[1], STANDING[1], release_t)
             pose[5] = blend_pwm(hold[5], STANDING[5], release_t)
-            # Only Left thigh pitch is adjusted during landing
-            land_blend = self._smooth01(landing_t_now)
-            prev_thigh = self.prev_pose.get(21, pose[21])
-            pose[21] = round(prev_thigh + (STANDING[21] - prev_thigh) * land_blend)
+            # Pitch joints follow IK smoothly and consistently without overrides
         elif phase_mode_now == "land" and support_leg_for_pose == "left" and old_support_leg == "left":
             release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
             hold = self._support_roll_hold["left"]
             pose[24] = blend_pwm(hold[24], STANDING[24], release_t)
             pose[20] = blend_pwm(hold[20], STANDING[20], release_t)
-            # Only Right thigh pitch is adjusted during landing
-            land_blend = self._smooth01(landing_t_now)
-            prev_thigh = self.prev_pose.get(4, pose[4])
-            pose[4] = round(prev_thigh + (STANDING[4] - prev_thigh) * land_blend)
+            # Pitch joints follow IK smoothly and consistently without overrides
 
 
         if phase_mode_now == "land" and swing_leg_now in ("left", "right"):
