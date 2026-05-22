@@ -678,10 +678,6 @@ class DynamicWalkingEngine:
             pose[3] = round(pose[3] + (target_3 - pose[3]) * swing_blend)
             pose[2] = round(pose[2] + (target_2 - pose[2]) * swing_blend)
         elif phase_mode_now == "land" and support_leg_for_pose == "right" and old_support_leg == "right":
-            release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
-            hold = self._support_roll_hold["right"]
-            pose[1] = blend_pwm(hold[1], STANDING[1], release_t)
-            pose[5] = blend_pwm(hold[5], STANDING[5], release_t)
             # Support leg (right) pitch: smooth from prev_pose to IK
             for sid in (2, 3, 4):
                 if sid in self.prev_pose:
@@ -693,10 +689,6 @@ class DynamicWalkingEngine:
             # Left ankle: freeze at end-of-swing value
             pose[23] = self.prev_pose.get(23, STANDING[23])
         elif phase_mode_now == "land" and support_leg_for_pose == "left" and old_support_leg == "left":
-            release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
-            hold = self._support_roll_hold["left"]
-            pose[24] = blend_pwm(hold[24], STANDING[24], release_t)
-            pose[20] = blend_pwm(hold[20], STANDING[20], release_t)
             # Support leg (left) pitch: smooth from prev_pose to IK
             for sid in (21, 22, 23):
                 if sid in self.prev_pose:
@@ -711,28 +703,58 @@ class DynamicWalkingEngine:
 
         if phase_mode_now == "land" and swing_leg_now in ("left", "right"):
             release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
-            if release_t > 0.0:
-                next_support_pose = compute_pose(
-                    com_x,
-                    com_y,
-                    foot_L_now,
-                    foot_R_now,
-                    support_leg=swing_leg_now,
-                    phase_mode="shift",
-                    zmp_support_ratio=self.zmp_support_ratio,
-                    hip_abduct_gain=self.hip_abduct_gain,
-                    swing_hip_roll_scale=self.swing_hip_roll_scale,
-                    ankle_roll_gain=self.ankle_roll_gain,
-                    swing_ankle_roll_scale=self.swing_ankle_roll_scale,
-                )
-                if swing_leg_now == "right":
-                    pose[1] = blend_pwm(STANDING[1], next_support_pose[1], release_t)
-                    pose[5] = blend_pwm(STANDING[5], next_support_pose[5], release_t)
-                    self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
+            if swing_leg_now == "right":
+                hold_L = self._support_roll_hold["left"]
+                if release_t > 0.0:
+                    next_support_pose = compute_pose(
+                        com_x,
+                        com_y,
+                        foot_L_now,
+                        foot_R_now,
+                        support_leg="right",
+                        phase_mode="shift",
+                        zmp_support_ratio=self.zmp_support_ratio,
+                        hip_abduct_gain=self.hip_abduct_gain,
+                        swing_hip_roll_scale=self.swing_hip_roll_scale,
+                        ankle_roll_gain=self.ankle_roll_gain,
+                        swing_ankle_roll_scale=self.swing_ankle_roll_scale,
+                    )
+                    pose[1] = blend_pwm(self.prev_pose.get(1, STANDING[1]), next_support_pose[1], release_t)
+                    pose[5] = blend_pwm(self.prev_pose.get(5, STANDING[5]), next_support_pose[5], release_t)
+                    pose[24] = blend_pwm(hold_L[24], next_support_pose[24], release_t)
+                    pose[20] = blend_pwm(hold_L[20], next_support_pose[20], release_t)
                 else:
-                    pose[24] = blend_pwm(STANDING[24], next_support_pose[24], release_t)
-                    pose[20] = blend_pwm(STANDING[20], next_support_pose[20], release_t)
-                    self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
+                    pose[1] = self.prev_pose.get(1, STANDING[1])
+                    pose[5] = self.prev_pose.get(5, STANDING[5])
+                    pose[24] = hold_L[24]
+                    pose[20] = hold_L[20]
+                self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
+            else:
+                hold_R = self._support_roll_hold["right"]
+                if release_t > 0.0:
+                    next_support_pose = compute_pose(
+                        com_x,
+                        com_y,
+                        foot_L_now,
+                        foot_R_now,
+                        support_leg="left",
+                        phase_mode="shift",
+                        zmp_support_ratio=self.zmp_support_ratio,
+                        hip_abduct_gain=self.hip_abduct_gain,
+                        swing_hip_roll_scale=self.swing_hip_roll_scale,
+                        ankle_roll_gain=self.ankle_roll_gain,
+                        swing_ankle_roll_scale=self.swing_ankle_roll_scale,
+                    )
+                    pose[24] = blend_pwm(self.prev_pose.get(24, STANDING[24]), next_support_pose[24], release_t)
+                    pose[20] = blend_pwm(self.prev_pose.get(20, STANDING[20]), next_support_pose[20], release_t)
+                    pose[1] = blend_pwm(hold_R[1], next_support_pose[1], release_t)
+                    pose[5] = blend_pwm(hold_R[5], next_support_pose[5], release_t)
+                else:
+                    pose[24] = self.prev_pose.get(24, STANDING[24])
+                    pose[20] = self.prev_pose.get(20, STANDING[20])
+                    pose[1] = hold_R[1]
+                    pose[5] = hold_R[5]
+                self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
 
         if phase_mode_now == "swing" and swing_leg_now == "right" and lift_factor_now > 0.02:
             swing_blend = self._smooth01(lift_factor_now)
