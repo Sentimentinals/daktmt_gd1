@@ -75,13 +75,13 @@ def compute_pose(
     if support_leg == "right":
         right_hip_abduct = -abs(ik_R["hip_abduct"]) * hip_gain
         left_hip_abduct = abs(ik_L["hip_abduct"]) * hip_gain * swing_hip_scale
-        right_ankle_roll = ankle_roll
+        right_ankle_roll = ankle_roll - 2.0
         left_ankle_roll = ankle_roll * swing_roll_scale
     elif support_leg == "left":
         right_hip_abduct = abs(ik_R["hip_abduct"]) * hip_gain * swing_hip_scale
         left_hip_abduct = -abs(ik_L["hip_abduct"]) * hip_gain
         right_ankle_roll = ankle_roll * swing_roll_scale
-        left_ankle_roll = ankle_roll
+        left_ankle_roll = ankle_roll - 2.0
     else:
         right_hip_abduct = ik_R["hip_abduct"] * hip_gain * 0.25
         left_hip_abduct = ik_L["hip_abduct"] * hip_gain * 0.25
@@ -103,7 +103,7 @@ def compute_pose(
     if phase_mode == "shift":
         support_y = hw * (GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio)
         raw_roll = math.degrees(math.atan2(support_y, zc))
-        shift_ankle_roll = raw_roll * ankle_gain
+        shift_ankle_roll = raw_roll * ankle_gain - 2.0
         hip_counter = raw_roll * hip_gain
         if support_leg == "right":
             pose[1] = angle_to_pwm(1, STAND_ANG["hip_roll"], shift_ankle_roll, STANDING[1])
@@ -648,8 +648,8 @@ class DynamicWalkingEngine:
             # Manual swing override for Left leg knee & ankle (synchronized with lift_factor_now, decaying over swing)
             t = max(0.0, min(1.0, landing_t_now))
             swing_lift = lift_factor_now * (1.0 - t)
-            knee_delta = round(110 * swing_lift)
-            ankle_delta = round(110 * swing_lift)
+            knee_delta = round(75 * swing_lift)
+            ankle_delta = round(75 * swing_lift)
             target_22 = STANDING[22] + knee_delta
             target_23 = STANDING[23] + ankle_delta
             swing_blend = self._smooth01(swing_lift)
@@ -674,8 +674,8 @@ class DynamicWalkingEngine:
             # Manual swing override for Right leg knee & ankle (synchronized with lift_factor_now, decaying over swing)
             t = max(0.0, min(1.0, landing_t_now))
             swing_lift = lift_factor_now * (1.0 - t)
-            knee_delta = round(110 * swing_lift)
-            ankle_delta = round(110 * swing_lift)
+            knee_delta = round(75 * swing_lift)
+            ankle_delta = round(75 * swing_lift)
             target_3 = STANDING[3] - knee_delta
             target_2 = STANDING[2] - ankle_delta
             swing_blend = self._smooth01(swing_lift)
