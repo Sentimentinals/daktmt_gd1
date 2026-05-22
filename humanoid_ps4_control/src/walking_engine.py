@@ -704,10 +704,14 @@ class DynamicWalkingEngine:
             next_support_pose[4] -= lean_pwm
             next_support_pose[21] += lean_pwm
             
+            # Pitch joints (thigh, knee, ankle) return faster (completing in 66% of land phase) to ensure early touchdown
+            pitch_blend = self._smooth01(min(1.0, landing_t_now * 1.5))
+            
             # Blend ALL 10 joints from prev_pose directly to next_support_pose
             for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
                 if sid in self.prev_pose:
-                    pose[sid] = blend_pwm(self.prev_pose[sid], next_support_pose[sid], land_blend)
+                    blend_factor = pitch_blend if sid in (2, 3, 4, 21, 22, 23) else land_blend
+                    pose[sid] = blend_pwm(self.prev_pose[sid], next_support_pose[sid], blend_factor)
             
             # Save roll hold for the upcoming swing phase
             if swing_leg_now == "right":
