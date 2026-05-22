@@ -699,6 +699,10 @@ class DynamicWalkingEngine:
                 swing_ankle_roll_scale=self.swing_ankle_roll_scale,
             )
             
+            # Pull knee & ankle targets closer to neutral to prevent sagging
+            for sid in (2, 3, 22, 23):
+                next_support_pose[sid] = round(STANDING[sid] + (next_support_pose[sid] - STANDING[sid]) * 0.3)
+            
             # Add a slight forward lean bias (3.5 degrees) to hip pitch to keep the torso leaning forward slightly
             lean_pwm = round(3.5 * PWM_PER_DEG)
             next_support_pose[4] -= lean_pwm
