@@ -678,27 +678,21 @@ class DynamicWalkingEngine:
             hold = self._support_roll_hold["right"]
             pose[1] = blend_pwm(hold[1], STANDING[1], release_t)
             pose[5] = blend_pwm(hold[5], STANDING[5], release_t)
-            # Smoothly blend all Left leg pitch joints (thigh, knee, ankle) to STANDING
+            # Lock Left leg pitch joints: ignore IK, blend purely prev_pose → STANDING
             land_blend = self._smooth01(landing_t_now)
-            prev_thigh = self.prev_pose.get(21, pose[21])
-            pose[21] = round(prev_thigh + (STANDING[21] - prev_thigh) * land_blend)
-            prev_knee = self.prev_pose.get(22, pose[22])
-            pose[22] = round(prev_knee + (STANDING[22] - prev_knee) * land_blend)
-            prev_ankle = self.prev_pose.get(23, pose[23])
-            pose[23] = round(prev_ankle + (STANDING[23] - prev_ankle) * land_blend)
+            pose[21] = round(self.prev_pose.get(21, STANDING[21]) + (STANDING[21] - self.prev_pose.get(21, STANDING[21])) * land_blend)
+            pose[22] = round(self.prev_pose.get(22, STANDING[22]) + (STANDING[22] - self.prev_pose.get(22, STANDING[22])) * land_blend)
+            pose[23] = round(self.prev_pose.get(23, STANDING[23]) + (STANDING[23] - self.prev_pose.get(23, STANDING[23])) * land_blend)
         elif phase_mode_now == "land" and support_leg_for_pose == "left" and old_support_leg == "left":
             release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
             hold = self._support_roll_hold["left"]
             pose[24] = blend_pwm(hold[24], STANDING[24], release_t)
             pose[20] = blend_pwm(hold[20], STANDING[20], release_t)
-            # Smoothly blend all Right leg pitch joints (thigh, knee, ankle) to STANDING
+            # Lock Right leg pitch joints: ignore IK, blend purely prev_pose → STANDING
             land_blend = self._smooth01(landing_t_now)
-            prev_thigh = self.prev_pose.get(4, pose[4])
-            pose[4] = round(prev_thigh + (STANDING[4] - prev_thigh) * land_blend)
-            prev_knee = self.prev_pose.get(3, pose[3])
-            pose[3] = round(prev_knee + (STANDING[3] - prev_knee) * land_blend)
-            prev_ankle = self.prev_pose.get(2, pose[2])
-            pose[2] = round(prev_ankle + (STANDING[2] - prev_ankle) * land_blend)
+            pose[4] = round(self.prev_pose.get(4, STANDING[4]) + (STANDING[4] - self.prev_pose.get(4, STANDING[4])) * land_blend)
+            pose[3] = round(self.prev_pose.get(3, STANDING[3]) + (STANDING[3] - self.prev_pose.get(3, STANDING[3])) * land_blend)
+            pose[2] = round(self.prev_pose.get(2, STANDING[2]) + (STANDING[2] - self.prev_pose.get(2, STANDING[2])) * land_blend)
 
 
         if phase_mode_now == "land" and swing_leg_now in ("left", "right"):
