@@ -705,7 +705,7 @@ class DynamicWalkingEngine:
             next_support_pose[21] += lean_pwm
             
             # Pitch joints (thigh, knee, ankle) return faster (completing in 66% of land phase) to ensure early touchdown
-            pitch_blend = self._smooth01(min(1.0, landing_t_now * 1.5))
+            pitch_blend = self._smooth01(min(1.0, landing_t_now * 1.0))
             
             # Blend ALL 10 joints from prev_pose directly to next_support_pose
             for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
