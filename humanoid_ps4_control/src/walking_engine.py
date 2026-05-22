@@ -638,6 +638,10 @@ class DynamicWalkingEngine:
             self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
             pose[1] = self._support_roll_hold["right"][1]
             pose[5] = self._support_roll_hold["right"][5]
+            # Support leg (right) pitch: smooth from prev_pose to IK
+            for sid in (2, 3, 4):
+                if sid in self.prev_pose:
+                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
             # Blend Left thigh pitch to IK target
             swing_blend_thigh = self._smooth01(lift_factor_now)
             pose[21] = round(self.prev_pose.get(21, pose[21]) + (pose[21] - self.prev_pose.get(21, pose[21])) * swing_blend_thigh)
@@ -660,6 +664,10 @@ class DynamicWalkingEngine:
             self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
             pose[24] = self._support_roll_hold["left"][24]
             pose[20] = self._support_roll_hold["left"][20]
+            # Support leg (left) pitch: smooth from prev_pose to IK
+            for sid in (21, 22, 23):
+                if sid in self.prev_pose:
+                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
             # Blend Right thigh pitch to IK target
             swing_blend_thigh = self._smooth01(lift_factor_now)
             pose[4] = round(self.prev_pose.get(4, pose[4]) + (pose[4] - self.prev_pose.get(4, pose[4])) * swing_blend_thigh)
