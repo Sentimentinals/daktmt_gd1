@@ -369,10 +369,8 @@ class DynamicWalkingEngine:
             landing_t = self._phase_progress(alpha, self.swing_advance_end_phase, self.lift_end_phase)
             if landing_t > 0.0:
                 phase_mode = "land"
-            elif self.lift_start_phase <= 0.0 and alpha > 0.0:
-                phase_mode = "swing"
             elif lift_factor <= 0.02:
-                phase_mode = "shift"
+                phase_mode = "swing"
             else:
                 phase_mode = "swing"
             if phase_mode == "land":
@@ -631,17 +629,12 @@ class DynamicWalkingEngine:
             )
         else:
             pose = dict(STANDING)
-        if phase_mode_now == "shift":
-            # Freeze all leg joints at prev_pose — zero servo movement between landing and swing
-            for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
-                pose[sid] = self.prev_pose.get(sid, pose[sid])
-            # Save roll hold for upcoming swing phase
-            if support_leg_for_pose == "right":
-                self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
-            elif support_leg_for_pose == "left":
-                self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
-        elif phase_mode_now == "swing" and support_leg_for_pose == "right":
+        if phase_mode_now == "swing" and support_leg_for_pose == "right":
             # Right leg is stance, Left leg is swing
+            if lift_factor_now <= 0.02:
+                # First frame: freeze all joints at prev_pose, save roll hold
+                for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
+                    pose[sid] = self.prev_pose.get(sid, pose[sid])
             self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
             pose[1] = self._support_roll_hold["right"][1]
             pose[5] = self._support_roll_hold["right"][5]
@@ -660,6 +653,10 @@ class DynamicWalkingEngine:
             pose[23] = round(pose[23] + (target_23 - pose[23]) * swing_blend)
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
+            if lift_factor_now <= 0.02:
+                # First frame: freeze all joints at prev_pose, save roll hold
+                for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
+                    pose[sid] = self.prev_pose.get(sid, pose[sid])
             self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
             pose[24] = self._support_roll_hold["left"][24]
             pose[20] = self._support_roll_hold["left"][20]
