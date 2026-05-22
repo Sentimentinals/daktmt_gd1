@@ -632,10 +632,9 @@ class DynamicWalkingEngine:
         else:
             pose = dict(STANDING)
         if phase_mode_now == "shift":
-            # Blend ALL leg joints from prev_pose to IK target (smooth transition from landing)
+            # Freeze ALL leg joints at prev_pose — no servo movement during shift
             for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
-                if sid in self.prev_pose:
-                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
+                pose[sid] = self.prev_pose.get(sid, pose[sid])
             # Lock roll servos for the upcoming swing phase
             if support_leg_for_pose == "right":
                 self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
