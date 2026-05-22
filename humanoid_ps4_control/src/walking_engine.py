@@ -647,59 +647,35 @@ class DynamicWalkingEngine:
             self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
             pose[1] = self._support_roll_hold["right"][1]
             pose[5] = self._support_roll_hold["right"][5]
-            # Manual swing override for Left leg (swing)
-            thigh_delta = max(0, pose[21] - STANDING[21])
-            knee_delta = round(min(110, thigh_delta * 0.55))
-            ankle_delta = round(min(110, thigh_delta * 0.55))
-            target_21 = pose[21]
-            target_22 = STANDING[22] - knee_delta
-            target_23 = STANDING[23] + ankle_delta
+            # Blend Left thigh pitch to IK target
             swing_blend = self._smooth01(lift_factor_now)
-            pose[21] = round(self.prev_pose.get(21, pose[21]) + (target_21 - self.prev_pose.get(21, pose[21])) * swing_blend)
-            pose[22] = round(self.prev_pose.get(22, pose[22]) + (target_22 - self.prev_pose.get(22, pose[22])) * swing_blend)
-            pose[23] = round(self.prev_pose.get(23, pose[23]) + (target_23 - self.prev_pose.get(23, pose[23])) * swing_blend)
+            pose[21] = round(self.prev_pose.get(21, pose[21]) + (pose[21] - self.prev_pose.get(21, pose[21])) * swing_blend)
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
             self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
             pose[24] = self._support_roll_hold["left"][24]
             pose[20] = self._support_roll_hold["left"][20]
-            # Manual swing override for Right leg (swing)
-            thigh_delta = max(0, STANDING[4] - pose[4])
-            knee_delta = round(min(110, thigh_delta * 0.55))
-            ankle_delta = round(min(110, thigh_delta * 0.55))
-            target_4 = pose[4]
-            target_3 = STANDING[3] + knee_delta
-            target_2 = STANDING[2] - ankle_delta
+            # Blend Right thigh pitch to IK target
             swing_blend = self._smooth01(lift_factor_now)
-            pose[4] = round(self.prev_pose.get(4, pose[4]) + (target_4 - self.prev_pose.get(4, pose[4])) * swing_blend)
-            pose[3] = round(self.prev_pose.get(3, pose[3]) + (target_3 - self.prev_pose.get(3, pose[3])) * swing_blend)
-            pose[2] = round(self.prev_pose.get(2, pose[2]) + (target_2 - self.prev_pose.get(2, pose[2])) * swing_blend)
+            pose[4] = round(self.prev_pose.get(4, pose[4]) + (pose[4] - self.prev_pose.get(4, pose[4])) * swing_blend)
         elif phase_mode_now == "land" and support_leg_for_pose == "right" and old_support_leg == "right":
             release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
             hold = self._support_roll_hold["right"]
             pose[1] = blend_pwm(hold[1], STANDING[1], release_t)
             pose[5] = blend_pwm(hold[5], STANDING[5], release_t)
-            # Smooth blend of all Left leg (landing) pitch joints to their IK targets
+            # Only Left thigh pitch is adjusted during landing
             land_blend = self._smooth01(landing_t_now)
             prev_thigh = self.prev_pose.get(21, pose[21])
-            pose[21] = round(prev_thigh + (pose[21] - prev_thigh) * land_blend)
-            prev_knee = self.prev_pose.get(22, pose[22])
-            pose[22] = round(prev_knee + (pose[22] - prev_knee) * land_blend)
-            prev_ankle = self.prev_pose.get(23, pose[23])
-            pose[23] = round(prev_ankle + (pose[23] - prev_ankle) * land_blend)
+            pose[21] = round(prev_thigh + (STANDING[21] - prev_thigh) * land_blend)
         elif phase_mode_now == "land" and support_leg_for_pose == "left" and old_support_leg == "left":
             release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
             hold = self._support_roll_hold["left"]
             pose[24] = blend_pwm(hold[24], STANDING[24], release_t)
             pose[20] = blend_pwm(hold[20], STANDING[20], release_t)
-            # Smooth blend of all Right leg (landing) pitch joints to their IK targets
+            # Only Right thigh pitch is adjusted during landing
             land_blend = self._smooth01(landing_t_now)
             prev_thigh = self.prev_pose.get(4, pose[4])
-            pose[4] = round(prev_thigh + (pose[4] - prev_thigh) * land_blend)
-            prev_knee = self.prev_pose.get(3, pose[3])
-            pose[3] = round(prev_knee + (pose[3] - prev_knee) * land_blend)
-            prev_ankle = self.prev_pose.get(2, pose[2])
-            pose[2] = round(prev_ankle + (pose[2] - prev_ankle) * land_blend)
+            pose[4] = round(prev_thigh + (STANDING[4] - prev_thigh) * land_blend)
 
 
         if phase_mode_now == "land" and swing_leg_now in ("left", "right"):
@@ -737,6 +713,22 @@ class DynamicWalkingEngine:
             target_hip = max(500, min(2500, STANDING[20] + abs(self._support_roll_hold["right"][5] - STANDING[5])))
             pose[20] = round(pose[20] + (target_hip - pose[20]) * swing_blend)
             pose[24] = round(pose[24] + (STANDING[24] - pose[24]) * swing_blend)
+
+        # Manual swing leg overrides for knee and ankle (active when lift_factor_now > 0.02)
+        if lift_factor_now > 0.02 and swing_leg_now in ("left", "right"):
+            knee_delta = round(110 * lift_factor_now)
+            ankle_delta = round(110 * lift_factor_now)
+            swing_blend = self._smooth01(lift_factor_now)
+            if swing_leg_now == "left":
+                target_22 = STANDING[22] - knee_delta
+                target_23 = STANDING[23] + ankle_delta
+                pose[22] = round(self.prev_pose.get(22, pose[22]) + (target_22 - self.prev_pose.get(22, pose[22])) * swing_blend)
+                pose[23] = round(self.prev_pose.get(23, pose[23]) + (target_23 - self.prev_pose.get(23, pose[23])) * swing_blend)
+            elif swing_leg_now == "right":
+                target_3 = STANDING[3] + knee_delta
+                target_2 = STANDING[2] - ankle_delta
+                pose[3] = round(self.prev_pose.get(3, pose[3]) + (target_3 - self.prev_pose.get(3, pose[3])) * swing_blend)
+                pose[2] = round(self.prev_pose.get(2, pose[2]) + (target_2 - self.prev_pose.get(2, pose[2])) * swing_blend)
 
         pose = self._apply_arm_swing(pose, arm_delta_now)
         pose = clamp_pose_rate(self.prev_pose, pose, self.max_pwm_per_frame)
