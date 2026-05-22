@@ -62,7 +62,6 @@ Current phase-1 support-shift defaults are intentionally visible:
 - `zmp_support_ratio = 0.88`
 - `hip_abduct_gain = 0.35`
 - `ankle_roll_gain = -0.38`
-- `swing_ankle_roll_scale = 0.0`
 
 This means phase 1 should clearly move the support ankle/hip roll pair:
 

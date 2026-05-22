@@ -103,8 +103,6 @@ class Config:
     # --- Run Mode ---
     ps4: bool = True
     getup: bool = False
-    leg_lift_test: bool = False
-    knee_lift_test: bool = False
 
     # --- Hardware ---
     xml: str = "actions/standing.xml"

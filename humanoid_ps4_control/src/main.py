@@ -144,11 +144,8 @@ def run_ps4(args: argparse.Namespace) -> None:
         step_height=args.step_height,
         zmp_support_ratio=args.zmp_support_ratio,
         hip_abduct_gain=args.hip_abduct_gain,
-        swing_hip_roll_scale=args.swing_hip_roll_scale,
         ankle_roll_gain=args.ankle_roll_gain,
-        swing_ankle_roll_scale=args.swing_ankle_roll_scale,
         step_x_ratio=args.step_x_ratio,
-        thigh_lift_forward_mm=args.thigh_lift_forward_mm,
         left_swing_x_scale=args.left_swing_x_scale,
         left_step_height_scale=args.left_step_height_scale,
         landing_gap_mm=args.landing_gap_mm,
@@ -370,120 +367,6 @@ def run_ps4(args: argparse.Namespace) -> None:
         reader.quit()
         print("[main] PS4 mode exited.")
 
-
-# Removed local Config class
-"""
-class OldConfig:
-    # --- Run Mode ---
-    ps4: bool = True
-    getup: bool = False
-    leg_lift_test: bool = False
-    knee_lift_test: bool = False
-
-    # --- Hardware ---
-    xml: str = "actions/standing.xml"
-    backend: str = "serial"
-    port: str = "COM24"
-    baudrate: int = 115200
-    csv: str = "out/log.csv"
-    group: int = 0
-    update_ms: int = 40
-    stop_ms: int = 250
-
-    # --- Walking Engine ---
-    walk_speed: float = 0.30
-    turn_speed: float = 0.35
-    side_speed: float = 0.20
-    max_step_len: float = 28.0
-    max_turn_step_len: float = 7.0
-    max_side_step_len: float = 8.0
-    step_height: float = 24.0
-    t_step: float = 1.28
-    t_dbl: float = 0.04
-    zmp_support_ratio: float = 0.88
-    hip_abduct_gain: float = 0.35
-    ankle_roll_gain: float = -0.38
-    step_x_ratio: float = 0.62
-    thigh_lift_forward_mm: float = 3.0
-    left_swing_x_scale: float = 1.45
-    left_step_height_scale: float = 1.25
-    right_swing_x_scale: float = 1.45
-    right_step_height_scale: float = 1.25
-    landing_gap_mm: float = 18.0
-    lift_start_phase: float = 0.0
-    swing_advance_end_phase: float = 0.60
-    lift_end_phase: float = 0.96
-    landing_roll_release_start: float = 0.62
-    command_rate_limit: float = 24.0
-    swing_hip_roll_scale: float = 0.0
-    swing_ankle_roll_scale: float = 0.0
-
-    # --- Arms ---
-    arm_swing_pwm: int = 260
-    arm_right_dir: int = 1
-    arm_left_dir: int = 1
-    arm_elbow_ratio: float = 0.0
-    arm_lift_ratio: float = 0.0
-    arm_smooth_tau: float = 0.22
-    arm_min_pwm: int = 30
-    arm_quantum_pwm: int = 5
-
-    # --- Control Mode ---
-    input_mode: str = "auto"
-    joystick_index: int = 0
-    input_deadzone: float = 0.08
-    ps4_forward_axis: int = 1
-    ps4_forward_sign: float = -1.0
-    ps4_turn_axis: int = 0
-    ps4_turn_sign: float = -1.0
-
-    # --- Dance ---
-    dance_period: float = 2.4
-    dance_transition: float = 0.45
-    dance_shoulder_pwm: int = 420
-    dance_elbow_pwm: int = 260
-    dance_lift_pwm: int = 820
-    dance_head_pwm: int = 180
-    dance_head_speed: float = 1.0
-    dance_smooth_tau: float = 0.08
-    dance_max_pwm_per_sec: float = 2200.0
-    dance_min_step_pwm: int = 18
-
-    # --- Getup ---
-    getup_mode: str = "back"
-    getup_speed: float = 0.7
-    pre_stand_ms: int = 0
-    final_stand_ms: int = 1200
-    getup_print_every: int = 20
-
-    # --- Testing ---
-    lift_leg: str = "left"
-    lift_height_mm: float = 45.0
-    lift_forward_mm: float = 35.0
-    lift_zmp_ratio: float = 0.58
-    lift_ramp_ms: int = 1200
-    lift_hold_ms: int = 1500
-    lift_print_every: int = 8
-    three_hip_roll_deg: float = 7.0
-    three_thigh_deg: float = 28.0
-    three_knee_delta_deg: float = -20.0
-    three_move_ms: int = 150
-    three_hold_ms: int = 650
-    three_repeat: int = 1
-    
-    # --- Debug ---
-    loop: bool = False
-    input_debug: bool = False
-    pose_debug: bool = False
-    imu_balance: bool = False
-    imu_roll_sign: float = 1.0
-    imu_pitch_sign: float = 1.0
-    imu_yaw_sign: float = 1.0
-    balance_limit_deg: float = 6.0
-    balance_deadband_deg: float = 0.4
-    
-    # Deprecated/unused arguments to prevent crash
-"""
 
 def main() -> None:
     args = Config()
