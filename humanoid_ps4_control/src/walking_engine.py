@@ -682,7 +682,11 @@ class DynamicWalkingEngine:
             hold = self._support_roll_hold["right"]
             pose[1] = blend_pwm(hold[1], STANDING[1], release_t)
             pose[5] = blend_pwm(hold[5], STANDING[5], release_t)
-            # Left thigh & knee blend down to STANDING
+            # Support leg (right) pitch: smooth from prev_pose to IK
+            for sid in (2, 3, 4):
+                if sid in self.prev_pose:
+                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
+            # Swing leg (left) thigh & knee blend down to STANDING
             land_blend = self._smooth01(landing_t_now)
             pose[21] = round(self.prev_pose.get(21, STANDING[21]) + (STANDING[21] - self.prev_pose.get(21, STANDING[21])) * land_blend)
             pose[22] = round(self.prev_pose.get(22, STANDING[22]) + (STANDING[22] - self.prev_pose.get(22, STANDING[22])) * land_blend)
@@ -693,7 +697,11 @@ class DynamicWalkingEngine:
             hold = self._support_roll_hold["left"]
             pose[24] = blend_pwm(hold[24], STANDING[24], release_t)
             pose[20] = blend_pwm(hold[20], STANDING[20], release_t)
-            # Right thigh & knee blend down to STANDING
+            # Support leg (left) pitch: smooth from prev_pose to IK
+            for sid in (21, 22, 23):
+                if sid in self.prev_pose:
+                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
+            # Swing leg (right) thigh & knee blend down to STANDING
             land_blend = self._smooth01(landing_t_now)
             pose[4] = round(self.prev_pose.get(4, STANDING[4]) + (STANDING[4] - self.prev_pose.get(4, STANDING[4])) * land_blend)
             pose[3] = round(self.prev_pose.get(3, STANDING[3]) + (STANDING[3] - self.prev_pose.get(3, STANDING[3])) * land_blend)
