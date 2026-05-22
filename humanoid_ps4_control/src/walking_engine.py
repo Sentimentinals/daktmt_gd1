@@ -650,6 +650,13 @@ class DynamicWalkingEngine:
             # Blend Left thigh pitch to IK target
             swing_blend = self._smooth01(lift_factor_now)
             pose[21] = round(self.prev_pose.get(21, pose[21]) + (pose[21] - self.prev_pose.get(21, pose[21])) * swing_blend)
+            # Manual swing override for Left leg knee & ankle (simultaneous with lift)
+            knee_delta = round(110 * lift_factor_now)
+            ankle_delta = round(110 * lift_factor_now)
+            target_22 = STANDING[22] - knee_delta
+            target_23 = STANDING[23] + ankle_delta
+            pose[22] = round(self.prev_pose.get(22, pose[22]) + (target_22 - self.prev_pose.get(22, pose[22])) * swing_blend)
+            pose[23] = round(self.prev_pose.get(23, pose[23]) + (target_23 - self.prev_pose.get(23, pose[23])) * swing_blend)
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
             self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
@@ -658,6 +665,13 @@ class DynamicWalkingEngine:
             # Blend Right thigh pitch to IK target
             swing_blend = self._smooth01(lift_factor_now)
             pose[4] = round(self.prev_pose.get(4, pose[4]) + (pose[4] - self.prev_pose.get(4, pose[4])) * swing_blend)
+            # Manual swing override for Right leg knee & ankle (simultaneous with lift)
+            knee_delta = round(110 * lift_factor_now)
+            ankle_delta = round(110 * lift_factor_now)
+            target_3 = STANDING[3] + knee_delta
+            target_2 = STANDING[2] - ankle_delta
+            pose[3] = round(self.prev_pose.get(3, pose[3]) + (target_3 - self.prev_pose.get(3, pose[3])) * swing_blend)
+            pose[2] = round(self.prev_pose.get(2, pose[2]) + (target_2 - self.prev_pose.get(2, pose[2])) * swing_blend)
         elif phase_mode_now == "land" and support_leg_for_pose == "right" and old_support_leg == "right":
             release_t = self._phase_progress(landing_t_now, self.landing_roll_release_start, 1.0)
             hold = self._support_roll_hold["right"]
@@ -713,22 +727,6 @@ class DynamicWalkingEngine:
             target_hip = max(500, min(2500, STANDING[20] + abs(self._support_roll_hold["right"][5] - STANDING[5])))
             pose[20] = round(pose[20] + (target_hip - pose[20]) * swing_blend)
             pose[24] = round(pose[24] + (STANDING[24] - pose[24]) * swing_blend)
-
-        # Manual swing leg overrides for knee and ankle (active when lift_factor_now > 0.02)
-        if lift_factor_now > 0.02 and swing_leg_now in ("left", "right"):
-            knee_delta = round(110 * lift_factor_now)
-            ankle_delta = round(110 * lift_factor_now)
-            swing_blend = self._smooth01(lift_factor_now)
-            if swing_leg_now == "left":
-                target_22 = STANDING[22] - knee_delta
-                target_23 = STANDING[23] + ankle_delta
-                pose[22] = round(self.prev_pose.get(22, pose[22]) + (target_22 - self.prev_pose.get(22, pose[22])) * swing_blend)
-                pose[23] = round(self.prev_pose.get(23, pose[23]) + (target_23 - self.prev_pose.get(23, pose[23])) * swing_blend)
-            elif swing_leg_now == "right":
-                target_3 = STANDING[3] + knee_delta
-                target_2 = STANDING[2] - ankle_delta
-                pose[3] = round(self.prev_pose.get(3, pose[3]) + (target_3 - self.prev_pose.get(3, pose[3])) * swing_blend)
-                pose[2] = round(self.prev_pose.get(2, pose[2]) + (target_2 - self.prev_pose.get(2, pose[2])) * swing_blend)
 
         pose = self._apply_arm_swing(pose, arm_delta_now)
         pose = clamp_pose_rate(self.prev_pose, pose, self.max_pwm_per_frame)
