@@ -61,9 +61,9 @@ ARM_STANDING = {
 }
 
 ARM_SHOULDER_POSES = {
-    "back_reach": {8: 900, 17: 2100},
-    "back_push": {8: 500, 17: 2500},
-    "back_hold": {8: 800, 17: 2200},
+    "back_reach": {8: 2100, 17: 900},
+    "back_push": {8: 2500, 17: 500},
+    "back_hold": {8: 2200, 17: 800},
     "front_reach": {8: 2100, 17: 900},
     "front_push": {8: 2500, 17: 500},
     "front_hold": {8: 2200, 17: 800},
@@ -192,39 +192,39 @@ def build_getup_sequence(mode: str = "back", speed: float = 0.7) -> list[GetupSt
 
     standing_angles = _leg_angles()
     box_clear_angles = _symmetric_leg_angles(
-        ankle_pitch=30.6,
-        knee=-2.7,
-        hip_pitch=-23.4,
+        ankle_pitch=30.0,
+        knee=0.0,
+        hip_pitch=-24.0,
     )
     tuck_angles = _symmetric_leg_angles(
-        ankle_pitch=41.4,
-        knee=-27.0,
-        hip_pitch=-39.6,
+        ankle_pitch=42.0,
+        knee=-28.0,
+        hip_pitch=-40.0,
     )
     snap_angles = _symmetric_leg_angles(
-        ankle_pitch=23.4,
-        knee=10.8,
+        ankle_pitch=26.0,
+        knee=8.0,
         hip_pitch=0.0,
     )
     plant_angles = _symmetric_leg_angles(
-        ankle_pitch=34.2,
-        knee=-15.3,
-        hip_pitch=-19.8,
+        ankle_pitch=24.0,
+        knee=20.0,
+        hip_pitch=8.0,
     )
     kneel_low_angles = _symmetric_leg_angles(
-        ankle_pitch=30.6,
-        knee=-10.8,
-        hip_pitch=-10.8,
+        ankle_pitch=30.0,
+        knee=-8.0,
+        hip_pitch=-10.0,
     )
     squat_deep_angles = _symmetric_leg_angles(
-        ankle_pitch=27.0,
-        knee=1.8,
-        hip_pitch=0.0,
+        ankle_pitch=26.0,
+        knee=8.0,
+        hip_pitch=4.0,
     )
     squat_high_angles = _symmetric_leg_angles(
-        ankle_pitch=21.6,
-        knee=19.8,
-        hip_pitch=9.0,
+        ankle_pitch=22.0,
+        knee=24.0,
+        hip_pitch=12.0,
     )
 
     states = {
@@ -316,23 +316,23 @@ def build_getup_sequence(mode: str = "back", speed: float = 0.7) -> list[GetupSt
 
     if mode == "back":
         plan = [
-            (states["back_box_clear"], 0.55, "smooth"),
-            (states["back_load_knees"], 0.45, "smooth"),
-            (states["back_leg_snap"], 0.26, "linear"),
-            (states["back_plant_feet"], 0.18, "linear"),
-            (states["back_power_stand"], 0.22, "snap"),
-            (states["back_stand_hold"], 0.40, "linear"),
+            (states["back_box_clear"], 0.62, "smooth"),
+            (states["back_load_knees"], 0.52, "smooth"),
+            (states["back_leg_snap"], 0.24, "snap"),
+            (states["back_plant_feet"], 0.26, "linear"),
+            (states["back_power_stand"], 0.20, "snap"),
+            (states["back_stand_hold"], 0.55, "linear"),
         ]
     else:
         plan = [
-            (states["front_arms_forward"], 1.0, "smooth"),
-            (states["front_push_floor"], 1.2, "smooth"),
-            (states["front_plant_knees"], 0.8, "smooth"),
-            (states["front_kneel_low"], 1.3, "smooth"),
-            (states["front_squat_deep"], 1.1, "smooth"),
-            (states["front_squat_high"], 1.0, "smooth"),
+            (states["front_arms_forward"], 0.95, "smooth"),
+            (states["front_push_floor"], 1.05, "smooth"),
+            (states["front_plant_knees"], 0.80, "smooth"),
+            (states["front_kneel_low"], 1.05, "smooth"),
+            (states["front_squat_deep"], 0.85, "smooth"),
+            (states["front_squat_high"], 0.75, "smooth"),
             (states["front_arms_down"], 0.45, "smooth"),
-            (states["front_stand"], 1.35, "smooth"),
+            (states["front_stand"], 1.05, "smooth"),
         ]
 
     return [_step(state, duration, curve, speed) for state, duration, curve in plan]

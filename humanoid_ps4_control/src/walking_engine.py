@@ -123,8 +123,7 @@ class SingleSupportTestEngine:
         zmp_support_ratio: float | None = None,
         hip_abduct_gain: float | None = None,
         ankle_roll_gain: float | None = None,
-        thigh_pwm: int = 90,
-        knee_scale: float = 0.65,
+        arm_pwm: int = 180,
         ramp_s: float = 0.8,
     ) -> None:
         self.dt = dt
@@ -133,8 +132,7 @@ class SingleSupportTestEngine:
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.hip_abduct_gain = GAIT["hip_abduct_gain"] if hip_abduct_gain is None else hip_abduct_gain
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
-        self.thigh_pwm = thigh_pwm
-        self.knee_scale = max(0.0, min(1.0, knee_scale))
+        self.arm_pwm = arm_pwm
         self.ramp_s = max(dt, ramp_s)
         self.running = False
         self.phase = 0.0
@@ -161,6 +159,7 @@ class SingleSupportTestEngine:
         hw = ROBOT["half_hip"]
         support_y = hw * self.zmp_support_ratio
         com_y = support_y if self.support_leg == "right" else -support_y
+        com_x = 8.0 * blend
 
         foot_l = np.array([0.0, -hw, 0.0])
         foot_r = np.array([0.0, hw, 0.0])
@@ -170,7 +169,7 @@ class SingleSupportTestEngine:
             foot_r[2] = self.lift_height * blend
 
         target = compute_pose(
-            0.0,
+            com_x,
             com_y * blend,
             foot_l,
             foot_r,
@@ -180,12 +179,13 @@ class SingleSupportTestEngine:
             hip_abduct_gain=self.hip_abduct_gain,
             ankle_roll_gain=self.ankle_roll_gain,
         )
+        arm_delta = round(self.arm_pwm * blend)
         if self.support_leg == "right":
-            target[21] = max(500, min(2500, target[21] + round(self.thigh_pwm * blend)))
-            target[22] = round(STANDING[22] + (target[22] - STANDING[22]) * self.knee_scale)
+            target[8] = max(500, min(2500, STANDING[8] + arm_delta))
+            target[17] = max(500, min(2500, STANDING[17] + arm_delta))
         else:
-            target[4] = max(500, min(2500, target[4] - round(self.thigh_pwm * blend)))
-            target[3] = round(STANDING[3] + (target[3] - STANDING[3]) * self.knee_scale)
+            target[8] = max(500, min(2500, STANDING[8] - arm_delta))
+            target[17] = max(500, min(2500, STANDING[17] - arm_delta))
         pose = {sid: blend_pwm(self.prev_pose.get(sid, STANDING[sid]), target[sid], 0.35) for sid in STANDING}
         self.prev_pose = pose
         return pose
@@ -290,7 +290,7 @@ class DynamicWalkingEngine:
         self.zmp_ctrl = ZMPPreviewController(dt=dt, zc=self.zc, preview_steps=self.preview_steps)
         self.zmp_ctrl_x = ZMPPreviewController(dt=dt, zc=self.zc, preview_steps=self.preview_steps)
 
-        self.max_pwm_per_frame = (360.0 * dt) * PWM_PER_DEG
+        self.max_pwm_per_frame = (460.0 * dt) * PWM_PER_DEG
         self.max_step_len = max_step_len
         self.max_turn_step_len = GAIT["max_turn_step_len"] if max_turn_step_len is None else max_turn_step_len
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
@@ -312,6 +312,7 @@ class DynamicWalkingEngine:
         self.lift_factor_queue: Deque[float] = deque()
         self.landing_progress_queue: Deque[float] = deque()
         self.phase_mode_queue: Deque[str] = deque()
+        self.side_len_queue: Deque[float] = deque()
         self.support_leg = "double"
         self.commanded_step_len = 0.0
         self.commanded_turn_len = 0.0
@@ -345,6 +346,7 @@ class DynamicWalkingEngine:
             self.lift_factor_queue.append(0.0)
             self.landing_progress_queue.append(0.0)
             self.phase_mode_queue.append("idle")
+            self.side_len_queue.append(0.0)
 
         self.prev_pose = dict(STANDING)
 
@@ -374,6 +376,8 @@ class DynamicWalkingEngine:
             return False
         if any(phase_mode != "idle" for phase_mode in self.phase_mode_queue):
             return False
+        if any(abs(side_len) > tolerance for side_len in self.side_len_queue):
+            return False
         arms_settled = abs(self._arm_state[0]) < self.arm_min_pwm and abs(self._arm_state[1]) < self.arm_min_pwm
         return arms_settled and self.zmp_ctrl.is_settled()
 
@@ -396,6 +400,7 @@ class DynamicWalkingEngine:
                 self.lift_factor_queue.append(0.0)
                 self.landing_progress_queue.append(0.0)
                 self.phase_mode_queue.append("idle")
+                self.side_len_queue.append(0.0)
             return
 
         if self._stop_decelerating and self._stop_steps_remaining > 0:
@@ -406,13 +411,20 @@ class DynamicWalkingEngine:
             self._stop_steps_remaining -= 1
 
         self.step_count += 1
-        swing_is_left = self.step_count % 2 == 1
+        side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
+        if side_dominant and side_len > 0.0:
+            swing_is_left = self.step_count % 2 == 0
+        else:
+            swing_is_left = self.step_count % 2 == 1
         planned_swing_leg = "left" if swing_is_left else "right"
         self.last_swing_leg = planned_swing_leg
 
-        stance_y = self.hw * self.zmp_support_ratio if swing_is_left else -self.hw * self.zmp_support_ratio
-        next_stance_y = -stance_y
         stance_x = base_R[0] if swing_is_left else base_L[0]
+        stance_foot_y = base_R[1] if swing_is_left else base_L[1]
+        swing_start_y = base_L[1] if swing_is_left else base_R[1]
+        swing_target_y = swing_start_y + side_len
+        stance_y = stance_foot_y * self.zmp_support_ratio
+        next_stance_y = swing_target_y * self.zmp_support_ratio
 
         # Positive turn command means turn left: left step shorter, right step longer.
         sagittal_cmd = step_len + (-turn_len if swing_is_left else turn_len)
@@ -435,10 +447,8 @@ class DynamicWalkingEngine:
         stride_ratio = abs(swing_distance) / reference_stride if reference_stride > 0.5 else 1.0
         step_n_s = max(self.n_s, round(self.n_s * stride_ratio))
 
-        arm_switched = False
         for k in range(step_n_s):
             alpha = k / max(step_n_s - 1, 1)
-            smooth_t = alpha * alpha * alpha * (alpha * (alpha * 6.0 - 15.0) + 10.0)
             swing_t = self._phase_progress(alpha, self.lift_start_phase, self.swing_advance_end_phase)
             self.zmp_x_queue.append(stance_x)
 
@@ -465,28 +475,31 @@ class DynamicWalkingEngine:
 
             lift_ready = self._smooth01(min(1.0, lift_factor / 0.55))
             swing_x_travel = (swing_distance + thigh_forward_x * swing_x_scale) * swing_t * lift_ready
-            if lift_factor > 0.02:
-                arm_switched = True
-            arm_delta = current_arm_delta if arm_switched else previous_arm_delta
+            arm_phase = self._smooth01(swing_t)
+            arm_delta = (
+                round(previous_arm_delta[0] + (current_arm_delta[0] - previous_arm_delta[0]) * arm_phase),
+                round(previous_arm_delta[1] + (current_arm_delta[1] - previous_arm_delta[1]) * arm_phase),
+            )
             if phase_mode == "land":
                 boost_factor = lift_factor * (1.0 - landing_t)
             else:
                 boost_factor = lift_factor
 
-            stance_y_offset = side_len / 2.0 - side_len * smooth_t
-            swing_y_offset = -side_len / 2.0 + side_len * smooth_t
+            side_ready = self._smooth01(min(1.0, lift_factor / 0.45))
+            swing_y_travel = side_len * swing_t * side_ready
 
             if swing_is_left:
-                self.foot_L_queue.append(np.array([base_L[0] + swing_x_travel, -self.hw + swing_y_offset, z]))
-                self.foot_R_queue.append(np.array([base_R[0], self.hw + stance_y_offset, 0.0]))
+                self.foot_L_queue.append(np.array([base_L[0] + swing_x_travel, base_L[1] + swing_y_travel, z]))
+                self.foot_R_queue.append(np.array([base_R[0], base_R[1], 0.0]))
             else:
-                self.foot_L_queue.append(np.array([base_L[0], -self.hw + stance_y_offset, 0.0]))
-                self.foot_R_queue.append(np.array([base_R[0] + swing_x_travel, self.hw + swing_y_offset, z]))
+                self.foot_L_queue.append(np.array([base_L[0], base_L[1], 0.0]))
+                self.foot_R_queue.append(np.array([base_R[0] + swing_x_travel, base_R[1] + swing_y_travel, z]))
             self.arm_queue.append(arm_delta)
             self.swing_leg_queue.append(planned_swing_leg if phase_mode in ("shift", "swing", "land") else "none")
             self.lift_factor_queue.append(boost_factor)
             self.landing_progress_queue.append(landing_t if phase_mode == "land" else (alpha / self.swing_advance_end_phase))
             self.phase_mode_queue.append(phase_mode)
+            self.side_len_queue.append(side_len)
 
     def _thigh_forward_bias(self, sagittal_cmd: float) -> float:
         if abs(sagittal_cmd) < 0.1 or abs(self.thigh_lift_forward_mm) < 0.1:
@@ -529,8 +542,6 @@ class DynamicWalkingEngine:
         envelope = self._quantize_arm_delta(self.arm_swing_pwm)
         if not swing_is_left:
             envelope = -envelope
-        # Return one logical shoulder command. Servo direction config maps this
-        # into opposite physical motion for servo 8 and servo 17.
         return int(envelope), int(envelope)
 
     @staticmethod
@@ -549,10 +560,13 @@ class DynamicWalkingEngine:
         if self.arm_swing_pwm <= 0:
             return pose
 
-        tau = max(self.dt, float(self.arm_smooth_tau))
-        alpha = 1.0 - math.exp(-self.dt / tau)
-        self._arm_state[0] += alpha * (arm_delta[0] - self._arm_state[0])
-        self._arm_state[1] += alpha * (arm_delta[1] - self._arm_state[1])
+        arm_step = max(30.0, abs(self.arm_swing_pwm) * self.dt / max(self.dt, float(self.arm_smooth_tau)))
+        for idx, target in enumerate(arm_delta):
+            delta = target - self._arm_state[idx]
+            if abs(delta) <= arm_step:
+                self._arm_state[idx] = float(target)
+            else:
+                self._arm_state[idx] += math.copysign(arm_step, delta)
 
         out = dict(pose)
         right_delta = self._quantize_arm_delta(self._arm_state[0])
@@ -648,6 +662,7 @@ class DynamicWalkingEngine:
         lift_factor_now = self.lift_factor_queue.popleft()
         landing_t_now = self.landing_progress_queue.popleft()
         phase_mode_now = self.phase_mode_queue.popleft()
+        side_len_now = self.side_len_queue.popleft()
         self.last_foot_L = foot_L_now
         self.last_foot_R = foot_R_now
         self.last_swing_leg = swing_leg_now
@@ -709,10 +724,6 @@ class DynamicWalkingEngine:
             pose = dict(STANDING)
         if phase_mode_now == "swing" and support_leg_for_pose == "right":
             # Right leg is stance, Left leg is swing
-            if lift_factor_now <= 0.02:
-                # First frame: freeze all joints at prev_pose, save roll hold
-                for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
-                    pose[sid] = self.prev_pose.get(sid, pose[sid])
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
             target_1 = pose[1]
             target_5 = pose[5]
@@ -725,25 +736,20 @@ class DynamicWalkingEngine:
             for sid in (2, 3, 4):
                 if sid in self.prev_pose:
                     pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
-            # Blend Left thigh pitch to IK target
-            swing_blend_thigh = self._smooth01(lift_factor_now)
-            pose[21] = round(self.prev_pose.get(21, pose[21]) + (pose[21] - self.prev_pose.get(21, pose[21])) * swing_blend_thigh)
-            # Manual swing override for Left leg knee & ankle (synchronized with lift_factor_now, decaying over swing)
             t = max(0.0, min(1.0, landing_t_now))
             swing_lift = lift_factor_now * (1.0 - t)
-            knee_delta = round(75 * swing_lift)
-            ankle_delta = round(75 * swing_lift)
+            thigh_delta = round(320 * swing_lift)
+            knee_delta = round(230 * swing_lift)
+            ankle_delta = round(130 * swing_lift)
+            target_21 = STANDING[21] + thigh_delta
             target_22 = STANDING[22] + knee_delta
-            target_23 = STANDING[23] + ankle_delta
-            swing_blend = self._smooth01(swing_lift)
-            pose[22] = round(pose[22] + (target_22 - pose[22]) * swing_blend)
-            pose[23] = round(pose[23] + (target_23 - pose[23]) * swing_blend)
+            target_23 = STANDING[23] - ankle_delta
+            swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
+            pose[21] = round(self.prev_pose.get(21, pose[21]) + (target_21 - self.prev_pose.get(21, pose[21])) * swing_blend)
+            pose[22] = round(self.prev_pose.get(22, pose[22]) + (target_22 - self.prev_pose.get(22, pose[22])) * swing_blend)
+            pose[23] = round(self.prev_pose.get(23, pose[23]) + (target_23 - self.prev_pose.get(23, pose[23])) * swing_blend)
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
-            if lift_factor_now <= 0.02:
-                # First frame: freeze all joints at prev_pose, save roll hold
-                for sid in (1, 2, 3, 4, 5, 20, 21, 22, 23, 24):
-                    pose[sid] = self.prev_pose.get(sid, pose[sid])
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
             target_24 = pose[24]
             target_20 = pose[20]
@@ -756,19 +762,18 @@ class DynamicWalkingEngine:
             for sid in (21, 22, 23):
                 if sid in self.prev_pose:
                     pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
-            # Blend Right thigh pitch to IK target
-            swing_blend_thigh = self._smooth01(lift_factor_now)
-            pose[4] = round(self.prev_pose.get(4, pose[4]) + (pose[4] - self.prev_pose.get(4, pose[4])) * swing_blend_thigh)
-            # Manual swing override for Right leg knee & ankle (synchronized with lift_factor_now, decaying over swing)
             t = max(0.0, min(1.0, landing_t_now))
             swing_lift = lift_factor_now * (1.0 - t)
-            knee_delta = round(75 * swing_lift)
-            ankle_delta = round(75 * swing_lift)
+            thigh_delta = round(320 * swing_lift)
+            knee_delta = round(230 * swing_lift)
+            ankle_delta = round(130 * swing_lift)
+            target_4 = STANDING[4] - thigh_delta
             target_3 = STANDING[3] - knee_delta
-            target_2 = STANDING[2] - ankle_delta
-            swing_blend = self._smooth01(swing_lift)
-            pose[3] = round(pose[3] + (target_3 - pose[3]) * swing_blend)
-            pose[2] = round(pose[2] + (target_2 - pose[2]) * swing_blend)
+            target_2 = STANDING[2] + ankle_delta
+            swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
+            pose[4] = round(self.prev_pose.get(4, pose[4]) + (target_4 - self.prev_pose.get(4, pose[4])) * swing_blend)
+            pose[3] = round(self.prev_pose.get(3, pose[3]) + (target_3 - self.prev_pose.get(3, pose[3])) * swing_blend)
+            pose[2] = round(self.prev_pose.get(2, pose[2]) + (target_2 - self.prev_pose.get(2, pose[2])) * swing_blend)
         elif phase_mode_now == "land" and swing_leg_now in ("left", "right"):
             land_blend = self._smooth01(landing_t_now)
             
@@ -810,6 +815,14 @@ class DynamicWalkingEngine:
                 self._support_roll_hold["right"] = {1: pose[1], 5: pose[5]}
             elif swing_leg_now == "left":
                 self._support_roll_hold["left"] = {24: pose[24], 20: pose[20]}
+
+        if abs(side_len_now) > 0.1 and swing_leg_now in ("left", "right") and phase_mode_now in ("swing", "land"):
+            side_sign = 1 if side_len_now > 0.0 else -1
+            side_ankle = round(min(70.0, abs(side_len_now) * 8.0) * lift_factor_now)
+            if swing_leg_now == "left":
+                pose[24] = max(500, min(2500, pose[24] + side_sign * side_ankle))
+            else:
+                pose[1] = max(500, min(2500, pose[1] + side_sign * side_ankle))
 
         pose = self._apply_arm_swing(pose, arm_delta_now)
         pose = clamp_pose_rate(self.prev_pose, pose, self.max_pwm_per_frame)

@@ -172,6 +172,7 @@ def run_ps4(args: argparse.Namespace) -> None:
         zmp_support_ratio=args.zmp_support_ratio,
         hip_abduct_gain=args.hip_abduct_gain,
         ankle_roll_gain=args.ankle_roll_gain,
+        arm_pwm=args.single_support_arm_pwm,
         ramp_s=args.single_support_ramp_s,
     )
     arm_dance = ArmDanceEngine(

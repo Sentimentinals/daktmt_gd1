@@ -9,37 +9,37 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-    "step_height": 32.0,
+    "step_height": 54.0,
 }
 
 # --- Default Gait Parameters ---
 GAIT = {
-    "zmp_support_ratio": 0.94,
+    "zmp_support_ratio": 0.96,
     "hip_abduct_gain": 0.32,
     "swing_hip_roll_scale": 0.0,
     "ankle_roll_gain": -0.30,  # Default walking engine value
     "swing_ankle_roll_scale": 0.0,
-    "step_x_ratio": 0.45,
+    "step_x_ratio": 0.62,
     "thigh_lift_forward_mm": 0.0,
     "left_swing_x_scale": 1.0,
     "left_step_height_scale": 1.0,
     "landing_gap_mm": 12.0,
     "right_swing_x_scale": 1.0,
     "right_step_height_scale": 1.0,
-    "lift_start_phase": 0.06,
-    "swing_advance_end_phase": 0.68,
+    "lift_start_phase": 0.00,
+    "swing_advance_end_phase": 0.70,
     "lift_end_phase": 0.97,
-    "landing_roll_release_start": 0.90,
+    "landing_roll_release_start": 0.35,
     "command_deadzone": 0.02,
-    "arm_swing_pwm": 260,
+    "arm_swing_pwm": 320,
     "arm_right_dir": 1,
     "arm_left_dir": 1,
     "arm_elbow_ratio": 0.0,
     "arm_lift_ratio": 0.0,
-    "arm_smooth_tau": 0.22,
+    "arm_smooth_tau": 0.18,
     "arm_min_pwm": 30,
-    "arm_quantum_pwm": 5,
-    "max_side_step_len": 8.0,
+    "arm_quantum_pwm": 10,
+    "max_side_step_len": 10.0,
     "max_turn_step_len": 7.0,
     "stop_extra_steps": 2,
 }
@@ -48,7 +48,7 @@ GAIT = {
 STANDING = {
     1: 1500,    # Right ankle roll
     2: 1500,    # Right ankle pitch
-    3: 1500,    # Right knee
+    3: 1523,    # Right knee
     4: 1500,    # Right hip pitch, standing forward bias
     5: 1500,    # Right hip roll/abduction
     6: 1500,    # Right elbow
@@ -60,7 +60,7 @@ STANDING = {
     19: 1500,   # Left elbow
     20: 1500,   # Left hip roll/abduction
     21: 1500,   # Left hip pitch, standing forward bias
-    22: 1500,   # Left knee
+    22: 1477,   # Left knee
     23: 1500,   # Left ankle pitch
     24: 1500,   # Left ankle roll
 }
@@ -112,18 +112,18 @@ class Config:
     stop_ms: int = 250
 
     # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.30
+    walk_speed: float = 0.60
     turn_speed: float = 0.35
-    side_speed: float = 0.20
-    max_step_len: float = 22.0
+    side_speed: float = 0.65
+    max_step_len: float = 26.0
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = ROBOT["step_height"]
-    t_step: float = 1.55
+    t_step: float = 1.65
     t_dbl: float = 0.04
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     hip_abduct_gain: float = GAIT["hip_abduct_gain"]
-    ankle_roll_gain: float = -0.34  # Tweak override for active run mode
+    ankle_roll_gain: float = -0.32  # Tweak override for active run mode
     step_x_ratio: float = GAIT["step_x_ratio"]
     thigh_lift_forward_mm: float = GAIT["thigh_lift_forward_mm"]
     left_swing_x_scale: float = GAIT["left_swing_x_scale"]
@@ -135,12 +135,11 @@ class Config:
     swing_advance_end_phase: float = GAIT["swing_advance_end_phase"]
     lift_end_phase: float = GAIT["lift_end_phase"]
     landing_roll_release_start: float = GAIT["landing_roll_release_start"]
-    command_rate_limit: float = 16.0
+    command_rate_limit: float = 14.0
     swing_hip_roll_scale: float = GAIT["swing_hip_roll_scale"]
     swing_ankle_roll_scale: float = GAIT["swing_ankle_roll_scale"]
-    single_support_lift_height: float = 28.0
-    single_support_thigh_pwm: int = 90
-    single_support_knee_scale: float = 0.65
+    single_support_lift_height: float = 70.0
+    single_support_arm_pwm: int = 180
     single_support_ramp_s: float = 0.8
 
     # --- Arms (Linked to GAIT values by default) ---
