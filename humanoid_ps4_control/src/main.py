@@ -103,10 +103,10 @@ def run_ps4(args: argparse.Namespace) -> None:
     Real-time walking mode.
 
     D-pad/keyboard:
-      Up/U       : walk forward
-      Down/D     : walk backward
+      Up/W       : walk forward
+      Down/S     : walk backward
       Left/A     : side walk left
-      Right      : side walk right
+      Right/D    : side walk right
       Stick X    : turn left/right in auto/stick mode
       J/K        : side walk left/right
       L1/L       : toggle standing arm dance
@@ -222,7 +222,7 @@ def run_ps4(args: argparse.Namespace) -> None:
         print("[main] IMU balance enabled: BNO055 roll/pitch feedback active.")
 
     print(
-        "\n[PS4 Mode - Real-time ZMP] Up/Down walk, Left/Right side, stick-X turn, J/K side, "
+        "\n[PS4 Mode - Real-time ZMP] W/S walk, A/D side, arrows also work, stick-X turn, J/K side, "
         "X single support, L1/L/M dance, R1/G get-up, B get-up back, C stop, Q quit\n"
     )
 

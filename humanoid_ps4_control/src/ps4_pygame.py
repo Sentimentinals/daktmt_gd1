@@ -9,8 +9,8 @@ Windows DS4 button indices commonly seen by pygame:
 
 Hat input is also supported for Linux/macOS. Keyboard fallback remains active
 even when a joystick is connected:
-    T/E reset, U/Up forward, D/Down backward, Left/A side left,
-    Right side right, J/K side walk, L/M arm dance/L1,
+    T/E reset, W/Up forward, S/Down backward, A/Left side left,
+    D/Right side right, J/K side walk, L/M arm dance/L1,
     X single-leg support/Cross, G get-up/R1 using selected mode, B get-up back, C stop, Q quit.
 """
 
@@ -101,7 +101,7 @@ class PS4Reader:
             if self.fallback_keys:
                 print(
                     "[PS4Reader] No joystick. Keyboard fallback active: "
-                    "U/Up forward, D/Down backward, Left/A and Right side walk, J/K side walk, "
+                    "W/Up forward, S/Down backward, A/Left and D/Right side walk, J/K side walk, "
                     "L/M dance/L1, X single-leg support/Cross, G get-up/R1, B get-up back, C stop, Q quit."
                 )
             else:
@@ -160,10 +160,10 @@ class PS4Reader:
                 if keys[pygame.K_q]:
                     yield ControllerState(quit=True)
                     return
-                forward = keys[pygame.K_u] or keys[pygame.K_UP]
-                backward = keys[pygame.K_d] or keys[pygame.K_DOWN]
+                forward = keys[pygame.K_w] or keys[pygame.K_UP]
+                backward = keys[pygame.K_s] or keys[pygame.K_DOWN]
                 left = keys[pygame.K_LEFT] or keys[pygame.K_a]
-                right = keys[pygame.K_RIGHT]
+                right = keys[pygame.K_RIGHT] or keys[pygame.K_d]
                 x = -1 if left and not right else (1 if right and not left else 0)
                 y = 1 if forward and not backward else (-1 if backward and not forward else 0)
                 kb_hat = (x, y)
