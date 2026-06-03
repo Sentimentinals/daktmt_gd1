@@ -198,7 +198,7 @@ class DynamicWalkingEngine:
     def __init__(
         self,
         dt: float = 0.04,
-        t_step: float = 1.28,
+        t_step: float = 1.85,
         t_dbl: float = 0.04,
         max_step_len: float = 28.0,
         max_turn_step_len: float | None = None,
@@ -221,7 +221,7 @@ class DynamicWalkingEngine:
         lift_end_phase: float | None = None,
         landing_roll_release_start: float | None = None,
         command_deadzone: float | None = None,
-        command_rate_limit: float = 24.0,
+        command_rate_limit: float = 12.0,
         arm_swing_pwm: int | None = None,
         arm_right_dir: int | None = None,
         arm_left_dir: int | None = None,
@@ -480,7 +480,7 @@ class DynamicWalkingEngine:
             lift_height_scale = self.left_step_height_scale if swing_is_left else self.right_step_height_scale
             z = self.step_height * lift_height_scale * lift_factor
 
-            lift_ready = self._smooth01(min(1.0, lift_factor / 0.55))
+            lift_ready = 1.0 if landing_t > 0.0 else self._smooth01(min(1.0, lift_factor / 0.28))
             swing_x_travel = (swing_distance + thigh_forward_x * swing_x_scale) * swing_t * lift_ready
             arm_phase = self._smooth01(swing_t)
             arm_delta = (
@@ -739,7 +739,7 @@ class DynamicWalkingEngine:
             pose = dict(STANDING)
         if phase_mode_now == "swing" and support_leg_for_pose == "right":
             # Right leg is stance, Left leg is swing
-            support_blend = self._smooth01(min(1.0, lift_factor_now / 0.45))
+            support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
             target_1 = pose[1]
             target_5 = pose[5]
             pose[1] = round(self.prev_pose.get(1, pose[1]) + (target_1 - self.prev_pose.get(1, pose[1])) * support_blend)
@@ -750,12 +750,12 @@ class DynamicWalkingEngine:
             # Support leg (right) pitch: smooth from prev_pose to IK
             for sid in (2, 3, 4):
                 if sid in self.prev_pose:
-                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
+                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.08)
             t = max(0.0, min(1.0, landing_t_now))
             swing_lift = lift_factor_now * (1.0 - t)
-            thigh_delta = round(120 * swing_lift)
-            knee_delta = round(75 * swing_lift)
-            ankle_delta = round(45 * swing_lift)
+            thigh_delta = round(62 * swing_lift)
+            knee_delta = round(34 * swing_lift)
+            ankle_delta = round(22 * swing_lift)
             target_21 = STANDING[21] + thigh_delta
             target_22 = STANDING[22] + knee_delta
             target_23 = STANDING[23] - ankle_delta
@@ -765,7 +765,7 @@ class DynamicWalkingEngine:
             pose[23] = round(self.prev_pose.get(23, pose[23]) + (target_23 - self.prev_pose.get(23, pose[23])) * swing_blend)
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
-            support_blend = self._smooth01(min(1.0, lift_factor_now / 0.45))
+            support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
             target_24 = pose[24]
             target_20 = pose[20]
             pose[24] = round(self.prev_pose.get(24, pose[24]) + (target_24 - self.prev_pose.get(24, pose[24])) * support_blend)
@@ -776,12 +776,12 @@ class DynamicWalkingEngine:
             # Support leg (left) pitch: smooth from prev_pose to IK
             for sid in (21, 22, 23):
                 if sid in self.prev_pose:
-                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.15)
+                    pose[sid] = round(self.prev_pose[sid] + (pose[sid] - self.prev_pose[sid]) * 0.08)
             t = max(0.0, min(1.0, landing_t_now))
             swing_lift = lift_factor_now * (1.0 - t)
-            thigh_delta = round(120 * swing_lift)
-            knee_delta = round(75 * swing_lift)
-            ankle_delta = round(45 * swing_lift)
+            thigh_delta = round(62 * swing_lift)
+            knee_delta = round(34 * swing_lift)
+            ankle_delta = round(22 * swing_lift)
             target_4 = STANDING[4] - thigh_delta
             target_3 = STANDING[3] - knee_delta
             target_2 = STANDING[2] + ankle_delta
@@ -809,7 +809,7 @@ class DynamicWalkingEngine:
             
             # Pull knee & ankle targets closer to neutral to prevent sagging
             for sid in (2, 3, 22, 23):
-                next_support_pose[sid] = round(STANDING[sid] + (next_support_pose[sid] - STANDING[sid]) * 0.3)
+                next_support_pose[sid] = round(STANDING[sid] + (next_support_pose[sid] - STANDING[sid]) * 0.22)
             
             # Add a slight forward lean bias (3.5 degrees) to hip pitch to keep the torso leaning forward slightly
             lean_pwm = round(3.5 * PWM_PER_DEG)
