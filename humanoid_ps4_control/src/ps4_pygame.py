@@ -11,7 +11,7 @@ Hat input is also supported for Linux/macOS. Keyboard fallback remains active
 even when a joystick is connected:
     T/E reset, U/Up forward, D/Down backward, Left/A side left,
     Right side right, J/K side walk, L/M arm dance/L1,
-    G get-up/R1 using selected mode, B get-up back, C stop, Q quit.
+    X single-leg support/Cross, G get-up/R1 using selected mode, B get-up back, C stop, Q quit.
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ class PS4Reader:
                 print(
                     "[PS4Reader] No joystick. Keyboard fallback active: "
                     "U/Up forward, D/Down backward, Left/A and Right side walk, J/K side walk, "
-                    "L/M dance/L1, G get-up/R1, B get-up back, C stop, Q quit."
+                    "L/M dance/L1, X single-leg support/Cross, G get-up/R1, B get-up back, C stop, Q quit."
                 )
             else:
                 print("[PS4Reader] No joystick detected.")
@@ -169,6 +169,7 @@ class PS4Reader:
                 kb_hat = (x, y)
                 kb_buttons = {
                     self.BTN_TRIANGLE: keys[pygame.K_t] or keys[pygame.K_e],
+                    self.BTN_CROSS: keys[pygame.K_x],
                     self.BTN_CIRCLE: keys[pygame.K_c],
                     self.BTN_L1: keys[pygame.K_l] or keys[pygame.K_m],
                     self.BTN_R1: keys[pygame.K_g],

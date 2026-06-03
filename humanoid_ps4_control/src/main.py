@@ -110,6 +110,7 @@ def run_ps4(args: argparse.Namespace) -> None:
       Stick X    : turn left/right in auto/stick mode
       J/K        : side walk left/right
       L1/L       : toggle standing arm dance
+      Cross/X    : toggle single-leg support test
       R1/G       : run get-up sequence
       B          : run back get-up sequence
       Circle/C   : stop and hold standing
@@ -117,7 +118,7 @@ def run_ps4(args: argparse.Namespace) -> None:
       Q          : quit
     """
     from .ps4_pygame import PS4Reader
-    from .walking_engine import DynamicWalkingEngine, STANDING
+    from .walking_engine import DynamicWalkingEngine, SingleSupportTestEngine, STANDING
     from .arm_dance import ArmDanceEngine
     from .getup import GetupEngine
     from .balance import BalanceConfig, IMUBalanceController
@@ -165,6 +166,14 @@ def run_ps4(args: argparse.Namespace) -> None:
         arm_min_pwm=args.arm_min_pwm,
         arm_quantum_pwm=args.arm_quantum_pwm,
     )
+    single_support = SingleSupportTestEngine(
+        dt=args.update_ms / 1000.0,
+        lift_height=args.single_support_lift_height,
+        zmp_support_ratio=args.zmp_support_ratio,
+        hip_abduct_gain=args.hip_abduct_gain,
+        ankle_roll_gain=args.ankle_roll_gain,
+        ramp_s=args.single_support_ramp_s,
+    )
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,
         period_s=args.dance_period,
@@ -187,6 +196,8 @@ def run_ps4(args: argparse.Namespace) -> None:
     prev_stop_pressed = False
     prev_getup_pressed = False
     prev_getup_back_pressed = False
+    prev_single_support_pressed = False
+    next_single_support_leg = "right"
     last_pose = dict(STANDING)
     standing_hold_active = True
 
@@ -211,7 +222,7 @@ def run_ps4(args: argparse.Namespace) -> None:
 
     print(
         "\n[PS4 Mode - Real-time ZMP] Up/Down walk, Left/Right side, stick-X turn, J/K side, "
-        "L1/L/M dance, R1/G get-up, B get-up back, C stop, Q quit\n"
+        "X single support, L1/L/M dance, R1/G get-up, B get-up back, C stop, Q quit\n"
     )
 
     try:
@@ -255,6 +266,7 @@ def run_ps4(args: argparse.Namespace) -> None:
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
+                        single_support.stop()
                         standing_hold_active = True
                         pose = dict(STANDING)
 
@@ -270,6 +282,7 @@ def run_ps4(args: argparse.Namespace) -> None:
                     if getup_pressed and not prev_getup_pressed:
                         engine.reset()
                         arm_dance.reset()
+                        single_support.stop()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode=args.getup_mode)
                         print(f"[main] R1/G pressed. Running {args.getup_mode} get-up sequence from step {label}.")
@@ -279,6 +292,7 @@ def run_ps4(args: argparse.Namespace) -> None:
                     if getup_back_pressed and not prev_getup_back_pressed:
                         engine.reset()
                         arm_dance.reset()
+                        single_support.stop()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode="back")
                         print(f"[main] B pressed. Running back get-up sequence from step {label}.")
@@ -288,15 +302,33 @@ def run_ps4(args: argparse.Namespace) -> None:
                     if l1_pressed and not prev_l1_pressed and not getup.running:
                         enabled = arm_dance.toggle()
                         engine.reset()
+                        single_support.stop()
                         standing_hold_active = not enabled
                         print("[main] L1 arm dance ON." if enabled else "[main] L1 arm dance OFF - returning to STANDING.")
                     prev_l1_pressed = l1_pressed
+
+                    single_support_pressed = state.button(reader.BTN_CROSS)
+                    if single_support_pressed and not prev_single_support_pressed and not getup.running:
+                        engine.reset()
+                        arm_dance.reset()
+                        if single_support.running:
+                            single_support.stop()
+                            standing_hold_active = True
+                            print("[main] X/Cross single-support OFF - returning to STANDING.")
+                        else:
+                            single_support.start(next_single_support_leg, current_pose=last_pose)
+                            standing_hold_active = False
+                            swing_leg = "left" if next_single_support_leg == "right" else "right"
+                            print(f"[main] X/Cross single-support ON: support={next_single_support_leg}, lifted={swing_leg}.")
+                            next_single_support_leg = "left" if next_single_support_leg == "right" else "right"
+                    prev_single_support_pressed = single_support_pressed
     
                     if state.button(reader.BTN_TRIANGLE):
                         print("[main] Triangle/E pressed. Resetting walking engine and arm dance.")
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
+                        single_support.stop()
                         standing_hold_active = True
                         vy = 0.0
                         turn_cmd = 0.0
@@ -321,6 +353,12 @@ def run_ps4(args: argparse.Namespace) -> None:
                         side_cmd = 0.0
                         motion_requested = False
                         pose = arm_dance.update()
+                    elif single_support.running:
+                        vy = 0.0
+                        turn_cmd = 0.0
+                        side_cmd = 0.0
+                        motion_requested = False
+                        pose = single_support.update()
                     elif standing_hold_active and not motion_requested:
                         pose = dict(STANDING)
                     else:
