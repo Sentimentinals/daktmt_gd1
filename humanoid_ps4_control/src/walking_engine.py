@@ -539,7 +539,7 @@ class DynamicWalkingEngine:
         return direction * max(abs(planned_reach), self.landing_gap_mm)
 
     def _swing_pitch_deltas(self, lift_factor: float) -> tuple[int, int]:
-        lift_height = self.step_height * self._smooth01(lift_factor)
+        lift_height = self.step_height * lift_factor
         return lift_pitch_deltas(lift_height)
 
     def _phase_progress(self, phase: float, start: float, end: float) -> float:
@@ -553,9 +553,9 @@ class DynamicWalkingEngine:
         lift_t = self._phase_progress(phase, self.lift_start_phase, self.lift_end_phase)
         if lift_t <= 0.0 or lift_t >= 1.0:
             return 0.0
-        if lift_t < 0.5:
-            return self._smooth01(lift_t / 0.5)
-        return 1.0 - self._smooth01((lift_t - 0.5) / 0.5)
+        if lift_t < 0.35:
+            return self._smooth01(lift_t / 0.35)
+        return 1.0 - self._smooth01((lift_t - 0.35) / 0.65)
 
     def _arm_offsets(self, swing_is_left: bool) -> tuple[int, int]:
         if self.arm_swing_pwm <= 0:
@@ -774,9 +774,9 @@ class DynamicWalkingEngine:
                 target_23 = round(STANDING[23] + (pose[23] - STANDING[23]) * side_pitch_gain)
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[20] = round(self.prev_pose.get(20, pose[20]) + (target_20 - self.prev_pose.get(20, pose[20])) * swing_blend)
-            pose[21] = round(self.prev_pose.get(21, pose[21]) + (target_21 - self.prev_pose.get(21, pose[21])) * swing_blend)
-            pose[22] = round(self.prev_pose.get(22, pose[22]) + (target_22 - self.prev_pose.get(22, pose[22])) * swing_blend)
-            pose[23] = round(self.prev_pose.get(23, pose[23]) + (target_23 - self.prev_pose.get(23, pose[23])) * swing_blend)
+            pose[21] = target_21
+            pose[22] = target_22
+            pose[23] = target_23
             pose[24] = round(self.prev_pose.get(24, pose[24]) + (target_24 - self.prev_pose.get(24, pose[24])) * swing_blend)
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
@@ -802,9 +802,9 @@ class DynamicWalkingEngine:
                 target_4 = round(STANDING[4] + (pose[4] - STANDING[4]) * side_pitch_gain)
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[1] = round(self.prev_pose.get(1, pose[1]) + (target_1 - self.prev_pose.get(1, pose[1])) * swing_blend)
-            pose[4] = round(self.prev_pose.get(4, pose[4]) + (target_4 - self.prev_pose.get(4, pose[4])) * swing_blend)
-            pose[3] = round(self.prev_pose.get(3, pose[3]) + (target_3 - self.prev_pose.get(3, pose[3])) * swing_blend)
-            pose[2] = round(self.prev_pose.get(2, pose[2]) + (target_2 - self.prev_pose.get(2, pose[2])) * swing_blend)
+            pose[4] = target_4
+            pose[3] = target_3
+            pose[2] = target_2
             pose[5] = round(self.prev_pose.get(5, pose[5]) + (target_5 - self.prev_pose.get(5, pose[5])) * swing_blend)
         elif phase_mode_now == "land" and swing_leg_now in ("left", "right"):
             land_blend = self._smooth01(landing_t_now)
