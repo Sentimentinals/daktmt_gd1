@@ -39,7 +39,7 @@ GAIT = {
     "arm_smooth_tau": 0.08,
     "arm_min_pwm": 30,
     "arm_quantum_pwm": 10,
-    "max_side_step_len": 34.0,
+    "max_side_step_len": 38.0,
     "max_turn_step_len": 7.0,
     "stop_extra_steps": 4,
 }
@@ -114,7 +114,7 @@ class Config:
     # --- Walking Engine (Linked to GAIT values by default) ---
     walk_speed: float = 0.92
     turn_speed: float = 0.35
-    side_speed: float = 0.80
+    side_speed: float = 0.86
     max_step_len: float = 40.0
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]

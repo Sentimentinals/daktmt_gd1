@@ -443,7 +443,7 @@ class DynamicWalkingEngine:
 
         self.step_count += 1
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
-        side_step_len = side_len * 1.55 if side_dominant else side_len
+        side_step_len = side_len * 1.80 if side_dominant else side_len
         if side_dominant and side_len > 0.0:
             swing_is_left = self.step_count % 2 == 0
         else:
@@ -459,6 +459,15 @@ class DynamicWalkingEngine:
         current_center_y = 0.5 * (base_L[1] + base_R[1])
         next_left_y = swing_target_y if swing_is_left else base_L[1]
         next_right_y = base_R[1] if swing_is_left else swing_target_y
+        if side_dominant:
+            min_side_gap = self.hw * 2.55
+            if swing_is_left and next_right_y - next_left_y < min_side_gap:
+                swing_target_y = next_right_y - min_side_gap
+                next_left_y = swing_target_y
+            elif not swing_is_left and next_right_y - next_left_y < min_side_gap:
+                swing_target_y = next_left_y + min_side_gap
+                next_right_y = swing_target_y
+            side_step_len = swing_target_y - swing_start_y
         next_center_y = 0.5 * (next_left_y + next_right_y)
         support_sign = 1.0 if swing_is_left else -1.0
         stance_y = current_center_y + support_sign * support_y_offset
@@ -512,7 +521,7 @@ class DynamicWalkingEngine:
             )
 
             if side_dominant:
-                side_ready = self._smooth01(min(1.0, swing_t * 1.75))
+                side_ready = self._smooth01(min(1.0, swing_t * 2.45))
                 swing_y_travel = side_step_len * side_ready
             else:
                 side_ready = self._smooth01(min(1.0, lift_factor / 0.45))
@@ -749,13 +758,22 @@ class DynamicWalkingEngine:
             or not self.zmp_ctrl.is_settled()
             or not self.zmp_ctrl_x.is_settled()
         )
-        side_active = abs(side_len_now) > 0.1 and swing_leg_now in ("left", "right")
+        side_active = (
+            (abs(self.commanded_side_len) > 0.1 or abs(side_len_now) > 0.1)
+            and swing_leg_now in ("left", "right")
+        )
         pose_com_y = zmp_rel_y if side_active else com_y - lateral_origin_y
-        side_strength = min(1.0, abs(side_len_now) / max(1.0, self.max_side_step_len * 0.65)) if side_active else 0.0
-        side_dir = 1 if side_len_now > 0.0 else -1
-        side_support_roll = round(50.0 * side_strength)
-        side_swing_roll = round(max(side_support_roll * 1.6, 70.0 * side_strength))
-        side_hip_roll = round(85.0 * side_strength)
+        side_motion_len = self.commanded_side_len if abs(self.commanded_side_len) > 0.1 else side_len_now
+        side_strength = min(1.0, abs(side_motion_len) / max(1.0, self.max_side_step_len * 0.65)) if side_active else 0.0
+        side_dir = 1 if side_motion_len > 0.0 else -1
+        side_opening_swing = side_active and (
+            (side_dir > 0 and swing_leg_now == "right")
+            or (side_dir < 0 and swing_leg_now == "left")
+        )
+        side_swing_scale = 1.0 if side_opening_swing else 0.46
+        side_support_roll = round(26.0 * side_strength)
+        side_swing_roll = round(max(side_support_roll * 2.15, 155.0 * max(0.82, side_strength)) * side_swing_scale)
+        side_hip_roll = round(175.0 * max(0.82, side_strength) * side_swing_scale) if side_active else 0
         side_pitch_gain = 0.0 if side_active else 1.0
         pose_hip_abduct_gain = self.hip_abduct_gain * (1.0 + 0.35 * side_strength)
         pose_swing_hip_roll_scale = 1.0 + 0.75 * side_strength if side_active else self.swing_hip_roll_scale
@@ -788,7 +806,8 @@ class DynamicWalkingEngine:
             target_1 = pose[1]
             target_5 = pose[5]
             if side_active:
-                target_1 = max(500, min(2500, STANDING[1] + side_dir * side_support_roll))
+                support_blend = 1.0
+                target_1 = max(500, min(2500, STANDING[1] - side_dir * side_support_roll))
                 target_5 = STANDING[5]
             pose[1] = round(self.prev_pose.get(1, pose[1]) + (target_1 - self.prev_pose.get(1, pose[1])) * support_blend)
             pose[5] = round(self.prev_pose.get(5, pose[5]) + (target_5 - self.prev_pose.get(5, pose[5])) * support_blend)
@@ -826,6 +845,7 @@ class DynamicWalkingEngine:
             target_24 = pose[24]
             target_20 = pose[20]
             if side_active:
+                support_blend = 1.0
                 target_24 = max(500, min(2500, STANDING[24] - side_dir * side_support_roll))
                 target_20 = STANDING[20]
             pose[24] = round(self.prev_pose.get(24, pose[24]) + (target_24 - self.prev_pose.get(24, pose[24])) * support_blend)
@@ -843,7 +863,7 @@ class DynamicWalkingEngine:
             target_2 = STANDING[2] - ankle_delta
             support_roll_delta = pose[24] - STANDING[24]
             if side_active:
-                target_1 = max(500, min(2500, STANDING[1] + side_dir * side_swing_roll))
+                target_1 = max(500, min(2500, STANDING[1] - side_dir * side_swing_roll))
             else:
                 target_1 = max(500, min(2500, STANDING[1] + support_roll_delta))
             target_5 = pose[5]
@@ -886,7 +906,7 @@ class DynamicWalkingEngine:
                     next_support_pose[sid] = STANDING[sid]
                 next_support_pose[5] = STANDING[5]
                 next_support_pose[20] = STANDING[20]
-                next_support_pose[1] = STANDING[1] + side_dir * side_support_roll if swing_leg_now == "right" else STANDING[1]
+                next_support_pose[1] = STANDING[1] - side_dir * side_support_roll if swing_leg_now == "right" else STANDING[1]
                 next_support_pose[24] = STANDING[24] - side_dir * side_support_roll if swing_leg_now == "left" else STANDING[24]
             if swing_leg_now == "left":
                 next_support_pose[21] = max(500, min(2500, STANDING[21] + landing_forward_lean))
