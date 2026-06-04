@@ -14,8 +14,8 @@ ROBOT = {
 
 # --- Default Gait Parameters ---
 GAIT = {
-    "zmp_support_ratio": 0.78,
-    "hip_abduct_gain": 0.27,
+    "zmp_support_ratio": 0.90,
+    "hip_abduct_gain": 0.31,
     "swing_hip_roll_scale": 0.0,
     "ankle_roll_gain": -0.25,  # Default walking engine value
     "swing_ankle_roll_scale": 0.0,
@@ -41,7 +41,7 @@ GAIT = {
     "arm_quantum_pwm": 10,
     "max_side_step_len": 34.0,
     "max_turn_step_len": 7.0,
-    "stop_extra_steps": 2,
+    "stop_extra_steps": 4,
 }
 
 # --- Calibrated standing pulse widths ---
