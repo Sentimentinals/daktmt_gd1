@@ -752,6 +752,10 @@ class DynamicWalkingEngine:
         side_active = abs(side_len_now) > 0.1 and swing_leg_now in ("left", "right")
         pose_com_y = zmp_rel_y if side_active else com_y - lateral_origin_y
         side_strength = min(1.0, abs(side_len_now) / max(1.0, self.max_side_step_len * 0.65)) if side_active else 0.0
+        side_dir = 1 if side_len_now > 0.0 else -1
+        side_support_roll = round(50.0 * side_strength)
+        side_swing_roll = round(max(side_support_roll * 1.6, 70.0 * side_strength))
+        side_hip_roll = round(85.0 * side_strength)
         side_pitch_gain = 0.0 if side_active else 1.0
         pose_hip_abduct_gain = self.hip_abduct_gain * (1.0 + 0.35 * side_strength)
         pose_swing_hip_roll_scale = 1.0 + 0.75 * side_strength if side_active else self.swing_hip_roll_scale
@@ -783,6 +787,9 @@ class DynamicWalkingEngine:
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
             target_1 = pose[1]
             target_5 = pose[5]
+            if side_active:
+                target_1 = max(500, min(2500, STANDING[1] + side_dir * side_support_roll))
+                target_5 = STANDING[5]
             pose[1] = round(self.prev_pose.get(1, pose[1]) + (target_1 - self.prev_pose.get(1, pose[1])) * support_blend)
             pose[5] = round(self.prev_pose.get(5, pose[5]) + (target_5 - self.prev_pose.get(5, pose[5])) * support_blend)
             for sid in (2, 3, 4):
@@ -798,19 +805,15 @@ class DynamicWalkingEngine:
             target_22 = STANDING[22] + knee_delta
             target_23 = STANDING[23] + ankle_delta
             support_roll_delta = pose[1] - STANDING[1]
-            side_hip_roll = round(85.0 * side_strength)
-            if side_active and side_len_now < 0.0:
-                side_swing_roll = round(max(abs(support_roll_delta) * 1.6, 70.0 * side_strength))
-                target_24 = max(500, min(2500, STANDING[24] - side_swing_roll))
-            elif side_active:
-                target_24 = STANDING[24]
+            if side_active:
+                target_24 = max(500, min(2500, STANDING[24] - side_dir * side_swing_roll))
             else:
                 target_24 = max(500, min(2500, STANDING[24] + support_roll_delta))
             if side_active:
                 target_21 = round(STANDING[21] + (pose[21] - STANDING[21]) * side_pitch_gain)
                 target_22 = round(STANDING[22] + (pose[22] - STANDING[22]) * side_pitch_gain)
                 target_23 = round(STANDING[23] + (pose[23] - STANDING[23]) * side_pitch_gain)
-                target_20 = STANDING[20] - side_hip_roll if side_len_now < 0.0 else STANDING[20]
+                target_20 = max(500, min(2500, STANDING[20] - side_dir * side_hip_roll))
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[20] = round(self.prev_pose.get(20, pose[20]) + (target_20 - self.prev_pose.get(20, pose[20])) * swing_blend)
             pose[21] = target_21
@@ -822,6 +825,9 @@ class DynamicWalkingEngine:
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
             target_24 = pose[24]
             target_20 = pose[20]
+            if side_active:
+                target_24 = max(500, min(2500, STANDING[24] - side_dir * side_support_roll))
+                target_20 = STANDING[20]
             pose[24] = round(self.prev_pose.get(24, pose[24]) + (target_24 - self.prev_pose.get(24, pose[24])) * support_blend)
             pose[20] = round(self.prev_pose.get(20, pose[20]) + (target_20 - self.prev_pose.get(20, pose[20])) * support_blend)
             for sid in (21, 22, 23):
@@ -836,12 +842,8 @@ class DynamicWalkingEngine:
             target_3 = STANDING[3] - knee_delta
             target_2 = STANDING[2] - ankle_delta
             support_roll_delta = pose[24] - STANDING[24]
-            side_hip_roll = round(85.0 * side_strength)
-            if side_active and side_len_now > 0.0:
-                side_swing_roll = round(max(abs(support_roll_delta) * 1.6, 70.0 * side_strength))
-                target_1 = max(500, min(2500, STANDING[1] + side_swing_roll))
-            elif side_active:
-                target_1 = STANDING[1]
+            if side_active:
+                target_1 = max(500, min(2500, STANDING[1] + side_dir * side_swing_roll))
             else:
                 target_1 = max(500, min(2500, STANDING[1] + support_roll_delta))
             target_5 = pose[5]
@@ -849,7 +851,7 @@ class DynamicWalkingEngine:
                 target_2 = round(STANDING[2] + (pose[2] - STANDING[2]) * side_pitch_gain)
                 target_3 = round(STANDING[3] + (pose[3] - STANDING[3]) * side_pitch_gain)
                 target_4 = round(STANDING[4] + (pose[4] - STANDING[4]) * side_pitch_gain)
-                target_5 = STANDING[5] - side_hip_roll if side_len_now > 0.0 else STANDING[5]
+                target_5 = max(500, min(2500, STANDING[5] - side_dir * side_hip_roll))
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[1] = round(self.prev_pose.get(1, pose[1]) + (target_1 - self.prev_pose.get(1, pose[1])) * swing_blend)
             pose[4] = target_4
@@ -882,9 +884,10 @@ class DynamicWalkingEngine:
                 landing_forward_lean = 0
                 for sid in (2, 3, 4, 21, 22, 23):
                     next_support_pose[sid] = STANDING[sid]
-                side_hip_limit = round(85.0 * side_strength)
-                next_support_pose[5] = max(STANDING[5] - side_hip_limit, min(STANDING[5] + side_hip_limit, next_support_pose[5]))
-                next_support_pose[20] = max(STANDING[20] - side_hip_limit, min(STANDING[20] + side_hip_limit, next_support_pose[20]))
+                next_support_pose[5] = STANDING[5]
+                next_support_pose[20] = STANDING[20]
+                next_support_pose[1] = STANDING[1] + side_dir * side_support_roll if swing_leg_now == "right" else STANDING[1]
+                next_support_pose[24] = STANDING[24] - side_dir * side_support_roll if swing_leg_now == "left" else STANDING[24]
             if swing_leg_now == "left":
                 next_support_pose[21] = max(500, min(2500, STANDING[21] + landing_forward_lean))
                 next_support_pose[22] = STANDING[22]
