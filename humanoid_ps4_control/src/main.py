@@ -372,9 +372,6 @@ def run_ps4(args: argparse.Namespace) -> None:
                             standing_hold_active = True
                             pose = dict(STANDING)
 
-    
-
-    
                     if balance is not None and imu is not None and not pose_from_getup:
                         now = time.monotonic()
                         balance_dt = now - last_balance_t

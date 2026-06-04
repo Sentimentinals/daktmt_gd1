@@ -9,7 +9,7 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-    "step_height": 14.0,
+    "step_height": 20.0,
 }
 
 # --- Default Gait Parameters ---
@@ -39,7 +39,7 @@ GAIT = {
     "arm_smooth_tau": 0.08,
     "arm_min_pwm": 30,
     "arm_quantum_pwm": 10,
-    "max_side_step_len": 24.0,
+    "max_side_step_len": 34.0,
     "max_turn_step_len": 7.0,
     "stop_extra_steps": 2,
 }
@@ -114,7 +114,7 @@ class Config:
     # --- Walking Engine (Linked to GAIT values by default) ---
     walk_speed: float = 0.65
     turn_speed: float = 0.35
-    side_speed: float = 0.65
+    side_speed: float = 0.78
     max_step_len: float = 28.0
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
