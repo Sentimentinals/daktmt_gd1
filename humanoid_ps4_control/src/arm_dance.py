@@ -28,7 +28,7 @@ def _blend_pose(a: dict[int, int], b: dict[int, int], t: float) -> dict[int, int
 
 class ArmDanceEngine:
     """
-    Standing arm-wave loop.
+    Standing arm keyframe loop.
 
     It only drives arm/head channels and keeps the legs at STANDING. L1 toggles
     between running the loop and returning smoothly to STANDING.
@@ -97,43 +97,49 @@ class ArmDanceEngine:
         self.start_pose = dict(STANDING)
         self.current_pose = dict(STANDING)
 
-    def _wave_keyframes(self) -> list[dict[int, int]]:
-        lift = self.lift_pwm
+    def _arm_pose(
+        self,
+        right_lift: float,
+        left_lift: float,
+        right_shoulder: float,
+        left_shoulder: float,
+        right_elbow: float = 0.0,
+        left_elbow: float = 0.0,
+        head: float = 0.0,
+    ) -> dict[int, int]:
         pose = dict(STANDING)
-        pose[7] = _clamp_pwm(STANDING[7] + lift)
-        pose[18] = _clamp_pwm(STANDING[18] - lift)
+        pose[7] = _clamp_pwm(STANDING[7] + right_lift)
+        pose[18] = _clamp_pwm(STANDING[18] - left_lift)
+        pose[8] = _clamp_pwm(STANDING[8] + right_shoulder)
+        pose[17] = _clamp_pwm(STANDING[17] + left_shoulder)
+        pose[6] = _clamp_pwm(STANDING[6] + right_elbow)
+        pose[19] = _clamp_pwm(STANDING[19] - left_elbow)
+        pose[16] = _clamp_pwm(STANDING[16] + head)
+        return pose
 
-        left = dict(pose)
-        left[8] = _clamp_pwm(STANDING[8] - self.shoulder_pwm)
-        left[17] = _clamp_pwm(STANDING[17] - self.shoulder_pwm)
-        left[6] = _clamp_pwm(STANDING[6] + self.elbow_pwm)
-        left[19] = _clamp_pwm(STANDING[19] - self.elbow_pwm * 0.45)
-        left[16] = _clamp_pwm(STANDING[16] - self.head_pwm)
+    def _dance_keyframes(self) -> list[dict[int, int]]:
+        lift = self.lift_pwm
+        shoulder = self.shoulder_pwm
+        elbow = self.elbow_pwm
+        head = self.head_pwm
 
-        left_snap = dict(left)
-        left_snap[6] = _clamp_pwm(STANDING[6] + self.elbow_pwm * 0.35)
-        left_snap[19] = _clamp_pwm(STANDING[19] - self.elbow_pwm)
-
-        right = dict(pose)
-        right[8] = _clamp_pwm(STANDING[8] + self.shoulder_pwm)
-        right[17] = _clamp_pwm(STANDING[17] + self.shoulder_pwm)
-        right[6] = _clamp_pwm(STANDING[6] + self.elbow_pwm * 0.45)
-        right[19] = _clamp_pwm(STANDING[19] - self.elbow_pwm)
-        right[16] = _clamp_pwm(STANDING[16] + self.head_pwm)
-
-        right_snap = dict(right)
-        right_snap[6] = _clamp_pwm(STANDING[6] + self.elbow_pwm)
-        right_snap[19] = _clamp_pwm(STANDING[19] - self.elbow_pwm * 0.35)
-        return [left, left_snap, right, right_snap]
+        return [
+            self._arm_pose(lift * 0.72, lift * 0.72, shoulder * 0.65, shoulder * 0.65, elbow * 0.55, elbow * 0.55, 0),
+            self._arm_pose(lift * 0.82, lift * 0.55, shoulder * 1.00, shoulder * 0.30, elbow * 0.15, elbow * 0.85, -head),
+            self._arm_pose(lift * 0.55, lift * 0.82, shoulder * 0.30, shoulder * 1.00, elbow * 0.85, elbow * 0.15, head),
+            self._arm_pose(lift * 0.96, lift * 0.96, shoulder * 0.45, shoulder * 0.45, elbow * 0.20, elbow * 0.20, 0),
+            self._arm_pose(lift * 0.90, lift * 0.90, -shoulder * 0.75, -shoulder * 0.75, elbow * 0.90, elbow * 0.25, -head),
+            self._arm_pose(lift * 0.90, lift * 0.90, shoulder * 0.75, shoulder * 0.75, elbow * 0.25, elbow * 0.90, head),
+        ]
 
     def _loop_pose(self) -> dict[int, int]:
-        frames = self._wave_keyframes()
+        frames = self._dance_keyframes()
         n = len(frames)
         phase = (self.phase_t / self.period_s) * n
         idx = int(phase) % n
         local_t = phase - int(phase)
 
-        hold = 0.38
+        hold = 0.56
         if local_t < hold:
             return frames[idx]
 
@@ -156,7 +162,7 @@ class ArmDanceEngine:
                 if abs(remaining) <= self.min_step_pwm:
                     raw_delta = remaining
                 else:
-                    raw_delta = 0.0
+                    raw_delta = math.copysign(self.min_step_pwm, remaining)
 
             out[sid] = _clamp_pwm(current + raw_delta)
 
