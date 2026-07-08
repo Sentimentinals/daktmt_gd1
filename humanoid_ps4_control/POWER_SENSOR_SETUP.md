@@ -1,87 +1,79 @@
 # Power And Sensor Setup
 
-## Power Domains
+Muc tieu: bao ve Raspberry Pi, tach dong servo khoi Pi, va khong cam sensor
+truc tiep vao GPIO cua Pi khi test robot that.
 
-Use three separated power domains with one shared ground point.
+## Kien truc khuyen nghi
 
 ```text
+Raspberry Pi nguon rieng
+  USB 1 -> 32-channel servo controller logic/control
+  USB 2 -> ESP32/Pico sensor hub -> BNO055 + FSR
+
 LiPo 3S
   -> relay / emergency cut
-  -> 6.0V high-current buck -> 32-channel servo controller + servos
-  -> 5.1V 5A buck          -> Raspberry Pi
-  -> Pi 3.3V               -> BNO055 + ADS1115 + FSR dividers
+  -> buck 6.0V dong lon
+      -> servo controller V+ / servo power
+      -> servos
 ```
 
-Do not power the Raspberry Pi from the 6V servo rail. Do not power servos from the Pi.
+Khong cap Raspberry Pi tu rail servo 6V. Khong cap servo tu USB cua Pi.
 
-## I2C Wiring
+## ESP32 DevKit sensor hub
+
+BNO055:
 
 ```text
-Pi GPIO2 / Pin 3 -> SDA -> BNO055 SDA + ADS1115 SDA
-Pi GPIO3 / Pin 5 -> SCL -> BNO055 SCL + ADS1115 SCL
-Pi 3.3V          -> BNO055 VIN/VCC + ADS1115 VDD
-Pi GND           -> BNO055 GND + ADS1115 GND
-ADS1115 ADDR     -> GND  # address 0x48
+BNO055 VIN/VCC -> ESP32 3V3
+BNO055 GND     -> ESP32 GND
+BNO055 SDA     -> ESP32 GPIO21
+BNO055 SCL     -> ESP32 GPIO22
 ```
 
-Enable I2C on the Pi:
+FSR trai:
+
+```text
+ESP32 3V3 -> FSR -> GPIO34/ADC -> 10k resistor -> GND
+```
+
+FSR phai:
+
+```text
+ESP32 3V3 -> FSR -> GPIO35/ADC -> 10k resistor -> GND
+```
+
+Dien tro `10k 1/4W` la du. Tin hieu vao ADC/GPIO cua ESP32 chi duoc toi da
+3.3V.
+
+## Servo controller
+
+```text
+Pi USB -> servo controller USB/control
+Buck 6V -> servo controller V+ / servo power
+Buck GND -> servo controller GND
+```
+
+Neu board servo controller co jumper USB/EXT power, dam bao servo power dung
+nguon ngoai 6V. USB cua Pi chi dung cho logic/control.
+
+## Giam rui ro hu Pi
+
+1. Sensor chi noi vao ESP32/Pico, khong noi vao GPIO Pi.
+2. Servo dung nguon rieng, day nguon ngan va to.
+3. Them tu `4700uF` den `10000uF` tren rail servo 6V gan servo controller.
+4. Dung star-ground tai mot diem chung, khong cho dong servo chay qua GND Pi.
+5. Neu can an toan hon, gan USB isolator giua Pi va ESP32/Pico.
+
+## Thu tu test
+
+1. Chua bat nguon servo.
+2. Cam ESP32/Pico vao laptop truoc, test BNO055/FSR.
+3. Do dien ap: sensor chi co 3.3V, khong co 5V/6V tren signal.
+4. Cam ESP32/Pico vao Pi qua USB.
+5. Kiem tra serial port tren Pi:
 
 ```bash
-sudo raspi-config
-i2cdetect -y 1
+ls /dev/ttyUSB* /dev/ttyACM*
 ```
 
-Expected addresses:
-
-```text
-0x28 or 0x29 -> BNO055
-0x48         -> ADS1115
-```
-
-## FSR Wiring
-
-Each FSR uses one voltage divider.
-
-```text
-3.3V -> FSR -> ADS1115 A0/A1 -> 10k resistor -> GND
-```
-
-Mapping:
-
-```text
-Left foot  FSR -> ADS1115 A0
-Right foot FSR -> ADS1115 A1
-```
-
-In `src/config.py`:
-
-```python
-sensor_feedback = True
-sensor_use_imu = True
-sensor_use_fsr = True
-fsr_ads1115_address = 0x48
-fsr_left_channel = 0
-fsr_right_channel = 1
-```
-
-## Sensor Test
-
-Run from project root:
-
-```bash
-python tools/sensor_check.py
-```
-
-Expected behavior:
-
-```text
-Press left FSR  -> L value and L ratio increase
-Press right FSR -> R value and R ratio increase
-Tilt robot      -> roll/pitch changes
-```
-
-If FSR values move in the wrong direction, set:
-
-```python
-fsr_invert = True
-```
+6. Doc sensor on dinh roi moi bat nguon servo rieng.
