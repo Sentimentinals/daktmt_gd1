@@ -13,4 +13,7 @@ numpy>=1.24
 # BNO055 IMU feedback on Raspberry Pi. Required only when using --imu-balance.
 adafruit-circuitpython-bno055>=5.4.0
 
+# ADS1115 ADC for FSR foot-load feedback. Required only when using sensor_feedback.
+adafruit-circuitpython-ads1x15>=2.4.0
+
 # Standard library only for XML parsing, CSV, threading

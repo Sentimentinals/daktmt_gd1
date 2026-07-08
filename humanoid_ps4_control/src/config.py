@@ -9,21 +9,21 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-    "step_height": 26.0,
+    "step_height": 34.0,
 }
 
 # --- Default Gait Parameters ---
 GAIT = {
-    "zmp_support_ratio": 0.93,
+    "zmp_support_ratio": 0.96,
     "hip_abduct_gain": 0.34,
     "swing_hip_roll_scale": 0.0,
-    "ankle_roll_gain": -0.25,  # Default walking engine value
+    "ankle_roll_gain": -0.30,
     "swing_ankle_roll_scale": 0.0,
-    "step_x_ratio": 1.55,
+    "step_x_ratio": 1.72,
     "thigh_lift_forward_mm": 0.0,
     "left_swing_x_scale": 1.0,
     "left_step_height_scale": 1.0,
-    "landing_gap_mm": 58.0,
+    "landing_gap_mm": 68.0,
     "right_swing_x_scale": 1.0,
     "right_step_height_scale": 1.0,
     "lift_start_phase": 0.00,
@@ -31,7 +31,7 @@ GAIT = {
     "lift_end_phase": 1.0,
     "landing_roll_release_start": 0.42,
     "command_deadzone": 0.02,
-    "arm_swing_pwm": 220,
+    "arm_swing_pwm": 200,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
     "arm_elbow_ratio": 0.0,
@@ -48,7 +48,7 @@ GAIT = {
 STANDING = {
     1: 1500,    # Right ankle roll
     2: 1500,    # Right ankle pitch
-    3: 1523,    # Right knee
+    3: 1500,    # Right knee
     4: 1500,    # Right hip pitch, standing forward bias
     5: 1500,    # Right hip roll/abduction
     6: 1500,    # Right elbow
@@ -60,7 +60,7 @@ STANDING = {
     19: 1500,   # Left elbow
     20: 1500,   # Left hip roll/abduction
     21: 1500,   # Left hip pitch, standing forward bias
-    22: 1477,   # Left knee
+    22: 1500,   # Left knee
     23: 1500,   # Left ankle pitch
     24: 1500,   # Left ankle roll
 }
@@ -108,18 +108,18 @@ class Config:
     baudrate: int = 115200
     csv: str = "out/log.csv"
     group: int = 0
-    update_ms: int = 40
+    update_ms: int = 30
     stop_ms: int = 250
 
     # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.92
+    walk_speed: float = 0.80
     turn_speed: float = 0.35
     side_speed: float = 0.86
-    max_step_len: float = 40.0
+    max_step_len: float = 50.0
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = ROBOT["step_height"]
-    t_step: float = 1.00
+    t_step: float = 0.92
     t_dbl: float = 0.04
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     hip_abduct_gain: float = GAIT["hip_abduct_gain"]
@@ -135,10 +135,10 @@ class Config:
     swing_advance_end_phase: float = GAIT["swing_advance_end_phase"]
     lift_end_phase: float = GAIT["lift_end_phase"]
     landing_roll_release_start: float = GAIT["landing_roll_release_start"]
-    command_rate_limit: float = 34.0
+    command_rate_limit: float = 42.0
     swing_hip_roll_scale: float = GAIT["swing_hip_roll_scale"]
     swing_ankle_roll_scale: float = GAIT["swing_ankle_roll_scale"]
-    single_support_lift_height: float = 70.0
+    single_support_lift_height: float = 82.0
     single_support_arm_pwm: int = 180
     single_support_ramp_s: float = 0.8
 
@@ -181,9 +181,22 @@ class Config:
     getup_print_every: int = 20
 
     # --- Balance ---
-    imu_balance: bool = False
+    imu_balance: bool = True
     imu_roll_sign: float = 1.0
     imu_pitch_sign: float = 1.0
     imu_yaw_sign: float = 1.0
-    balance_limit_deg: float = 6.0
+    balance_limit_deg: float = 5.0
     balance_deadband_deg: float = 0.4
+
+    # --- Sensor Feedback ---
+    sensor_feedback: bool = True
+    sensor_use_imu: bool = True
+    sensor_use_fsr: bool = True
+    sensor_debug: bool = False
+    fsr_ads1115_address: int = 0x48
+    fsr_left_channel: int = 0
+    fsr_right_channel: int = 1
+    fsr_invert: bool = False
+    fsr_filter_alpha: float = 0.18
+    fsr_min_total_load: float = 0.08
+    fsr_support_ratio: float = 0.60

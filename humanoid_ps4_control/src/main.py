@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import argparse
-
 import sys
-import threading
 import time
-from typing import Dict, Optional
 
 from .rtrobot_xml import ActionGroup, load_xml
 from .backends import make_backend
@@ -18,9 +14,7 @@ def _play_group(
     backend,
     loop: bool = False,
     update_ms: int = 20,
-    stop_flag: Optional[threading.Event] = None,
-    start_pose: Optional[Dict[int, int]] = None,
-    pose_log: Optional[Dict[int, int]] = None,
+    start_pose: dict[int, int] | None = None,
 ) -> None:
     print(
         f"[main] Playing Group {group.group_id} alias={group.alias!r} "
@@ -28,15 +22,10 @@ def _play_group(
     )
 
     for pose, _ in playback(group, loop=loop, update_ms=update_ms, start_pose=start_pose):
-        if stop_flag and stop_flag.is_set():
-            print("[main] Stop requested - halting playback.")
-            break
-        if pose_log is not None:
-            pose_log.update(pose)
         backend.send(pose, duration_ms=update_ms)
 
 
-def run_direct(args: argparse.Namespace) -> None:
+def run_direct(args: Config) -> None:
     groups = load_xml(args.xml)
     if args.group not in groups:
         print(f"[ERROR] Group {args.group} not found. Available: {sorted(groups.keys())}")
@@ -47,7 +36,7 @@ def run_direct(args: argparse.Namespace) -> None:
     print("[main] Done.")
 
 
-def run_getup(args: argparse.Namespace) -> None:
+def run_getup(args: Config) -> None:
     """Run one get-up sequence directly, without PS4/keyboard input."""
     from .getup import GetupEngine
     from .walking_engine import STANDING
@@ -98,7 +87,7 @@ def run_getup(args: argparse.Namespace) -> None:
     print("[main] Direct get-up done.")
 
 
-def run_ps4(args: argparse.Namespace) -> None:
+def run_ps4(args: Config) -> None:
     """
     Real-time walking mode.
 
@@ -123,6 +112,7 @@ def run_ps4(args: argparse.Namespace) -> None:
     from .getup import GetupEngine
     from .balance import BalanceConfig, IMUBalanceController
     from .imu_bno055 import BNO055Reader
+    from .sensors import RobotSensorHub
 
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
 
@@ -204,8 +194,26 @@ def run_ps4(args: argparse.Namespace) -> None:
 
     balance = None
     imu = None
+    sensor_hub = None
+    sensor_snapshot = None
     last_balance_t = time.monotonic()
-    if args.imu_balance:
+    if args.sensor_feedback:
+        sensor_hub = RobotSensorHub(
+            use_imu=args.sensor_use_imu,
+            use_fsr=args.sensor_use_fsr,
+            imu_roll_sign=args.imu_roll_sign,
+            imu_pitch_sign=args.imu_pitch_sign,
+            imu_yaw_sign=args.imu_yaw_sign,
+            fsr_ads1115_address=args.fsr_ads1115_address,
+            fsr_left_channel=args.fsr_left_channel,
+            fsr_right_channel=args.fsr_right_channel,
+            fsr_invert=args.fsr_invert,
+            fsr_filter_alpha=args.fsr_filter_alpha,
+        )
+        sensor_hub.open()
+        print("[main] Sensor feedback enabled: BNO055/FSR hub active.")
+
+    if args.imu_balance and sensor_hub is None:
         balance = IMUBalanceController(
             BalanceConfig(
                 max_correction_deg=args.balance_limit_deg,
@@ -220,6 +228,15 @@ def run_ps4(args: argparse.Namespace) -> None:
         )
         imu.open()
         print("[main] IMU balance enabled: BNO055 roll/pitch feedback active.")
+    elif args.imu_balance:
+        balance = IMUBalanceController(
+            BalanceConfig(
+                max_correction_deg=args.balance_limit_deg,
+                roll_deadband_deg=args.balance_deadband_deg,
+                pitch_deadband_deg=args.balance_deadband_deg,
+            )
+        )
+        print("[main] IMU balance enabled through sensor hub.")
 
     print(
         "\n[PS4 Mode - Real-time ZMP] W/S walk, A/D side, arrows also work, stick-X turn, J/K side, "
@@ -233,6 +250,25 @@ def run_ps4(args: argparse.Namespace) -> None:
                     if state.quit:
                         print("[main] Quit requested.")
                         break
+
+                    if sensor_hub is not None:
+                        sensor_snapshot = sensor_hub.read()
+                        if sensor_snapshot.foot_load is not None:
+                            engine.set_foot_load_feedback(
+                                sensor_snapshot.foot_load.left,
+                                sensor_snapshot.foot_load.right,
+                                enabled=args.sensor_use_fsr,
+                                min_total_load=args.fsr_min_total_load,
+                                support_ratio=args.fsr_support_ratio,
+                            )
+                            if args.sensor_debug:
+                                load = sensor_snapshot.foot_load
+                                print(
+                                    f"[sensor] FSR L={load.left:.3f} R={load.right:.3f} "
+                                    f"ratio L={load.left_ratio:.2f} R={load.right_ratio:.2f}"
+                                )
+                        else:
+                            engine.clear_foot_load_feedback()
     
                     axis_forward_cmd = state.signed_axis(args.ps4_forward_axis, args.ps4_forward_sign)
                     axis_turn_cmd = state.signed_axis(args.ps4_turn_axis, args.ps4_turn_sign)
@@ -372,11 +408,11 @@ def run_ps4(args: argparse.Namespace) -> None:
                             standing_hold_active = True
                             pose = dict(STANDING)
 
-                    if balance is not None and imu is not None and not pose_from_getup:
+                    if balance is not None and not pose_from_getup:
                         now = time.monotonic()
                         balance_dt = now - last_balance_t
                         last_balance_t = now
-                        reading = imu.read()
+                        reading = sensor_snapshot.imu if sensor_snapshot is not None else (imu.read() if imu is not None else None)
                         if reading is not None:
                             pose = balance.apply(
                                 pose,

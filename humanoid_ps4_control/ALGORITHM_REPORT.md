@@ -93,14 +93,25 @@ matches the existing servo direction table and standing baseline. If the thesis
 needs strict foot-orientation control, add an explicit foot orientation state and
 derive the ankle equation from the mounted servo frame.
 
-## IMU Balance
+## Sensor-Assisted Closed Loop
 
 `src/balance.py` is a bounded PID correction layer applied after IK. It does not replace the gait planner. It adjusts ankle/hip PWM around the generated pose using roll/pitch errors from BNO055.
+
+`src/sensors.py` adds foot-load feedback through ADS1115 and FSR sensors. The walking engine uses this signal as a support-transition guard:
+
+```text
+if planned_support_load_ratio < threshold:
+    hold support-shift frames
+else:
+    allow swing phase
+```
+
+This prevents the robot from lifting a foot before the other foot is carrying enough body weight.
 
 Correct report wording:
 
 ```text
-The IMU feedback layer is a bounded postural correction controller applied on top of the model-based gait planner.
+The feedback layer combines bounded IMU postural correction with FSR-based support-foot validation on top of the model-based gait planner.
 ```
 
 ## Get-Up
@@ -129,3 +140,9 @@ algorithm validation passed: IK/FK endpoint, ZMP preview, get-up bounds
 
 - Kajita et al., "Biped Walking Pattern Generation by using Preview Control of Zero-Moment Point", IEEE ICRA 2003, DOI `10.1109/ROBOT.2003.1241826`.
 - The LIPM/ZMP equation and preview-control problem formulation are from the cart-table model in the Kajita paper.
+- LIKO, "LiDAR, Inertial, and Kinematic Odometry for Bipedal Robots", is used as conceptual support for treating foot-contact/contact-state information as part of biped state estimation. The current project uses a simplified implementation with one FSR per foot rather than full force/torque sensing.
+- Raspberry Pi 5 official power documentation is used to justify a dedicated 5.1V/5A computing power domain.
+- Adafruit PCA9685 servo-driver documentation is used to justify separate high-current servo power, common ground, and bulk capacitance near the servo power rail.
+- Adafruit BNO055 documentation is used to justify using onboard IMU fusion for application-focused closed-loop balance instead of adding a custom EKF in the first deployment.
+- Adafruit ADS1115 documentation is used to justify the ADC stage between analog FSR sensors and Raspberry Pi.
+- `pib.rocks`, Poppy Project, and Salvius are used as architecture references: Raspberry Pi handles high-level behavior, while actuator/sensor electronics remain modular and separately powered.
