@@ -21,6 +21,10 @@ def fmt(value: float | None, width: int = 7, digits: int = 3) -> str:
 def main() -> None:
     cfg = Config()
     hub = RobotSensorHub(
+        transport=cfg.sensor_transport,
+        serial_port=cfg.sensor_port,
+        serial_baudrate=cfg.sensor_baudrate,
+        serial_timeout_s=cfg.sensor_timeout_s,
         use_imu=cfg.sensor_use_imu,
         use_fsr=cfg.sensor_use_fsr,
         imu_roll_sign=cfg.imu_roll_sign,
@@ -75,6 +79,8 @@ def main() -> None:
             time.sleep(period)
     except KeyboardInterrupt:
         print("\nSensor check stopped.")
+    finally:
+        hub.close()
 
 
 if __name__ == "__main__":

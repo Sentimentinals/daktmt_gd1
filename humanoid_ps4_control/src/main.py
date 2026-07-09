@@ -199,6 +199,10 @@ def run_ps4(args: Config) -> None:
     last_balance_t = time.monotonic()
     if args.sensor_feedback:
         sensor_hub = RobotSensorHub(
+            transport=args.sensor_transport,
+            serial_port=args.sensor_port,
+            serial_baudrate=args.sensor_baudrate,
+            serial_timeout_s=args.sensor_timeout_s,
             use_imu=args.sensor_use_imu,
             use_fsr=args.sensor_use_fsr,
             imu_roll_sign=args.imu_roll_sign,
@@ -211,7 +215,10 @@ def run_ps4(args: Config) -> None:
             fsr_filter_alpha=args.fsr_filter_alpha,
         )
         sensor_hub.open()
-        print("[main] Sensor feedback enabled: BNO055/FSR hub active.")
+        print(
+            f"[main] Sensor feedback enabled: transport={args.sensor_transport}, "
+            f"port={args.sensor_port}."
+        )
 
     if args.imu_balance and sensor_hub is None:
         balance = IMUBalanceController(
@@ -436,6 +443,8 @@ def run_ps4(args: Config) -> None:
                 except Exception as exc:
                     print(f"[main] Backend send exception while returning to STANDING: {exc}")
     finally:
+        if sensor_hub is not None:
+            sensor_hub.close()
         reader.quit()
         print("[main] PS4 mode exited.")
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from .imu_bno055 import BNO055Reader, IMUReading
+from .imu_bno055 import BNO055Reader, IMUReading, SerialBNO055Reader
 
 
 @dataclass(frozen=True)
@@ -106,6 +106,10 @@ class ADS1115FootLoadReader:
 class RobotSensorHub:
     def __init__(
         self,
+        transport: str = "serial",
+        serial_port: str = "/dev/ttyUSB0",
+        serial_baudrate: int = 115200,
+        serial_timeout_s: float = 0.25,
         use_imu: bool = True,
         use_fsr: bool = True,
         imu_roll_sign: float = 1.0,
@@ -117,15 +121,32 @@ class RobotSensorHub:
         fsr_invert: bool = False,
         fsr_filter_alpha: float = 0.18,
     ) -> None:
-        self.imu = (
-            BNO055Reader(
+        transport = transport.lower()
+        if transport not in {"serial", "i2c"}:
+            raise ValueError("Sensor transport must be 'serial' or 'i2c'.")
+        if transport == "serial" and use_fsr:
+            raise ValueError(
+                "ESP32 firmware does not send FSR data yet; set sensor_use_fsr=False."
+            )
+
+        if use_imu and transport == "serial":
+            self.imu = SerialBNO055Reader(
+                port=serial_port,
+                baudrate=serial_baudrate,
+                stale_timeout_s=serial_timeout_s,
                 roll_sign=imu_roll_sign,
                 pitch_sign=imu_pitch_sign,
                 yaw_sign=imu_yaw_sign,
             )
-            if use_imu
-            else None
-        )
+        elif use_imu:
+            self.imu = BNO055Reader(
+                roll_sign=imu_roll_sign,
+                pitch_sign=imu_pitch_sign,
+                yaw_sign=imu_yaw_sign,
+            )
+        else:
+            self.imu = None
+
         self.fsr = (
             ADS1115FootLoadReader(
                 address=fsr_ads1115_address,
@@ -148,3 +169,7 @@ class RobotSensorHub:
         imu_reading = self.imu.read() if self.imu is not None else None
         foot_load = self.fsr.read() if self.fsr is not None else None
         return SensorSnapshot(imu=imu_reading, foot_load=foot_load)
+
+    def close(self) -> None:
+        if self.imu is not None:
+            self.imu.close()

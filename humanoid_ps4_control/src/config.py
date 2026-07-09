@@ -181,7 +181,7 @@ class Config:
     getup_print_every: int = 20
 
     # --- Balance ---
-    imu_balance: bool = True
+    imu_balance: bool = False
     imu_roll_sign: float = 1.0
     imu_pitch_sign: float = 1.0
     imu_yaw_sign: float = 1.0
@@ -190,8 +190,12 @@ class Config:
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True
+    sensor_transport: str = "serial"
+    sensor_port: str = "/dev/ttyUSB0"
+    sensor_baudrate: int = 115200
+    sensor_timeout_s: float = 0.25
     sensor_use_imu: bool = True
-    sensor_use_fsr: bool = True
+    sensor_use_fsr: bool = False
     sensor_debug: bool = False
     fsr_ads1115_address: int = 0x48
     fsr_left_channel: int = 0
