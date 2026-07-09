@@ -14,16 +14,19 @@ from src.config import Config
 from src.sensors import ADS1115FootLoadReader, FootLoadReading
 
 
-def format_reading(reading: FootLoadReading) -> str:
+def format_reading(reading: FootLoadReading, raw_left: int | None = None, raw_right: int | None = None) -> str:
+    raw_text = ""
+    if raw_left is not None and raw_right is not None:
+        raw_text = f" raw L={raw_left:4d} R={raw_right:4d}"
     return (
         f"L={reading.left:.3f} ({reading.left_voltage:.3f}V) "
         f"R={reading.right:.3f} ({reading.right_voltage:.3f}V) "
         f"ratio L={reading.left_ratio:.2f} R={reading.right_ratio:.2f} "
-        f"total={reading.total:.3f}"
+        f"total={reading.total:.3f}{raw_text}"
     )
 
 
-def parse_serial_fsr_line(line: str) -> FootLoadReading | None:
+def parse_serial_fsr_line(line: str) -> tuple[FootLoadReading, int | None, int | None] | None:
     line = line.strip()
     if not line:
         return None
@@ -37,11 +40,17 @@ def parse_serial_fsr_line(line: str) -> FootLoadReading | None:
             return None
         left = float(data["left"])
         right = float(data["right"])
-        return FootLoadReading(
-            left=left,
-            right=right,
-            left_voltage=float(data.get("left_voltage", data.get("lv", 0.0))),
-            right_voltage=float(data.get("right_voltage", data.get("rv", 0.0))),
+        raw_left = data.get("left_raw", data.get("lr"))
+        raw_right = data.get("right_raw", data.get("rr"))
+        return (
+            FootLoadReading(
+                left=left,
+                right=right,
+                left_voltage=float(data.get("left_voltage", data.get("lv", 0.0))),
+                right_voltage=float(data.get("right_voltage", data.get("rv", 0.0))),
+            ),
+            int(raw_left) if raw_left is not None else None,
+            int(raw_right) if raw_right is not None else None,
         )
 
     if not line.startswith("F,"):
@@ -49,7 +58,7 @@ def parse_serial_fsr_line(line: str) -> FootLoadReading | None:
 
     parts = [part.strip() for part in line.split(",")]
     values = parts[1:]
-    if len(values) >= 3:
+    if len(values) in {3, 5, 7}:
         values = values[1:]
     if len(values) < 2:
         return None
@@ -58,11 +67,17 @@ def parse_serial_fsr_line(line: str) -> FootLoadReading | None:
     right = float(values[1])
     left_voltage = float(values[2]) if len(values) >= 3 else 0.0
     right_voltage = float(values[3]) if len(values) >= 4 else 0.0
-    return FootLoadReading(
-        left=left,
-        right=right,
-        left_voltage=left_voltage,
-        right_voltage=right_voltage,
+    raw_left = int(values[4]) if len(values) >= 5 else None
+    raw_right = int(values[5]) if len(values) >= 6 else None
+    return (
+        FootLoadReading(
+            left=left,
+            right=right,
+            left_voltage=left_voltage,
+            right_voltage=right_voltage,
+        ),
+        raw_left,
+        raw_right,
     )
 
 
@@ -98,18 +113,27 @@ def run_serial(args: argparse.Namespace) -> None:
 
     print(f"FSR serial test: port={args.port}, baudrate={args.baudrate}")
     print("Accepts: F,left,right[,left_voltage,right_voltage] or F,ms,left,right[,left_voltage,right_voltage]")
+    print("If this stays at 'waiting', flash the ESP32 firmware that prints FSR packets.")
     print("Press Ctrl+C to stop.\n")
 
     with serial.Serial(args.port, args.baudrate, timeout=1.0) as ser:
+        last_packet_t = time.monotonic()
+        line_count = 0
         try:
             while True:
                 raw = ser.readline().decode("utf-8", errors="replace")
+                line_count += 1 if raw else 0
                 try:
-                    reading = parse_serial_fsr_line(raw)
+                    parsed = parse_serial_fsr_line(raw)
                 except (TypeError, ValueError):
-                    reading = None
-                if reading is not None:
-                    print(format_reading(reading))
+                    parsed = None
+                if parsed is not None:
+                    last_packet_t = time.monotonic()
+                    reading, raw_left, raw_right = parsed
+                    print(format_reading(reading, raw_left, raw_right))
+                elif time.monotonic() - last_packet_t >= args.no_packet_warning_s:
+                    print(f"waiting for FSR packet... serial lines seen={line_count}")
+                    last_packet_t = time.monotonic()
         except KeyboardInterrupt:
             print("\nFSR serial test stopped.")
 
@@ -131,6 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--filter-alpha", type=float, default=cfg.fsr_filter_alpha)
     parser.add_argument("--port", default=cfg.sensor_port)
     parser.add_argument("--baudrate", type=int, default=cfg.sensor_baudrate)
+    parser.add_argument("--no-packet-warning-s", type=float, default=3.0)
     return parser
 
 

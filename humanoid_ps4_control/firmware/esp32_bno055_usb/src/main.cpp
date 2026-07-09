@@ -6,6 +6,8 @@
 namespace {
 constexpr uint8_t SDA_PIN = 21;
 constexpr uint8_t SCL_PIN = 22;
+constexpr uint8_t FSR_LEFT_PIN = 34;
+constexpr uint8_t FSR_RIGHT_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;  // 50 Hz
@@ -32,6 +34,10 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(800);
 
+  analogReadResolution(12);
+  analogSetPinAttenuation(FSR_LEFT_PIN, ADC_11db);
+  analogSetPinAttenuation(FSR_RIGHT_PIN, ADC_11db);
+
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
 
@@ -46,6 +52,7 @@ void setup() {
   delay(1000);
   bno.setExtCrystalUse(true);
   Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag");
+  Serial.println("# READY format=F,ms,left_norm,right_norm,left_voltage,right_voltage,left_raw,right_raw");
 }
 
 void loop() {
@@ -90,4 +97,26 @@ void loop() {
   Serial.print(accel_cal);
   Serial.print(',');
   Serial.println(mag_cal);
+
+  const int left_raw = analogRead(FSR_LEFT_PIN);
+  const int right_raw = analogRead(FSR_RIGHT_PIN);
+  const float left_norm = static_cast<float>(left_raw) / 4095.0f;
+  const float right_norm = static_cast<float>(right_raw) / 4095.0f;
+  const float left_voltage = left_norm * 3.3f;
+  const float right_voltage = right_norm * 3.3f;
+
+  Serial.print("F,");
+  Serial.print(now);
+  Serial.print(',');
+  Serial.print(left_norm, 4);
+  Serial.print(',');
+  Serial.print(right_norm, 4);
+  Serial.print(',');
+  Serial.print(left_voltage, 3);
+  Serial.print(',');
+  Serial.print(right_voltage, 3);
+  Serial.print(',');
+  Serial.print(left_raw);
+  Serial.print(',');
+  Serial.println(right_raw);
 }
