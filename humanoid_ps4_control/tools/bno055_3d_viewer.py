@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import sys
 import threading
 import time
@@ -213,6 +214,11 @@ def draw_body(gl) -> None:
 
 
 def run_viewer(store: FrameStore, demo: bool) -> int:
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        raise RuntimeError(
+            "Khong co DISPLAY. Hay chay trong Raspberry Pi Desktop qua HDMI/VNC."
+        )
+
     import pygame
     from OpenGL import GL as gl
     from OpenGL import GLU as glu
@@ -309,6 +315,9 @@ def main() -> int:
         )
         print(exc, file=sys.stderr)
         return 3
+    except RuntimeError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 4
 
 
 if __name__ == "__main__":

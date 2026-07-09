@@ -35,7 +35,7 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
 
-  if (!bno.begin(Adafruit_BNO055::OPERATION_MODE_NDOF)) {
+  if (!bno.begin()) {
     Serial.println("# ERROR: BNO055 not found. Expected I2C address 0x28.");
     printI2cDevices();
     while (true) {

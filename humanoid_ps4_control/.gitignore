@@ -13,6 +13,7 @@ env/
 out/
 *.log
 *.csv
+.pio/
 
 # Local editor/system files
 .vscode/
