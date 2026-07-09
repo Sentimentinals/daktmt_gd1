@@ -217,7 +217,10 @@ def run_viewer(store: FrameStore, demo: bool) -> int:
     from OpenGL import GL as gl
     from OpenGL import GLU as glu
 
-    pygame.init()
+    # Initializing every pygame subsystem also starts PulseAudio. On Raspberry
+    # Pi OS Bullseye that can abort the process even though this viewer has no
+    # audio, so initialize only the display subsystem.
+    pygame.display.init()
     pygame.display.set_mode((960, 640), pygame.DOUBLEBUF | pygame.OPENGL)
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glClearColor(0.07, 0.08, 0.09, 1.0)
