@@ -104,7 +104,7 @@ class Config:
     # --- Hardware ---
     xml: str = "actions/standing.xml"
     backend: str = "serial"
-    port: str = "COM24"
+    port: str = "/dev/ttyUSB1"
     baudrate: int = 115200
     csv: str = "out/log.csv"
     group: int = 0

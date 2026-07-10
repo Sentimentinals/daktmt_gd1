@@ -125,7 +125,12 @@ class RobotSensorHub:
     def _read_loop(self) -> None:
         assert self._serial is not None
         while not self._stop.is_set():
-            raw = self._serial.readline()
+            try:
+                raw = self._serial.readline()
+            except Exception:
+                if not self._stop.is_set():
+                    self._stop.wait(0.05)
+                continue
             if not raw:
                 continue
 

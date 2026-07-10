@@ -74,14 +74,22 @@ class SerialRTBackend:
     def open(self) -> None:
         try:
             import serial  # type: ignore
+            from serial import SerialException  # type: ignore
         except ImportError as exc:
             raise ImportError("pyserial is required. Install with: pip install pyserial") from exc
 
-        self._serial = serial.Serial(
-            port=self.port,
-            baudrate=self.baudrate,
-            timeout=self.timeout,
-        )
+        try:
+            self._serial = serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,
+                timeout=self.timeout,
+            )
+        except SerialException as exc:
+            raise RuntimeError(
+                f"Cannot open servo controller port {self.port}. "
+                "On Raspberry Pi, keep ESP32 sensor on /dev/ttyUSB0 and set the servo "
+                "controller port to the other USB device, usually /dev/ttyUSB1."
+            ) from exc
         print(f"[SerialRTBackend] Opened {self.port} @ {self.baudrate} baud")
 
     def send(self, pose: Pose, duration_ms: int = 1000, force: bool = False) -> None:
