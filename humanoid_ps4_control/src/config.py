@@ -136,7 +136,6 @@ class Config:
     lift_end_phase: float = GAIT["lift_end_phase"]
     landing_roll_release_start: float = GAIT["landing_roll_release_start"]
     command_rate_limit: float = 24.0
-    input_smooth_tau_s: float = 0.16
     swing_hip_roll_scale: float = GAIT["swing_hip_roll_scale"]
     swing_ankle_roll_scale: float = GAIT["swing_ankle_roll_scale"]
     single_support_lift_height: float = 82.0
@@ -191,16 +190,12 @@ class Config:
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True
-    sensor_transport: str = "serial"
     sensor_port: str = "/dev/ttyUSB0"
     sensor_baudrate: int = 115200
     sensor_timeout_s: float = 0.25
     sensor_use_imu: bool = True
     sensor_use_fsr: bool = False
     sensor_debug: bool = False
-    fsr_ads1115_address: int = 0x48
-    fsr_left_channel: int = 0
-    fsr_right_channel: int = 1
     fsr_invert: bool = False
     fsr_filter_alpha: float = 0.18
     fsr_min_total_load: float = 0.08

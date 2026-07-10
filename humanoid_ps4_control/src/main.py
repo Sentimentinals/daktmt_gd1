@@ -111,7 +111,6 @@ def run_ps4(args: Config) -> None:
     from .arm_dance import ArmDanceEngine
     from .getup import GetupEngine
     from .balance import BalanceConfig, IMUBalanceController
-    from .imu_bno055 import BNO055Reader
     from .sensors import RobotSensorHub
 
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
@@ -191,39 +190,28 @@ def run_ps4(args: Config) -> None:
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
     standing_hold_active = True
-    filtered_forward_cmd = 0.0
-    filtered_turn_cmd = 0.0
-    filtered_side_cmd = 0.0
 
     balance = None
-    imu = None
     sensor_hub = None
     sensor_snapshot = None
     last_balance_t = time.monotonic()
     if args.sensor_feedback:
         sensor_hub = RobotSensorHub(
-            transport=args.sensor_transport,
-            serial_port=args.sensor_port,
-            serial_baudrate=args.sensor_baudrate,
-            serial_timeout_s=args.sensor_timeout_s,
+            port=args.sensor_port,
+            baudrate=args.sensor_baudrate,
+            timeout_s=args.sensor_timeout_s,
             use_imu=args.sensor_use_imu,
             use_fsr=args.sensor_use_fsr,
             imu_roll_sign=args.imu_roll_sign,
             imu_pitch_sign=args.imu_pitch_sign,
             imu_yaw_sign=args.imu_yaw_sign,
-            fsr_ads1115_address=args.fsr_ads1115_address,
-            fsr_left_channel=args.fsr_left_channel,
-            fsr_right_channel=args.fsr_right_channel,
             fsr_invert=args.fsr_invert,
             fsr_filter_alpha=args.fsr_filter_alpha,
         )
         sensor_hub.open()
-        print(
-            f"[main] Sensor feedback enabled: transport={args.sensor_transport}, "
-            f"port={args.sensor_port}."
-        )
+        print(f"[main] Sensor feedback enabled: ESP32 serial port={args.sensor_port}.")
 
-    if args.imu_balance and sensor_hub is None:
+    if args.imu_balance and sensor_hub is not None:
         balance = IMUBalanceController(
             BalanceConfig(
                 max_correction_deg=args.balance_limit_deg,
@@ -231,22 +219,9 @@ def run_ps4(args: Config) -> None:
                 pitch_deadband_deg=args.balance_deadband_deg,
             )
         )
-        imu = BNO055Reader(
-            roll_sign=args.imu_roll_sign,
-            pitch_sign=args.imu_pitch_sign,
-            yaw_sign=args.imu_yaw_sign,
-        )
-        imu.open()
-        print("[main] IMU balance enabled: BNO055 roll/pitch feedback active.")
+        print("[main] IMU balance enabled through ESP32 sensor hub.")
     elif args.imu_balance:
-        balance = IMUBalanceController(
-            BalanceConfig(
-                max_correction_deg=args.balance_limit_deg,
-                roll_deadband_deg=args.balance_deadband_deg,
-                pitch_deadband_deg=args.balance_deadband_deg,
-            )
-        )
-        print("[main] IMU balance enabled through sensor hub.")
+        print("[main] IMU balance requested but sensor feedback is disabled.")
 
     print(
         "\n[PS4 Mode - Real-time ZMP] W/S walk, A/D side, arrows also work, stick-X turn, J/K side, "
@@ -299,21 +274,9 @@ def run_ps4(args: Config) -> None:
                         turn_input_cmd = axis_turn_cmd if abs(axis_turn_cmd) > args.input_deadzone else 0.0
                         side_input_cmd = dpad_side_cmd or button_side_cmd
 
-                    tau = max(args.update_ms / 1000.0, args.input_smooth_tau_s)
-                    alpha = min(1.0, (args.update_ms / 1000.0) / tau)
-                    filtered_forward_cmd += (input_cmd - filtered_forward_cmd) * alpha
-                    filtered_turn_cmd += (turn_input_cmd - filtered_turn_cmd) * alpha
-                    filtered_side_cmd += (side_input_cmd - filtered_side_cmd) * alpha
-                    if abs(filtered_forward_cmd) < 0.01 and input_cmd == 0.0:
-                        filtered_forward_cmd = 0.0
-                    if abs(filtered_turn_cmd) < 0.01 and turn_input_cmd == 0.0:
-                        filtered_turn_cmd = 0.0
-                    if abs(filtered_side_cmd) < 0.01 and side_input_cmd == 0.0:
-                        filtered_side_cmd = 0.0
-
-                    vy = filtered_forward_cmd * args.walk_speed
-                    turn_cmd = filtered_turn_cmd * args.turn_speed
-                    side_cmd = filtered_side_cmd * args.side_speed
+                    vy = input_cmd * args.walk_speed
+                    turn_cmd = turn_input_cmd * args.turn_speed
+                    side_cmd = side_input_cmd * args.side_speed
                     motion_requested = vy != 0.0 or turn_cmd != 0.0 or side_cmd != 0.0
     
     
@@ -327,9 +290,6 @@ def run_ps4(args: Config) -> None:
                         getup.reset()
                         single_support.stop()
                         standing_hold_active = True
-                        filtered_forward_cmd = 0.0
-                        filtered_turn_cmd = 0.0
-                        filtered_side_cmd = 0.0
                         pose = dict(STANDING)
 
                         try:
@@ -395,9 +355,6 @@ def run_ps4(args: Config) -> None:
                         vy = 0.0
                         turn_cmd = 0.0
                         side_cmd = 0.0
-                        filtered_forward_cmd = 0.0
-                        filtered_turn_cmd = 0.0
-                        filtered_side_cmd = 0.0
                         motion_requested = False
     
                     pose_from_getup = False
@@ -440,7 +397,7 @@ def run_ps4(args: Config) -> None:
                         now = time.monotonic()
                         balance_dt = now - last_balance_t
                         last_balance_t = now
-                        reading = sensor_snapshot.imu if sensor_snapshot is not None else (imu.read() if imu is not None else None)
+                        reading = sensor_snapshot.imu if sensor_snapshot is not None else None
                         if reading is not None:
                             pose = balance.apply(
                                 pose,

@@ -21,36 +21,29 @@ def fmt(value: float | None, width: int = 7, digits: int = 3) -> str:
 def main() -> None:
     cfg = Config()
     hub = RobotSensorHub(
-        transport=cfg.sensor_transport,
-        serial_port=cfg.sensor_port,
-        serial_baudrate=cfg.sensor_baudrate,
-        serial_timeout_s=cfg.sensor_timeout_s,
+        port=cfg.sensor_port,
+        baudrate=cfg.sensor_baudrate,
+        timeout_s=cfg.sensor_timeout_s,
         use_imu=cfg.sensor_use_imu,
         use_fsr=cfg.sensor_use_fsr,
         imu_roll_sign=cfg.imu_roll_sign,
         imu_pitch_sign=cfg.imu_pitch_sign,
         imu_yaw_sign=cfg.imu_yaw_sign,
-        fsr_ads1115_address=cfg.fsr_ads1115_address,
-        fsr_left_channel=cfg.fsr_left_channel,
-        fsr_right_channel=cfg.fsr_right_channel,
         fsr_invert=cfg.fsr_invert,
         fsr_filter_alpha=cfg.fsr_filter_alpha,
     )
 
     print("=== SENSOR CHECK ===")
+    print(f"ESP32 serial: {cfg.sensor_port} @ {cfg.sensor_baudrate}")
     print(f"IMU enabled: {cfg.sensor_use_imu}")
-    print(
-        "FSR enabled: "
-        f"{cfg.sensor_use_fsr}, ADS1115=0x{cfg.fsr_ads1115_address:02x}, "
-        f"L=A{cfg.fsr_left_channel}, R=A{cfg.fsr_right_channel}, invert={cfg.fsr_invert}"
-    )
+    print(f"FSR enabled: {cfg.sensor_use_fsr}, invert={cfg.fsr_invert}")
     print("Press Ctrl+C to stop.\n")
 
     try:
         hub.open()
     except Exception as exc:
         print(f"[ERROR] Sensor open failed: {exc}")
-        print("Check I2C wiring, i2cdetect -y 1, and required Python packages.")
+        print("Check ESP32 USB port, firmware, and pyserial.")
         raise SystemExit(1) from exc
 
     period = max(0.05, cfg.update_ms / 1000.0)
