@@ -191,6 +191,9 @@ def run_ps4(args: Config) -> None:
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
     standing_hold_active = True
+    filtered_forward_cmd = 0.0
+    filtered_turn_cmd = 0.0
+    filtered_side_cmd = 0.0
 
     balance = None
     imu = None
@@ -295,10 +298,22 @@ def run_ps4(args: Config) -> None:
                         input_cmd = axis_forward_cmd if abs(axis_forward_cmd) > args.input_deadzone else dpad_forward_cmd
                         turn_input_cmd = axis_turn_cmd if abs(axis_turn_cmd) > args.input_deadzone else 0.0
                         side_input_cmd = dpad_side_cmd or button_side_cmd
-    
-                    vy = input_cmd * args.walk_speed
-                    turn_cmd = turn_input_cmd * args.turn_speed
-                    side_cmd = side_input_cmd * args.side_speed
+
+                    tau = max(args.update_ms / 1000.0, args.input_smooth_tau_s)
+                    alpha = min(1.0, (args.update_ms / 1000.0) / tau)
+                    filtered_forward_cmd += (input_cmd - filtered_forward_cmd) * alpha
+                    filtered_turn_cmd += (turn_input_cmd - filtered_turn_cmd) * alpha
+                    filtered_side_cmd += (side_input_cmd - filtered_side_cmd) * alpha
+                    if abs(filtered_forward_cmd) < 0.01 and input_cmd == 0.0:
+                        filtered_forward_cmd = 0.0
+                    if abs(filtered_turn_cmd) < 0.01 and turn_input_cmd == 0.0:
+                        filtered_turn_cmd = 0.0
+                    if abs(filtered_side_cmd) < 0.01 and side_input_cmd == 0.0:
+                        filtered_side_cmd = 0.0
+
+                    vy = filtered_forward_cmd * args.walk_speed
+                    turn_cmd = filtered_turn_cmd * args.turn_speed
+                    side_cmd = filtered_side_cmd * args.side_speed
                     motion_requested = vy != 0.0 or turn_cmd != 0.0 or side_cmd != 0.0
     
     
@@ -312,6 +327,9 @@ def run_ps4(args: Config) -> None:
                         getup.reset()
                         single_support.stop()
                         standing_hold_active = True
+                        filtered_forward_cmd = 0.0
+                        filtered_turn_cmd = 0.0
+                        filtered_side_cmd = 0.0
                         pose = dict(STANDING)
 
                         try:
@@ -377,6 +395,9 @@ def run_ps4(args: Config) -> None:
                         vy = 0.0
                         turn_cmd = 0.0
                         side_cmd = 0.0
+                        filtered_forward_cmd = 0.0
+                        filtered_turn_cmd = 0.0
+                        filtered_side_cmd = 0.0
                         motion_requested = False
     
                     pose_from_getup = False
