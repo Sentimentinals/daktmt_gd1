@@ -1,39 +1,9 @@
 from __future__ import annotations
 
-import sys
 import time
 
-from .rtrobot_xml import ActionGroup, load_xml
 from .backends import make_backend
-from .motion import playback
 from .config import Config
-
-
-def _play_group(
-    group: ActionGroup,
-    backend,
-    loop: bool = False,
-    update_ms: int = 20,
-    start_pose: dict[int, int] | None = None,
-) -> None:
-    print(
-        f"[main] Playing Group {group.group_id} alias={group.alias!r} "
-        f"frames={len(group.frames)} loop={loop}"
-    )
-
-    for pose, _ in playback(group, loop=loop, update_ms=update_ms, start_pose=start_pose):
-        backend.send(pose, duration_ms=update_ms)
-
-
-def run_direct(args: Config) -> None:
-    groups = load_xml(args.xml)
-    if args.group not in groups:
-        print(f"[ERROR] Group {args.group} not found. Available: {sorted(groups.keys())}")
-        sys.exit(1)
-
-    with make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv) as backend:
-        _play_group(groups[args.group], backend, loop=args.loop, update_ms=args.update_ms)
-    print("[main] Done.")
 
 
 def run_getup(args: Config) -> None:
@@ -431,10 +401,8 @@ def main() -> None:
     args = Config()
     if args.getup:
         run_getup(args)
-    elif args.ps4:
-        run_ps4(args)
     else:
-        run_direct(args)
+        run_ps4(args)
 
 if __name__ == "__main__":
     main()

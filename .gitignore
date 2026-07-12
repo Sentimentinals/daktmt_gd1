@@ -111,3 +111,7 @@ out/
 .vscode/
 *.swp
 *.swo
+
+# Local reference dumps and hardware diagnostics
+robot-*/
+dxdiag_codex.txt

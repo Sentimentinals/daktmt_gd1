@@ -98,16 +98,13 @@ PWM_PER_DEG = 2000.0 / 180.0
 @dataclass
 class Config:
     # --- Run Mode ---
-    ps4: bool = True
     getup: bool = False
 
     # --- Hardware ---
-    xml: str = "actions/standing.xml"
     backend: str = "serial"
     port: str = "/dev/ttyACM0"
     baudrate: int = 115200
     csv: str = "out/log.csv"
-    group: int = 0
     update_ms: int = 30
     stop_ms: int = 250
 

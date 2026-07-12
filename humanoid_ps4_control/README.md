@@ -10,8 +10,10 @@ src/config.py          Cau hinh robot, servo, gait, balance, sensor
 src/walking_engine.py  Loi gait: ZMP preview, IK, phase walking
 src/main.py            Vong lap chay robot
 src/balance.py         IMU balance correction
-src/sensors.py         BNO055 + FSR/ADS1115 reader
+src/sensors.py         BNO055 + FSR reader qua ESP32 USB serial
 tools/sensor_check.py  Test sensor, khong dieu khien servo
+tools/fsr_test.py      Test rieng hai FSR qua ESP32
+tools/bno055_3d_viewer.py  Hien thi truc IMU thoi gian thuc
 POWER_SENSOR_SETUP.md  Huong dan wiring nguon va sensor an toan
 ```
 
@@ -58,12 +60,12 @@ python -m src.main
 Mac dinh hien tai nam trong `src/config.py`:
 
 ```python
-ps4 = True
 backend = "serial"
-port = "COM24"        # doi thanh /dev/ttyUSB0 hoac /dev/ttyACM0 tren Raspberry Pi
+port = "/dev/ttyACM0"        # RTrobot servo controller
 update_ms = 30
 sensor_feedback = True
-imu_balance = True
+sensor_port = "/dev/ttyUSB0" # ESP32 sensor hub
+imu_balance = False           # chi bat sau khi can chinh truc IMU
 ```
 
 ## Workflow Git

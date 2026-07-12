@@ -1,2 +1,0 @@
-# Minimal dependencies for walking-engine dry-runs without PS4, serial, or IMU hardware.
-numpy>=1.24
