@@ -11,9 +11,6 @@ src/walking_engine.py  Loi gait: ZMP preview, IK, phase walking
 src/main.py            Vong lap chay robot
 src/balance.py         IMU balance correction
 src/sensors.py         BNO055 + FSR reader qua ESP32 USB serial
-tools/sensor_check.py  Test sensor, khong dieu khien servo
-tools/fsr_test.py      Test rieng hai FSR qua ESP32
-tools/bno055_3d_viewer.py  Hien thi truc IMU thoi gian thuc
 POWER_SENSOR_SETUP.md  Huong dan wiring nguon va sensor an toan
 ```
 
@@ -37,18 +34,12 @@ pip install -r requirements.txt
 
 Khong commit `.venv` len Git. Moi may tu tao lai moi truong rieng.
 
-## Chay va test
+## Kiem tra va chay
 
 Compile check an toan, khong cham hardware:
 
 ```bash
-python -m py_compile src/config.py src/sensors.py src/walking_engine.py src/main.py tools/sensor_check.py
-```
-
-Test sensor tren Raspberry Pi/sensor hub:
-
-```bash
-python tools/sensor_check.py
+python -m compileall -q src
 ```
 
 Chay robot that:

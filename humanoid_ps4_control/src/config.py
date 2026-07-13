@@ -182,8 +182,13 @@ class Config:
     imu_roll_sign: float = 1.0
     imu_pitch_sign: float = 1.0
     imu_yaw_sign: float = 1.0
-    balance_limit_deg: float = 5.0
-    balance_deadband_deg: float = 0.4
+    balance_limit_deg: float = 2.0
+    balance_deadband_deg: float = 0.8
+    imu_reference_seconds: float = 1.5
+    imu_reference_timeout_s: float = 8.0
+    imu_reference_max_rms_deg: float = 2.0
+    imu_min_gyro_cal: int = 1
+    imu_min_accel_cal: int = 1
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True
@@ -191,9 +196,13 @@ class Config:
     sensor_baudrate: int = 115200
     sensor_timeout_s: float = 0.25
     sensor_use_imu: bool = True
-    sensor_use_fsr: bool = False
+    sensor_use_fsr: bool = True
     sensor_debug: bool = False
     fsr_invert: bool = False
     fsr_filter_alpha: float = 0.18
+    fsr_left_zero_raw: int = 0
+    fsr_left_full_raw: int = 4095
+    fsr_right_zero_raw: int = 0
+    fsr_right_full_raw: int = 4095
     fsr_min_total_load: float = 0.08
     fsr_support_ratio: float = 0.60

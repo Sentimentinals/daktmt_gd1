@@ -14,19 +14,23 @@ class PID:
     kd: float
     output_limit: float
     integral_limit: float = 0.0
+    derivative_alpha: float = 0.25
 
     def __post_init__(self) -> None:
         self.integral = 0.0
         self.prev_error: Optional[float] = None
+        self.filtered_derivative = 0.0
 
     def reset(self) -> None:
         self.integral = 0.0
         self.prev_error = None
+        self.filtered_derivative = 0.0
 
     def update(self, error: float, dt: float) -> float:
         if dt <= 0.0:
             return 0.0
 
+        dt = max(0.005, min(0.10, dt))
         self.integral += error * dt
         if self.integral_limit > 0.0:
             self.integral = max(-self.integral_limit, min(self.integral_limit, self.integral))
@@ -34,7 +38,10 @@ class PID:
         if self.prev_error is None:
             derivative = 0.0
         else:
-            derivative = (error - self.prev_error) / dt
+            raw_derivative = (error - self.prev_error) / dt
+            alpha = max(0.01, min(1.0, self.derivative_alpha))
+            self.filtered_derivative += alpha * (raw_derivative - self.filtered_derivative)
+            derivative = self.filtered_derivative
         self.prev_error = error
 
         out = self.kp * error + self.ki * self.integral + self.kd * derivative
@@ -101,8 +108,8 @@ class IMUBalanceController:
         support_leg: str = "double",
     ) -> Pose:
         cfg = self.config
-        roll_error = cfg.target_roll_deg - roll_deg
-        pitch_error = cfg.target_pitch_deg - pitch_deg
+        roll_error = (cfg.target_roll_deg - roll_deg + 180.0) % 360.0 - 180.0
+        pitch_error = (cfg.target_pitch_deg - pitch_deg + 180.0) % 360.0 - 180.0
 
         if abs(roll_error) < cfg.roll_deadband_deg:
             roll_error = 0.0

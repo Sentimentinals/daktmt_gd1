@@ -11,9 +11,18 @@ constexpr uint8_t FSR_RIGHT_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;  // 50 Hz
+constexpr uint8_t FSR_ADC_SAMPLES = 8;
 
 Adafruit_BNO055 bno(55, BNO055_ADDRESS, &Wire);
 uint32_t last_sample_ms = 0;
+
+int readAveragedAdc(uint8_t pin) {
+  uint32_t total = 0;
+  for (uint8_t i = 0; i < FSR_ADC_SAMPLES; ++i) {
+    total += analogRead(pin);
+  }
+  return static_cast<int>(total / FSR_ADC_SAMPLES);
+}
 
 void printI2cDevices() {
   Serial.println("# I2C scan:");
@@ -98,8 +107,8 @@ void loop() {
   Serial.print(',');
   Serial.println(mag_cal);
 
-  const int left_raw = analogRead(FSR_LEFT_PIN);
-  const int right_raw = analogRead(FSR_RIGHT_PIN);
+  const int left_raw = readAveragedAdc(FSR_LEFT_PIN);
+  const int right_raw = readAveragedAdc(FSR_RIGHT_PIN);
   const float left_norm = static_cast<float>(left_raw) / 4095.0f;
   const float right_norm = static_cast<float>(right_raw) / 4095.0f;
   const float left_voltage = left_norm * 3.3f;

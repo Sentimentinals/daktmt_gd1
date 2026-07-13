@@ -165,6 +165,7 @@ def run_ps4(args: Config) -> None:
     sensor_hub = None
     sensor_snapshot = None
     last_balance_t = time.monotonic()
+    balance_has_valid_imu = False
     if args.sensor_feedback:
         sensor_hub = RobotSensorHub(
             port=args.sensor_port,
@@ -177,21 +178,16 @@ def run_ps4(args: Config) -> None:
             imu_yaw_sign=args.imu_yaw_sign,
             fsr_invert=args.fsr_invert,
             fsr_filter_alpha=args.fsr_filter_alpha,
+            fsr_left_zero_raw=args.fsr_left_zero_raw,
+            fsr_left_full_raw=args.fsr_left_full_raw,
+            fsr_right_zero_raw=args.fsr_right_zero_raw,
+            fsr_right_full_raw=args.fsr_right_full_raw,
         )
         sensor_hub.open()
         print(f"[main] Sensor feedback enabled: ESP32 serial port={args.sensor_port}.")
 
-    if args.imu_balance and sensor_hub is not None:
-        balance = IMUBalanceController(
-            BalanceConfig(
-                max_correction_deg=args.balance_limit_deg,
-                roll_deadband_deg=args.balance_deadband_deg,
-                pitch_deadband_deg=args.balance_deadband_deg,
-            )
-        )
-        print("[main] IMU balance enabled through ESP32 sensor hub.")
-    elif args.imu_balance:
-        print("[main] IMU balance requested but sensor feedback is disabled.")
+    if args.imu_balance and (sensor_hub is None or not args.sensor_use_imu):
+        print("[main] IMU balance requested but IMU sensor feedback is disabled.")
 
     print(
         "\n[PS4 Mode - Real-time ZMP] W/S walk, A/D side, arrows also work, stick-X turn, J/K side, "
@@ -200,6 +196,34 @@ def run_ps4(args: Config) -> None:
 
     try:
         with backend:
+            if args.imu_balance and sensor_hub is not None and args.sensor_use_imu:
+                backend.send(STANDING, duration_ms=1000, force=True)
+                time.sleep(1.0)
+                print("[main] Keep the robot upright and still while IMU reference is captured.")
+                imu_reference = sensor_hub.capture_imu_reference(
+                    sample_seconds=args.imu_reference_seconds,
+                    timeout_s=args.imu_reference_timeout_s,
+                    min_gyro_cal=args.imu_min_gyro_cal,
+                    min_accel_cal=args.imu_min_accel_cal,
+                    max_rms_deg=args.imu_reference_max_rms_deg,
+                )
+                if imu_reference is None:
+                    print("[main] IMU reference failed or robot moved. Balance remains disabled.")
+                else:
+                    target_roll, target_pitch = imu_reference
+                    balance = IMUBalanceController(
+                        BalanceConfig(
+                            target_roll_deg=target_roll,
+                            target_pitch_deg=target_pitch,
+                            max_correction_deg=args.balance_limit_deg,
+                            roll_deadband_deg=args.balance_deadband_deg,
+                            pitch_deadband_deg=args.balance_deadband_deg,
+                        )
+                    )
+                    print(
+                        f"[main] IMU balance enabled: reference roll={target_roll:.2f}, "
+                        f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
+                    )
             try:
                 for state in reader.poll():
                     if state.quit:
@@ -208,7 +232,7 @@ def run_ps4(args: Config) -> None:
 
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
-                        if sensor_snapshot.foot_load is not None:
+                        if args.sensor_use_fsr and sensor_snapshot.foot_load is not None:
                             engine.set_foot_load_feedback(
                                 sensor_snapshot.foot_load.left,
                                 sensor_snapshot.foot_load.right,
@@ -222,6 +246,8 @@ def run_ps4(args: Config) -> None:
                                     f"[sensor] FSR L={load.left:.3f} R={load.right:.3f} "
                                     f"ratio L={load.left_ratio:.2f} R={load.right_ratio:.2f}"
                                 )
+                        elif args.sensor_use_fsr:
+                            engine.invalidate_foot_load_feedback()
                         else:
                             engine.clear_foot_load_feedback()
     
@@ -368,14 +394,25 @@ def run_ps4(args: Config) -> None:
                         balance_dt = now - last_balance_t
                         last_balance_t = now
                         reading = sensor_snapshot.imu if sensor_snapshot is not None else None
-                        if reading is not None:
+                        if reading is not None and reading.balance_ready(
+                            args.imu_min_gyro_cal,
+                            args.imu_min_accel_cal,
+                        ):
+                            support_leg = single_support.support_leg if single_support.running else engine.support_leg
                             pose = balance.apply(
                                 pose,
                                 roll_deg=reading.roll_deg,
                                 pitch_deg=reading.pitch_deg,
                                 dt=balance_dt,
-                                support_leg=engine.support_leg,
+                                support_leg=support_leg,
                             )
+                            balance_has_valid_imu = True
+                        elif balance_has_valid_imu:
+                            balance.reset()
+                            balance_has_valid_imu = False
+                    elif balance is not None and balance_has_valid_imu:
+                        balance.reset()
+                        balance_has_valid_imu = False
     
                     try:
                         backend.send(pose, duration_ms=args.update_ms)

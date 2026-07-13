@@ -330,6 +330,7 @@ class DynamicWalkingEngine:
         self.command_rate_limit = abs(command_rate_limit)
         self.stop_extra_steps = max(0, int(GAIT["stop_extra_steps"]))
         self.sensor_feedback_enabled = False
+        self.sensor_feedback_valid = False
         self.sensor_left_load = 0.0
         self.sensor_right_load = 0.0
         self.sensor_min_total_load = 0.08
@@ -393,6 +394,7 @@ class DynamicWalkingEngine:
         support_ratio: float | None = None,
     ) -> None:
         self.sensor_feedback_enabled = enabled
+        self.sensor_feedback_valid = enabled
         self.sensor_left_load = max(0.0, float(left_load))
         self.sensor_right_load = max(0.0, float(right_load))
         if min_total_load is not None:
@@ -402,14 +404,23 @@ class DynamicWalkingEngine:
 
     def clear_foot_load_feedback(self) -> None:
         self.sensor_feedback_enabled = False
+        self.sensor_feedback_valid = False
+
+    def invalidate_foot_load_feedback(self) -> None:
+        self.sensor_feedback_enabled = True
+        self.sensor_feedback_valid = False
+        self.sensor_left_load = 0.0
+        self.sensor_right_load = 0.0
 
     def _support_load_ready(self, support_leg: str) -> bool:
         if not self.sensor_feedback_enabled:
             return True
+        if not self.sensor_feedback_valid:
+            return False
 
         total = self.sensor_left_load + self.sensor_right_load
         if total < self.sensor_min_total_load:
-            return True
+            return False
 
         if support_leg == "left":
             return self.sensor_left_load / total >= self.sensor_support_ratio
