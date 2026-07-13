@@ -22,7 +22,8 @@ def run_vision(args: Config) -> None:
 
     from .ps4_pygame import PS4Reader
 
-    estimator = MoveNetPoseEstimator(args.vision_model_path)
+    cv2.setNumThreads(1)
+    estimator = MoveNetPoseEstimator(args.vision_model_path, num_threads=args.vision_threads)
     reader = PS4Reader(
         joystick_index=args.joystick_index,
         fallback_keys=True,
@@ -54,7 +55,8 @@ def run_vision(args: Config) -> None:
         elbow_pwm=args.vision_elbow_pwm,
         head_pwm=args.vision_head_pwm,
         squat_deg=args.vision_squat_deg,
-        leg_lift_threshold_m=args.vision_leg_lift_threshold_m,
+        leg_lift_threshold_ratio=args.vision_leg_lift_threshold_ratio,
+        min_body_scale=args.vision_min_body_scale,
     )
     from .sensors import RobotSensorHub
     from .walking_engine import SingleSupportTestEngine, clamp_pose_rate
@@ -93,6 +95,8 @@ def run_vision(args: Config) -> None:
     previous_toggle = False
     last_pose = dict(STANDING)
     active_lifted_leg = None
+    support_ready_frames = 0
+    frame_duration_ms = max(args.update_ms, round(1000.0 / max(1, args.vision_fps)))
 
     try:
         camera.start()
@@ -112,18 +116,22 @@ def run_vision(args: Config) -> None:
                             controller.reset()
                             single_support.stop()
                             active_lifted_leg = None
+                            support_ready_frames = 0
                             backend.send(STANDING, duration_ms=500, force=True)
                         print("[vision] Mimic ON." if armed else "[vision] Mimic OFF.")
                     previous_toggle = toggle
 
                     frame = camera.capture_array("main")
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    landmarks = estimator.infer(rgb)
+                    landmarks = None
+                    if armed:
+                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        landmarks = estimator.infer(rgb)
                     body_pose = controller.update(landmarks, time.monotonic(), armed=armed)
                     requested_leg = controller.lifted_leg if armed and controller.tracked else None
                     if requested_leg != active_lifted_leg:
                         single_support.stop()
                         active_lifted_leg = None
+                        support_ready_frames = 0
                         if requested_leg is not None:
                             support_leg = "right" if requested_leg == "left" else "left"
                             single_support.start(support_leg=support_leg, current_pose=last_pose)
@@ -133,11 +141,16 @@ def run_vision(args: Config) -> None:
                     if single_support.running and sensor_hub is not None:
                         snapshot = sensor_hub.read()
                         load = snapshot.foot_load
+                        support_valid = False
                         if load is not None and load.total >= args.fsr_min_total_load:
                             if single_support.support_leg == "left":
-                                leg_ready = load.left_ratio >= args.fsr_support_ratio
+                                support_valid = load.left_ratio >= args.fsr_support_ratio
                             else:
-                                leg_ready = load.right_ratio >= args.fsr_support_ratio
+                                support_valid = load.right_ratio >= args.fsr_support_ratio
+                        support_ready_frames = support_ready_frames + 1 if support_valid else 0
+                        leg_ready = support_ready_frames >= max(1, args.vision_fsr_stable_frames)
+                    else:
+                        support_ready_frames = 0
                     single_support.lift_height = args.vision_leg_lift_height_mm if leg_ready else 0.0
 
                     if single_support.running:
@@ -147,17 +160,30 @@ def run_vision(args: Config) -> None:
                     else:
                         pose = body_pose
                     pose = clamp_pose_rate(last_pose, pose, args.vision_max_pwm_per_s / args.vision_fps)
-                    backend.send(pose, duration_ms=args.update_ms)
+                    backend.send(pose, duration_ms=frame_duration_ms)
                     last_pose = dict(pose)
 
-                    estimator.draw(frame, landmarks, args.vision_confidence)
+                    if landmarks is not None:
+                        estimator.draw(frame, landmarks, args.vision_confidence)
                     preview = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
                     surface = pygame.surfarray.make_surface(preview.swapaxes(0, 1))
                     screen.blit(surface, (0, 0))
                     if single_support.running and not leg_ready:
                         status = "SHIFTING WEIGHT"
                     else:
-                        status = "FULL BODY" if armed and controller.tracked else ("SEARCHING" if armed else "MIMIC OFF")
+                        full_body = all(
+                            part in controller.visible_parts
+                            for part in ("left_arm", "right_arm", "legs")
+                        )
+                        status = (
+                            "FULL BODY"
+                            if armed and controller.tracked and full_body
+                            else (
+                                "TRACKING"
+                                if armed and controller.tracked
+                                else ("SEARCHING" if armed else "MIMIC OFF")
+                            )
+                        )
                     color = (58, 210, 148) if armed and controller.tracked else (245, 190, 72)
                     label = font.render(status, True, color)
                     background = pygame.Surface((label.get_width() + 24, label.get_height() + 12), pygame.SRCALPHA)

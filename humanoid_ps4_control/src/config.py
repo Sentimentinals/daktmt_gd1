@@ -159,11 +159,13 @@ class Config:
     ps4_turn_sign: float = -1.0
 
     # --- Camera Mimic ---
-    vision_camera_width: int = 640
-    vision_camera_height: int = 480
-    vision_fps: int = 15
-    vision_confidence: float = 0.35
+    vision_camera_width: int = 480
+    vision_camera_height: int = 360
+    vision_fps: int = 12
+    vision_threads: int = 3
+    vision_confidence: float = 0.30
     vision_model_path: str = "models/movenet_lightning_int8.tflite"
+    vision_min_body_scale: float = 0.10
     vision_lost_timeout_s: float = 0.35
     vision_smooth_tau_s: float = 0.12
     vision_max_pwm_per_s: float = 900.0
@@ -172,8 +174,9 @@ class Config:
     vision_elbow_pwm: int = 260
     vision_head_pwm: int = 180
     vision_squat_deg: float = 16.0
-    vision_leg_lift_threshold_m: float = 0.10
+    vision_leg_lift_threshold_ratio: float = 0.30
     vision_leg_lift_height_mm: float = 34.0
+    vision_fsr_stable_frames: int = 3
 
     # --- Dance ---
     dance_period: float = 2.4

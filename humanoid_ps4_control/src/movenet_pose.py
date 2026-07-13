@@ -50,8 +50,11 @@ class MoveNetPoseEstimator:
         self.input = self.interpreter.get_input_details()[0]
         self.output = self.interpreter.get_output_details()[0]
         shape = self.input["shape"]
+        if len(shape) != 4 or int(shape[0]) != 1 or int(shape[3]) != 3:
+            raise RuntimeError(f"Unsupported MoveNet input shape: {tuple(int(value) for value in shape)}")
         self.input_height = int(shape[1])
         self.input_width = int(shape[2])
+        self.canvas = np.zeros((self.input_height, self.input_width, 3), dtype=np.uint8)
 
     def infer(self, frame_rgb: np.ndarray) -> list[Landmark]:
         height, width = frame_rgb.shape[:2]
@@ -61,14 +64,17 @@ class MoveNetPoseEstimator:
         resized = cv2.resize(frame_rgb, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
         offset_x = (self.input_width - resized_width) // 2
         offset_y = (self.input_height - resized_height) // 2
-        canvas = np.zeros((self.input_height, self.input_width, 3), dtype=np.uint8)
-        canvas[offset_y:offset_y + resized_height, offset_x:offset_x + resized_width] = resized
+        self.canvas.fill(0)
+        self.canvas[offset_y:offset_y + resized_height, offset_x:offset_x + resized_width] = resized
 
-        tensor = self._quantize(canvas, self.input)
+        tensor = self._quantize(self.canvas, self.input)
         self.interpreter.set_tensor(self.input["index"], tensor[np.newaxis, ...])
         self.interpreter.invoke()
         output = self.interpreter.get_tensor(self.output["index"])
-        keypoints = self._dequantize(output, self.output).reshape(-1, 17, 3)[0]
+        output = self._dequantize(output, self.output)
+        if output.size != 51:
+            raise RuntimeError(f"Unsupported MoveNet output shape: {output.shape}")
+        keypoints = output.reshape(17, 3)
 
         landmarks = [Landmark(0.0, 0.0, 0.0, 0.0) for _ in range(29)]
         for move_index, body_index in MOVENET_TO_BODY.items():
