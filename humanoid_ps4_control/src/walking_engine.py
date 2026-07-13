@@ -329,12 +329,6 @@ class DynamicWalkingEngine:
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
         self.command_rate_limit = abs(command_rate_limit)
         self.stop_extra_steps = max(0, int(GAIT["stop_extra_steps"]))
-        self.sensor_feedback_enabled = False
-        self.sensor_feedback_valid = False
-        self.sensor_left_load = 0.0
-        self.sensor_right_load = 0.0
-        self.sensor_min_total_load = 0.08
-        self.sensor_support_ratio = 0.62
 
         self.reset()
 
@@ -384,68 +378,6 @@ class DynamicWalkingEngine:
             self.side_len_queue.append(0.0)
 
         self.prev_pose = dict(STANDING)
-
-    def set_foot_load_feedback(
-        self,
-        left_load: float,
-        right_load: float,
-        enabled: bool = True,
-        min_total_load: float | None = None,
-        support_ratio: float | None = None,
-    ) -> None:
-        self.sensor_feedback_enabled = enabled
-        self.sensor_feedback_valid = enabled
-        self.sensor_left_load = max(0.0, float(left_load))
-        self.sensor_right_load = max(0.0, float(right_load))
-        if min_total_load is not None:
-            self.sensor_min_total_load = max(0.0, float(min_total_load))
-        if support_ratio is not None:
-            self.sensor_support_ratio = max(0.50, min(0.95, float(support_ratio)))
-
-    def clear_foot_load_feedback(self) -> None:
-        self.sensor_feedback_enabled = False
-        self.sensor_feedback_valid = False
-
-    def invalidate_foot_load_feedback(self) -> None:
-        self.sensor_feedback_enabled = True
-        self.sensor_feedback_valid = False
-        self.sensor_left_load = 0.0
-        self.sensor_right_load = 0.0
-
-    def _support_load_ready(self, support_leg: str) -> bool:
-        if not self.sensor_feedback_enabled:
-            return True
-        if not self.sensor_feedback_valid:
-            return False
-
-        total = self.sensor_left_load + self.sensor_right_load
-        if total < self.sensor_min_total_load:
-            return False
-
-        if support_leg == "left":
-            return self.sensor_left_load / total >= self.sensor_support_ratio
-        if support_leg == "right":
-            return self.sensor_right_load / total >= self.sensor_support_ratio
-        return True
-
-    def _enqueue_support_wait(self, base_L: np.ndarray, base_R: np.ndarray, support_leg: str) -> None:
-        support_y_offset = self.hw * self.zmp_support_ratio
-        current_center_y = 0.5 * (base_L[1] + base_R[1])
-        zmp_y = current_center_y + (support_y_offset if support_leg == "right" else -support_y_offset)
-        stance_x = base_R[0] if support_leg == "right" else base_L[0]
-        wait_frames = max(2, min(self.n_s, round(0.16 / self.dt)))
-
-        for _ in range(wait_frames):
-            self.zmp_x_queue.append(stance_x)
-            self.zmp_y_queue.append(zmp_y)
-            self.foot_L_queue.append(base_L.copy())
-            self.foot_R_queue.append(base_R.copy())
-            self.arm_queue.append(self.arm_queue[-1] if self.arm_queue else self.last_arm_delta)
-            self.swing_leg_queue.append("none")
-            self.lift_factor_queue.append(0.0)
-            self.landing_progress_queue.append(0.0)
-            self.phase_mode_queue.append("shift")
-            self.side_len_queue.append(0.0)
 
     def is_idle_ready(self, tolerance: float = 0.05) -> bool:
         if (
@@ -517,9 +449,6 @@ class DynamicWalkingEngine:
             swing_is_left = next_step_count % 2 == 1
         planned_swing_leg = "left" if swing_is_left else "right"
         planned_support_leg = "right" if swing_is_left else "left"
-        if not self._support_load_ready(planned_support_leg):
-            self._enqueue_support_wait(base_L, base_R, planned_support_leg)
-            return
 
         self.step_count = next_step_count
         self.last_swing_leg = planned_swing_leg

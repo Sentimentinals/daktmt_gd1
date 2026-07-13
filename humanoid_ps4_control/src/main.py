@@ -235,23 +235,12 @@ def run_ps4(args: Config) -> None:
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
                         if args.sensor_use_fsr and sensor_snapshot.foot_load is not None:
-                            engine.set_foot_load_feedback(
-                                sensor_snapshot.foot_load.left,
-                                sensor_snapshot.foot_load.right,
-                                enabled=args.sensor_use_fsr,
-                                min_total_load=args.fsr_min_total_load,
-                                support_ratio=args.fsr_support_ratio,
-                            )
                             if args.sensor_debug:
                                 load = sensor_snapshot.foot_load
                                 print(
                                     f"[sensor] FSR L={load.left:.3f} R={load.right:.3f} "
                                     f"ratio L={load.left_ratio:.2f} R={load.right_ratio:.2f}"
                                 )
-                        elif args.sensor_use_fsr:
-                            engine.invalidate_foot_load_feedback()
-                        else:
-                            engine.clear_foot_load_feedback()
     
                     axis_forward_cmd = state.signed_axis(args.ps4_forward_axis, args.ps4_forward_sign)
                     axis_turn_cmd = state.signed_axis(args.ps4_turn_axis, args.ps4_turn_sign)
@@ -401,6 +390,12 @@ def run_ps4(args: Config) -> None:
                             args.imu_min_accel_cal,
                         ):
                             support_leg = single_support.support_leg if single_support.running else engine.support_leg
+                            foot_load = sensor_snapshot.foot_load if args.sensor_use_fsr else None
+                            if foot_load is not None and foot_load.total >= args.fsr_min_total_load:
+                                if foot_load.left_ratio >= args.fsr_support_ratio:
+                                    support_leg = "left"
+                                elif foot_load.right_ratio >= args.fsr_support_ratio:
+                                    support_leg = "right"
                             pose = balance.apply(
                                 pose,
                                 roll_deg=reading.roll_deg,
