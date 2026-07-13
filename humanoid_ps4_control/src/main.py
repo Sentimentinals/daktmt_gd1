@@ -157,6 +157,7 @@ def run_ps4(args: Config) -> None:
     prev_getup_pressed = False
     prev_getup_back_pressed = False
     prev_single_support_pressed = False
+    prev_options_pressed = False
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
     standing_hold_active = True
@@ -229,8 +230,14 @@ def run_ps4(args: Config) -> None:
             try:
                 for state in reader.poll():
                     if state.quit:
-                        print("[main] Quit requested.")
+                        print("[main] Returning to function menu.")
                         break
+
+                    options_pressed = state.button(reader.BTN_OPTIONS)
+                    if options_pressed and not prev_options_pressed:
+                        print("[main] Options/O pressed. Returning to function menu.")
+                        break
+                    prev_options_pressed = options_pressed
 
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
@@ -435,8 +442,29 @@ def main() -> None:
     args = Config()
     if args.getup:
         run_getup(args)
-    else:
-        run_ps4(args)
+        return
+
+    from .menu import run_menu
+
+    while True:
+        choice = run_menu(args.joystick_index)
+        if choice == "quit":
+            print("[main] Exiting function menu.")
+            return
+        if choice == "walking":
+            try:
+                run_ps4(args)
+            except Exception as exc:
+                print(f"[main] Walking mode unavailable: {exc}")
+                time.sleep(1.5)
+        elif choice == "vision":
+            try:
+                from .vision_main import run_vision
+
+                run_vision(args)
+            except Exception as exc:
+                print(f"[main] Camera Mimic unavailable: {exc}")
+                time.sleep(1.5)
 
 if __name__ == "__main__":
     main()

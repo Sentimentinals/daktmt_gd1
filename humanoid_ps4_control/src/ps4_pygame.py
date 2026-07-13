@@ -177,6 +177,7 @@ class PS4Reader:
                     self.BTN_L2: keys[pygame.K_j],
                     self.BTN_R2: keys[pygame.K_k],
                     self.BTN_OPTIONS: keys[pygame.K_o] or keys[pygame.K_ESCAPE],
+                    self.BTN_SQUARE: keys[pygame.K_v],
                 }
             else:
                 kb_buttons = {}

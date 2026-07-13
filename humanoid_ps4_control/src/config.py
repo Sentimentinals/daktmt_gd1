@@ -158,6 +158,18 @@ class Config:
     ps4_turn_axis: int = 0
     ps4_turn_sign: float = -1.0
 
+    # --- Camera Mimic ---
+    vision_camera_width: int = 640
+    vision_camera_height: int = 480
+    vision_fps: int = 15
+    vision_confidence: float = 0.60
+    vision_lost_timeout_s: float = 0.35
+    vision_smooth_tau_s: float = 0.12
+    vision_max_pwm_per_s: float = 900.0
+    vision_lift_pwm: int = 820
+    vision_shoulder_pwm: int = 420
+    vision_elbow_pwm: int = 260
+
     # --- Dance ---
     dance_period: float = 2.4
     dance_transition: float = 0.45
