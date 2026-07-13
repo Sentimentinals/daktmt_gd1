@@ -79,8 +79,8 @@ def run_menu(joystick_index: int = 0) -> str:
             for index, (label, detail, _) in enumerate(entries):
                 rect = pygame.Rect(70, 105 + index * 82, 540, 64)
                 active = index == selected
-                pygame.draw.rect(screen, (43, 104, 92) if active else (39, 45, 54), rect, border_radius=6)
-                pygame.draw.rect(screen, (100, 210, 174) if active else (75, 84, 96), rect, 2, border_radius=6)
+                pygame.draw.rect(screen, (43, 104, 92) if active else (39, 45, 54), rect)
+                pygame.draw.rect(screen, (100, 210, 174) if active else (75, 84, 96), rect, 2)
                 screen.blit(item_font.render(label, True, (248, 250, 252)), (90, rect.y + 9))
                 screen.blit(detail_font.render(detail, True, (184, 194, 204)), (90, rect.y + 38))
 
