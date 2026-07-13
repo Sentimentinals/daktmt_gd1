@@ -169,6 +169,10 @@ class Config:
     vision_lift_pwm: int = 820
     vision_shoulder_pwm: int = 420
     vision_elbow_pwm: int = 260
+    vision_head_pwm: int = 180
+    vision_squat_deg: float = 16.0
+    vision_leg_lift_threshold_m: float = 0.10
+    vision_leg_lift_height_mm: float = 34.0
 
     # --- Dance ---
     dance_period: float = 2.4

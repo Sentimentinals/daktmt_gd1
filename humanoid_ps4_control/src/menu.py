@@ -25,7 +25,7 @@ def run_menu(joystick_index: int = 0) -> str:
 
     entries = [
         ("Walking & Balance", "PS4 / keyboard locomotion", "walking"),
-        ("Camera Mimic", "Pi Camera upper-body tracking", "vision"),
+        ("Camera Mimic", "Pi Camera full-body tracking", "vision"),
         ("Exit", "Return all servos to standing", "quit"),
     ]
     selected = 0
