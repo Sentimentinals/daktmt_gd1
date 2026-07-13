@@ -162,7 +162,8 @@ class Config:
     vision_camera_width: int = 640
     vision_camera_height: int = 480
     vision_fps: int = 15
-    vision_confidence: float = 0.60
+    vision_confidence: float = 0.35
+    vision_model_path: str = "models/movenet_lightning_int8.tflite"
     vision_lost_timeout_s: float = 0.35
     vision_smooth_tau_s: float = 0.12
     vision_max_pwm_per_s: float = 900.0

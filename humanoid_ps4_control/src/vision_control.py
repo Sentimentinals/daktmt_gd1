@@ -27,7 +27,7 @@ class Landmark:
 
 
 class VisionBodyController:
-    """Convert MediaPipe world landmarks into bounded 17-DOF body pulses."""
+    """Convert tracked body landmarks into bounded 17-DOF body pulses."""
 
     def __init__(
         self,

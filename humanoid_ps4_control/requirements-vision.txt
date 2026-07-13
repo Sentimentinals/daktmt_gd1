@@ -1,4 +1,5 @@
 # Optional Raspberry Pi 4 aarch64 camera-mimic dependency.
-# Install Picamera2 and OpenCV through apt so they match Bullseye/libcamera.
-numpy>=1.24,<2
-mediapipe==0.10.18
+# Install Picamera2 and OpenCV through apt so they match Raspberry Pi OS/libcamera.
+numpy>=1.24,<2; python_version < "3.13"
+numpy>=2.1,<3; python_version >= "3.13"
+ai-edge-litert==2.1.6

@@ -11,17 +11,18 @@ def run_vision(args: Config) -> None:
     """Run bounded full-body mimic mode and return when Options/O is pressed."""
     try:
         import cv2
-        import mediapipe as mp
         import pygame
         from picamera2 import Picamera2
+        from .movenet_pose import MoveNetPoseEstimator
     except ImportError as exc:
         raise RuntimeError(
-            "Camera Mimic dependencies are missing. Install Picamera2/OpenCV from apt "
-            "and mediapipe==0.10.18 from requirements-vision.txt."
+            f"Camera Mimic dependency missing: {exc.name}. Install Picamera2/OpenCV from apt "
+            "and ai-edge-litert from requirements-vision.txt."
         ) from exc
 
     from .ps4_pygame import PS4Reader
 
+    estimator = MoveNetPoseEstimator(args.vision_model_path)
     reader = PS4Reader(
         joystick_index=args.joystick_index,
         fallback_keys=True,
@@ -88,8 +89,6 @@ def run_vision(args: Config) -> None:
             sensor_hub = None
             print(f"[vision] FSR unavailable; leg lifting disabled: {exc}")
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
-    pose_api = mp.solutions.pose
-    drawing = mp.solutions.drawing_utils
     armed = False
     previous_toggle = False
     last_pose = dict(STANDING)
@@ -98,13 +97,7 @@ def run_vision(args: Config) -> None:
     try:
         camera.start()
         time.sleep(0.5)
-        with pose_api.Pose(
-            static_image_mode=False,
-            model_complexity=0,
-            smooth_landmarks=True,
-            min_detection_confidence=args.vision_confidence,
-            min_tracking_confidence=args.vision_confidence,
-        ) as estimator, backend:
+        with backend:
             backend.send(STANDING, duration_ms=600, force=True)
             try:
                 for state in reader.poll():
@@ -125,9 +118,8 @@ def run_vision(args: Config) -> None:
 
                     frame = camera.capture_array("main")
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    result = estimator.process(rgb)
-                    world = result.pose_world_landmarks.landmark if result.pose_world_landmarks else None
-                    body_pose = controller.update(world, time.monotonic(), armed=armed)
+                    landmarks = estimator.infer(rgb)
+                    body_pose = controller.update(landmarks, time.monotonic(), armed=armed)
                     requested_leg = controller.lifted_leg if armed and controller.tracked else None
                     if requested_leg != active_lifted_leg:
                         single_support.stop()
@@ -158,8 +150,7 @@ def run_vision(args: Config) -> None:
                     backend.send(pose, duration_ms=args.update_ms)
                     last_pose = dict(pose)
 
-                    if result.pose_landmarks:
-                        drawing.draw_landmarks(frame, result.pose_landmarks, pose_api.POSE_CONNECTIONS)
+                    estimator.draw(frame, landmarks, args.vision_confidence)
                     preview = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
                     surface = pygame.surfarray.make_surface(preview.swapaxes(0, 1))
                     screen.blit(surface, (0, 0))
