@@ -50,7 +50,7 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
 
-  if (!bno.begin()) {
+  if (!bno.begin(OPERATION_MODE_IMUPLUS)) {
     Serial.println("# ERROR: BNO055 not found. Expected I2C address 0x28.");
     printI2cDevices();
     while (true) {
@@ -60,7 +60,7 @@ void setup() {
 
   delay(1000);
   bno.setExtCrystalUse(true);
-  Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag");
+  Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
   Serial.println("# READY format=F,ms,left_norm,right_norm,left_voltage,right_voltage,left_raw,right_raw");
 }
 
@@ -75,6 +75,8 @@ void loop() {
   const imu::Quaternion quat = bno.getQuat();
   const imu::Vector<3> euler =
       bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  const imu::Vector<3> gravity =
+      bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
 
   uint8_t system_cal = 0;
   uint8_t gyro_cal = 0;
@@ -105,7 +107,13 @@ void loop() {
   Serial.print(',');
   Serial.print(accel_cal);
   Serial.print(',');
-  Serial.println(mag_cal);
+  Serial.print(mag_cal);
+  Serial.print(',');
+  Serial.print(gravity.x(), 4);
+  Serial.print(',');
+  Serial.print(gravity.y(), 4);
+  Serial.print(',');
+  Serial.println(gravity.z(), 4);
 
   const int left_raw = readAveragedAdc(FSR_LEFT_PIN);
   const int right_raw = readAveragedAdc(FSR_RIGHT_PIN);

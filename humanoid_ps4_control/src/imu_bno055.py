@@ -14,6 +14,9 @@ class IMUReading:
     gyro_cal: int = 0
     accel_cal: int = 0
     mag_cal: int = 0
+    gravity_x: Optional[float] = None
+    gravity_y: Optional[float] = None
+    gravity_z: Optional[float] = None
 
     def balance_ready(self, min_gyro_cal: int = 1, min_accel_cal: int = 1) -> bool:
         return self.gyro_cal >= min_gyro_cal and self.accel_cal >= min_accel_cal
@@ -26,7 +29,7 @@ def parse_serial_imu_line(
     yaw_sign: float = 1.0,
 ) -> Optional[IMUReading]:
     fields = line.strip().split(",")
-    if len(fields) != 13 or fields[0] != "Q":
+    if len(fields) not in {13, 16} or fields[0] != "Q":
         return None
 
     try:
@@ -44,6 +47,9 @@ def parse_serial_imu_line(
             gyro_cal=calibration[1],
             accel_cal=calibration[2],
             mag_cal=calibration[3],
+            gravity_x=float(fields[13]) if len(fields) == 16 else None,
+            gravity_y=float(fields[14]) if len(fields) == 16 else None,
+            gravity_z=float(fields[15]) if len(fields) == 16 else None,
         )
     except (TypeError, ValueError):
         return None

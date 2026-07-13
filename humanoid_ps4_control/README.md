@@ -56,7 +56,7 @@ port = "/dev/ttyACM0"        # RTrobot servo controller
 update_ms = 30
 sensor_feedback = True
 sensor_port = "/dev/ttyUSB0" # ESP32 sensor hub
-imu_balance = False           # chi bat sau khi can chinh truc IMU
+imu_balance = True            # auto-reference cho BNO055 lap doc
 ```
 
 ## Workflow Git

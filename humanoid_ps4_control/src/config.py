@@ -178,17 +178,19 @@ class Config:
     getup_print_every: int = 20
 
     # --- Balance ---
-    imu_balance: bool = False
+    imu_balance: bool = True
     imu_roll_sign: float = 1.0
     imu_pitch_sign: float = 1.0
     imu_yaw_sign: float = 1.0
+    imu_vertical_mount: bool = True
+    imu_board_face_sign: float = 1.0  # +Z/component side faces robot front; use -1 if it faces rear
     balance_limit_deg: float = 2.0
     balance_deadband_deg: float = 0.8
     imu_reference_seconds: float = 1.5
     imu_reference_timeout_s: float = 8.0
     imu_reference_max_rms_deg: float = 2.0
-    imu_min_gyro_cal: int = 1
-    imu_min_accel_cal: int = 1
+    imu_min_gyro_cal: int = 2
+    imu_min_accel_cal: int = 0
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True

@@ -176,6 +176,8 @@ def run_ps4(args: Config) -> None:
             imu_roll_sign=args.imu_roll_sign,
             imu_pitch_sign=args.imu_pitch_sign,
             imu_yaw_sign=args.imu_yaw_sign,
+            imu_vertical_mount=args.imu_vertical_mount,
+            imu_board_face_sign=args.imu_board_face_sign,
             fsr_invert=args.fsr_invert,
             fsr_filter_alpha=args.fsr_filter_alpha,
             fsr_left_zero_raw=args.fsr_left_zero_raw,

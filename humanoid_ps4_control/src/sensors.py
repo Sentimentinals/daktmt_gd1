@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from .imu_bno055 import IMUReading, parse_serial_imu_line
@@ -119,6 +119,8 @@ class RobotSensorHub:
         imu_roll_sign: float = 1.0,
         imu_pitch_sign: float = 1.0,
         imu_yaw_sign: float = 1.0,
+        imu_vertical_mount: bool = True,
+        imu_board_face_sign: float = 1.0,
         fsr_invert: bool = False,
         fsr_filter_alpha: float = 0.18,
         fsr_left_zero_raw: int = 0,
@@ -134,6 +136,8 @@ class RobotSensorHub:
         self.imu_roll_sign = imu_roll_sign
         self.imu_pitch_sign = imu_pitch_sign
         self.imu_yaw_sign = imu_yaw_sign
+        self.imu_vertical_mount = imu_vertical_mount
+        self.imu_board_face_sign = 1.0 if imu_board_face_sign >= 0.0 else -1.0
         self.fsr_invert = fsr_invert
         self.fsr_left_zero_raw = fsr_left_zero_raw
         self.fsr_left_full_raw = max(fsr_left_zero_raw + 1, fsr_left_full_raw)
@@ -151,6 +155,9 @@ class RobotSensorHub:
         self._imu_at = 0.0
         self._fsr: Optional[FootLoadReading] = None
         self._fsr_at = 0.0
+        self._gravity_basis: Optional[
+            tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
+        ] = None
 
     def open(self) -> None:
         try:
@@ -211,6 +218,8 @@ class RobotSensorHub:
                 else None
             )
             if imu is not None:
+                if self.imu_vertical_mount and self._gravity_basis is not None:
+                    imu = self._apply_vertical_mount(imu)
                 with self._lock:
                     self._imu = imu
                     self._imu_at = now
@@ -259,8 +268,9 @@ class RobotSensorHub:
     ) -> Optional[tuple[float, float]]:
         deadline = time.monotonic() + max(sample_seconds, timeout_s)
         started_at: Optional[float] = None
-        samples: list[tuple[float, float]] = []
+        samples: list[IMUReading] = []
         last_sensor_time: Optional[int] = None
+        self._gravity_basis = None
 
         while not self._stop.is_set() and time.monotonic() < deadline:
             reading = self.read().imu
@@ -273,7 +283,7 @@ class RobotSensorHub:
                 continue
 
             last_sensor_time = reading.sensor_time_ms
-            samples.append((reading.roll_deg, reading.pitch_deg))
+            samples.append(reading)
             if started_at is None:
                 started_at = time.monotonic()
             if time.monotonic() - started_at >= sample_seconds and len(samples) >= min_samples:
@@ -283,17 +293,111 @@ class RobotSensorHub:
         if len(samples) < min_samples:
             return None
 
-        roll = self._circular_mean_deg(value[0] for value in samples)
-        pitch = self._circular_mean_deg(value[1] for value in samples)
+        if self.imu_vertical_mount:
+            vertical_reference = self._build_vertical_reference(samples, max_rms_deg)
+            if vertical_reference is None:
+                return None
+            self._gravity_basis = vertical_reference
+            return (0.0, 0.0)
+
+        roll = self._circular_mean_deg(value.roll_deg for value in samples)
+        pitch = self._circular_mean_deg(value.pitch_deg for value in samples)
         rms = math.sqrt(
             sum(
-                self._angle_delta_deg(sample_roll, roll) ** 2
-                + self._angle_delta_deg(sample_pitch, pitch) ** 2
-                for sample_roll, sample_pitch in samples
+                self._angle_delta_deg(sample.roll_deg, roll) ** 2
+                + self._angle_delta_deg(sample.pitch_deg, pitch) ** 2
+                for sample in samples
             )
             / (2.0 * len(samples))
         )
         return (roll, pitch) if rms <= max_rms_deg else None
+
+    def _build_vertical_reference(
+        self,
+        samples: list[IMUReading],
+        max_rms_deg: float,
+    ) -> Optional[
+        tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
+    ]:
+        gravity = [
+            (sample.gravity_x, sample.gravity_y, sample.gravity_z)
+            for sample in samples
+            if sample.gravity_x is not None and sample.gravity_y is not None and sample.gravity_z is not None
+        ]
+        if len(gravity) != len(samples):
+            return None
+
+        mean = self._normalize_vector(
+            tuple(sum(float(vector[axis]) for vector in gravity) for axis in range(3))
+        )
+        if mean is None:
+            return None
+
+        angular_errors = []
+        for vector in gravity:
+            normalized = self._normalize_vector(tuple(float(value) for value in vector))
+            if normalized is None:
+                return None
+            dot = max(-1.0, min(1.0, self._dot(normalized, mean)))
+            angular_errors.append(math.degrees(math.acos(dot)))
+        rms = math.sqrt(sum(error * error for error in angular_errors) / len(angular_errors))
+        if rms > max_rms_deg:
+            return None
+
+        forward_seed = (0.0, 0.0, self.imu_board_face_sign)
+        projection = self._dot(forward_seed, mean)
+        forward = self._normalize_vector(
+            tuple(forward_seed[axis] - projection * mean[axis] for axis in range(3))
+        )
+        if forward is None:
+            return None
+        left = self._normalize_vector(self._cross(mean, forward))
+        if left is None:
+            return None
+        return forward, left, mean
+
+    def _apply_vertical_mount(self, reading: IMUReading) -> IMUReading:
+        if (
+            self._gravity_basis is None
+            or reading.gravity_x is None
+            or reading.gravity_y is None
+            or reading.gravity_z is None
+        ):
+            return reading
+        gravity = self._normalize_vector((reading.gravity_x, reading.gravity_y, reading.gravity_z))
+        if gravity is None:
+            return reading
+        forward, left, up = self._gravity_basis
+        up_component = self._dot(gravity, up)
+        pitch = -math.degrees(math.atan2(self._dot(gravity, forward), up_component))
+        roll = -math.degrees(math.atan2(self._dot(gravity, left), up_component))
+        return replace(
+            reading,
+            roll_deg=roll * self.imu_roll_sign,
+            pitch_deg=pitch * self.imu_pitch_sign,
+        )
+
+    @staticmethod
+    def _normalize_vector(vector: tuple[float, float, float]) -> Optional[tuple[float, float, float]]:
+        norm = math.sqrt(sum(value * value for value in vector))
+        if norm < 1e-6:
+            return None
+        return tuple(value / norm for value in vector)
+
+    @staticmethod
+    def _dot(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+        return sum(a[index] * b[index] for index in range(3))
+
+    @staticmethod
+    def _cross(
+        a: tuple[float, float, float],
+        b: tuple[float, float, float],
+    ) -> tuple[float, float, float]:
+        return (
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        )
 
     @staticmethod
     def _circular_mean_deg(values) -> float:
