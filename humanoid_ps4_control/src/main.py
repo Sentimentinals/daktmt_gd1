@@ -465,6 +465,14 @@ def main() -> None:
             except Exception as exc:
                 print(f"[main] Camera Mimic unavailable: {exc}")
                 time.sleep(1.5)
+        elif choice == "terrain":
+            try:
+                from .terrain_main import run_terrain
+
+                run_terrain(args)
+            except Exception as exc:
+                print(f"[main] Terrain Auto unavailable: {exc}")
+                time.sleep(1.5)
 
 if __name__ == "__main__":
     main()

@@ -178,6 +178,29 @@ class Config:
     vision_leg_lift_height_mm: float = 34.0
     vision_fsr_stable_frames: int = 3
 
+    # --- Autonomous Terrain Vision ---
+    terrain_camera_width: int = 480
+    terrain_camera_height: int = 360
+    terrain_camera_fps: int = 10
+    terrain_stable_frames: int = 6
+    terrain_unknown_frames: int = 3
+    terrain_calibration_frames: int = 24
+    terrain_roi_top_ratio: float = 0.28
+    terrain_horizon_delta_ratio: float = 0.055
+    terrain_horizon_up_sign: float = 1.0
+    terrain_min_confidence: float = 0.58
+    terrain_t_step: float = 1.55
+    terrain_t_dbl: float = 0.12
+    terrain_ramp_step_elevation_mm: float = 3.0
+    terrain_stair_rise_mm: float = 12.0
+    terrain_stair_tread_mm: float = 62.0
+    terrain_max_step_elevation_mm: float = 18.0
+    terrain_allow_stairs_down: bool = True
+    terrain_emergency_tilt_deg: float = 12.0
+    terrain_fsr_invalid_frames: int = 12
+    terrain_touchdown_min_load: float = 0.04
+    terrain_touchdown_invalid_frames: int = 8
+
     # --- Dance ---
     dance_period: float = 2.4
     dance_transition: float = 0.45

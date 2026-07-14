@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def run_menu(joystick_index: int = 0) -> str:
-    """Show the top-level mode picker and return walking, vision, or quit."""
+    """Show the top-level mode picker and return walking, vision, terrain, or quit."""
     try:
         import pygame
     except ImportError as exc:
@@ -10,7 +10,7 @@ def run_menu(joystick_index: int = 0) -> str:
 
     pygame.init()
     pygame.joystick.init()
-    screen = pygame.display.set_mode((680, 390))
+    screen = pygame.display.set_mode((680, 480))
     pygame.display.set_caption("Humanoid Robot Control")
     clock = pygame.time.Clock()
     title_font = pygame.font.Font(None, 46)
@@ -26,6 +26,7 @@ def run_menu(joystick_index: int = 0) -> str:
     entries = [
         ("Walking & Balance", "PS4 / keyboard locomotion", "walking"),
         ("Camera Mimic", "Pi Camera full-body tracking", "vision"),
+        ("Terrain Auto", "Continuous ramp and stair adaptation", "terrain"),
         ("Exit", "Return all servos to standing", "quit"),
     ]
     selected = 0
@@ -46,6 +47,8 @@ def run_menu(joystick_index: int = 0) -> str:
                         return entries[selected][2]
                     elif event.key == pygame.K_v:
                         return "vision"
+                    elif event.key == pygame.K_t:
+                        return "terrain"
                     elif event.key in (pygame.K_q, pygame.K_ESCAPE):
                         return "quit"
                 if event.type == pygame.MOUSEMOTION:
@@ -68,6 +71,8 @@ def run_menu(joystick_index: int = 0) -> str:
                     return entries[selected][2]
                 if buttons.get(2, False) and not previous_buttons.get(2, False):
                     return "vision"
+                if buttons.get(3, False) and not previous_buttons.get(3, False):
+                    return "terrain"
                 if buttons.get(1, False) and not previous_buttons.get(1, False):
                     return "quit"
                 previous_buttons = buttons
