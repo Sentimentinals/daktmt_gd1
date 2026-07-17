@@ -36,6 +36,34 @@ def clamp_pose_rate(prev: dict[int, int], curr: dict[int, int], max_pwm_per_fram
     return out
 
 
+class CubicBSplinePoseFilter:
+    """Causal cubic B-spline sampling with one control-frame delay."""
+
+    def __init__(self, initial_pose: dict[int, int], strength: float = 1.0) -> None:
+        self.strength = max(0.0, min(1.0, strength))
+        self.reset(initial_pose)
+
+    def reset(self, pose: dict[int, int]) -> None:
+        start = dict(pose)
+        self._controls: Deque[dict[int, int]] = deque((dict(start), dict(start)), maxlen=3)
+
+    def update(self, target: dict[int, int]) -> dict[int, int]:
+        current = dict(target)
+        self._controls.append(current)
+        if self.strength <= 0.0:
+            return current
+
+        previous, center, future = self._controls
+        out = dict(current)
+        for sid, value in current.items():
+            if sid not in previous or sid not in center or sid not in future:
+                continue
+            # Uniform cubic B-spline evaluated at a knot: (P0 + 4*P1 + P2) / 6.
+            spline_value = (previous[sid] + 4.0 * center[sid] + future[sid]) / 6.0
+            out[sid] = round(value + self.strength * (spline_value - value))
+        return out
+
+
 def blend_pwm(start: int, end: int, t: float) -> int:
     t = max(0.0, min(1.0, t))
     return round(start + (end - start) * t)
@@ -263,6 +291,7 @@ class DynamicWalkingEngine:
         arm_min_pwm: int | None = None,
         arm_quantum_pwm: int | None = None,
         max_step_elevation: float = 18.0,
+        trajectory_smoothing: float = 1.0,
     ) -> None:
         self.dt = dt
         self.t_step = t_step
@@ -332,6 +361,7 @@ class DynamicWalkingEngine:
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
         self.command_rate_limit = abs(command_rate_limit)
         self.max_step_elevation = max(0.0, abs(max_step_elevation))
+        self.trajectory_smoothing = max(0.0, min(1.0, trajectory_smoothing))
         self.stop_extra_steps = max(0, int(GAIT["stop_extra_steps"]))
 
         self.reset()
@@ -372,6 +402,7 @@ class DynamicWalkingEngine:
         self._last_motion_target = (0.0, 0.0, 0.0)
         self._stop_steps_remaining = 0
         self._stop_decelerating = False
+        self.pose_filter = CubicBSplinePoseFilter(STANDING, self.trajectory_smoothing)
 
         for _ in range(self.n_d):
             self.zmp_y_queue.append(0.0)
@@ -1005,6 +1036,7 @@ class DynamicWalkingEngine:
                     pose[2] = max(500, min(2500, STANDING[2] - ankle_delta))
 
         pose = self._apply_arm_swing(pose, arm_delta_now)
+        pose = self.pose_filter.update(pose)
         max_pwm_per_frame = self.max_pwm_per_frame
         if not input_active and phase_mode_now in ("land", "idle"):
             max_pwm_per_frame = min(max_pwm_per_frame, 70.0)

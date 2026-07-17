@@ -143,6 +143,7 @@ def run_terrain(args: Config) -> None:
         lift_end_phase=args.lift_end_phase,
         landing_roll_release_start=args.landing_roll_release_start,
         command_rate_limit=min(args.command_rate_limit, 12.0),
+        trajectory_smoothing=args.trajectory_smoothing,
         arm_swing_pwm=args.arm_swing_pwm,
         arm_right_dir=args.arm_right_dir,
         arm_left_dir=args.arm_left_dir,
