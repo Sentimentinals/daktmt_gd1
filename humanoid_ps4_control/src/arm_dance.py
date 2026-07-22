@@ -5,7 +5,7 @@ import math
 from .walking_engine import STANDING
 
 
-ARM_DANCE_IDS = (6, 7, 8, 16, 17, 18, 19)
+ARM_DANCE_IDS = (9, 10, 11, 22, 23, 24, 25)
 
 
 def _clamp_pwm(value: float) -> int:
@@ -108,13 +108,13 @@ class ArmDanceEngine:
         head: float = 0.0,
     ) -> dict[int, int]:
         pose = dict(STANDING)
-        pose[7] = _clamp_pwm(STANDING[7] + right_lift)
-        pose[18] = _clamp_pwm(STANDING[18] - left_lift)
-        pose[8] = _clamp_pwm(STANDING[8] + right_shoulder)
-        pose[17] = _clamp_pwm(STANDING[17] + left_shoulder)
-        pose[6] = _clamp_pwm(STANDING[6] + right_elbow)
-        pose[19] = _clamp_pwm(STANDING[19] - left_elbow)
-        pose[16] = _clamp_pwm(STANDING[16] + head)
+        pose[23] = _clamp_pwm(STANDING[23] + right_lift)
+        pose[10] = _clamp_pwm(STANDING[10] - left_lift)
+        pose[22] = _clamp_pwm(STANDING[22] + right_shoulder)
+        pose[11] = _clamp_pwm(STANDING[11] + left_shoulder)
+        pose[24] = _clamp_pwm(STANDING[24] + right_elbow)
+        pose[9] = _clamp_pwm(STANDING[9] - left_elbow)
+        pose[25] = _clamp_pwm(STANDING[25] + head)
         return pose
 
     def _dance_keyframes(self) -> list[dict[int, int]]:
@@ -267,9 +267,9 @@ class HandshakeEngine:
 
     def _offer_pose(self, shake_offset: float = 0.0) -> dict[int, int]:
         pose = dict(STANDING)
-        pose[7] = _clamp_pwm(STANDING[7] + self.lift_pwm + shake_offset)
-        pose[8] = _clamp_pwm(STANDING[8] + self.shoulder_pwm)
-        pose[6] = _clamp_pwm(STANDING[6] + self.elbow_pwm - shake_offset * 0.25)
+        pose[23] = _clamp_pwm(STANDING[23] + self.lift_pwm + shake_offset)
+        pose[22] = _clamp_pwm(STANDING[22] + self.shoulder_pwm)
+        pose[24] = _clamp_pwm(STANDING[24] + self.elbow_pwm - shake_offset * 0.25)
         return pose
 
     def _enter_returning(self) -> None:

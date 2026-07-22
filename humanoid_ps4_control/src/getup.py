@@ -6,16 +6,16 @@ from .walking_engine import STAND_ANG, STANDING, angle_to_pwm
 
 
 JOINT_TO_SERVO = {
-    "R_ankle_roll": (1, "hip_roll"),
-    "R_ankle_pitch": (2, "R_ankle"),
-    "R_knee": (3, "R_knee"),
-    "R_hip_pitch": (4, "R_hip_pitch"),
-    "R_hip_roll": (5, "R_hip_abduct"),
-    "L_hip_roll": (20, "L_hip_abduct"),
-    "L_hip_pitch": (21, "L_hip_pitch"),
-    "L_knee": (22, "L_knee"),
-    "L_ankle_pitch": (23, "L_ankle"),
-    "L_ankle_roll": (24, "hip_roll"),
+    "R_ankle_roll": (17, "hip_roll"),
+    "R_ankle_pitch": (18, "R_ankle"),
+    "R_knee": (19, "R_knee"),
+    "R_hip_pitch": (20, "R_hip_pitch"),
+    "R_hip_roll": (21, "R_hip_abduct"),
+    "L_hip_roll": (12, "L_hip_abduct"),
+    "L_hip_pitch": (13, "L_hip_pitch"),
+    "L_knee": (14, "L_knee"),
+    "L_ankle_pitch": (15, "L_ankle"),
+    "L_ankle_roll": (16, "hip_roll"),
 }
 
 
@@ -45,28 +45,28 @@ def _merge(*parts: dict[int, int]) -> dict[int, int]:
 
 
 ARM_AUX_DOWN = {
-    6: STANDING[6],
-    7: STANDING[7],
-    18: STANDING[18],
-    19: STANDING[19],
+    24: STANDING[24],
+    23: STANDING[23],
+    10: STANDING[10],
+    9: STANDING[9],
 }
 
 ARM_STANDING = {
-    6: STANDING[6],
-    7: STANDING[7],
-    8: STANDING[8],
-    17: STANDING[17],
-    18: STANDING[18],
-    19: STANDING[19],
+    9: STANDING[9],
+    10: STANDING[10],
+    11: STANDING[11],
+    22: STANDING[22],
+    23: STANDING[23],
+    24: STANDING[24],
 }
 
 ARM_SHOULDER_POSES = {
-    "back_reach": {8: 2100, 17: 900},
-    "back_push": {8: 2500, 17: 500},
-    "back_hold": {8: 2200, 17: 800},
-    "front_reach": {8: 2100, 17: 900},
-    "front_push": {8: 2500, 17: 500},
-    "front_hold": {8: 2200, 17: 800},
+    "back_reach": {22: 2100, 11: 900},
+    "back_push": {22: 2500, 11: 500},
+    "back_hold": {22: 2200, 11: 800},
+    "front_reach": {22: 2100, 11: 900},
+    "front_push": {22: 2500, 11: 500},
+    "front_hold": {22: 2200, 11: 800},
 }
 
 
@@ -286,19 +286,19 @@ def build_getup_sequence(mode: str = "back", speed: float = 0.7) -> list[GetupSt
             "kneel-low",
             ("hands", "knees", "feet"),
             kneel_low_angles,
-            _arm_pose("front_hold", {7: 980, 18: 1970}),
+            _arm_pose("front_hold", {23: 980, 10: 1970}),
         ),
         "front_squat_deep": GetupPoseState(
             "squat-deep",
             ("hands_light", "feet"),
             squat_deep_angles,
-            _arm_pose("front_hold", {6: 1520, 7: 800, 18: 2160, 19: 1480}),
+            _arm_pose("front_hold", {24: 1520, 23: 800, 10: 2160, 9: 1480}),
         ),
         "front_squat_high": GetupPoseState(
             "squat-high",
             ("feet",),
             squat_high_angles,
-            _arm_pose("front_hold", {6: 1520, 7: 660, 18: 2300, 19: 1480}),
+            _arm_pose("front_hold", {24: 1520, 23: 660, 10: 2300, 9: 1480}),
         ),
         "front_arms_down": GetupPoseState(
             "arms-down",

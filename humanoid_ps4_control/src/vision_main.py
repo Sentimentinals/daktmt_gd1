@@ -112,7 +112,7 @@ def run_vision(args: Config) -> None:
 
                     if single_support.running:
                         pose = single_support.update()
-                        for sid in (*ARM_IDS, 16):
+                        for sid in (*ARM_IDS, 25):
                             pose[sid] = body_pose[sid]
                     else:
                         pose = body_pose

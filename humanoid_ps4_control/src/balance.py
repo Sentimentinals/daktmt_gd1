@@ -79,14 +79,14 @@ class IMUBalanceController:
     """
 
     DIR = {
-        1: +1,    # R ankle roll
-        2: -1,    # R ankle pitch
-        4: -1,    # R hip pitch
-        5: +1,    # R hip roll/abduct
-        20: -1,   # L hip roll/abduct
-        21: +1,   # L hip pitch
-        23: +1,   # L ankle pitch
-        24: -1,   # L ankle roll
+        17: +1,   # R ankle roll
+        18: -1,   # R ankle pitch
+        20: -1,   # R hip pitch
+        21: +1,   # R hip roll/abduct
+        12: -1,   # L hip roll/abduct
+        13: +1,   # L hip pitch
+        15: +1,   # L ankle pitch
+        16: -1,   # L ankle roll
     }
 
     def __init__(self, config: Optional[BalanceConfig] = None) -> None:
@@ -122,15 +122,15 @@ class IMUBalanceController:
         left_w, right_w = self._support_weights(support_leg)
         corrected = dict(pose)
 
-        self._add_joint_deg(corrected, 2, right_w * cfg.pitch_ankle_gain * pitch_corr)
-        self._add_joint_deg(corrected, 23, left_w * cfg.pitch_ankle_gain * pitch_corr)
-        self._add_joint_deg(corrected, 4, right_w * cfg.pitch_hip_gain * pitch_corr)
-        self._add_joint_deg(corrected, 21, left_w * cfg.pitch_hip_gain * pitch_corr)
+        self._add_joint_deg(corrected, 18, right_w * cfg.pitch_ankle_gain * pitch_corr)
+        self._add_joint_deg(corrected, 15, left_w * cfg.pitch_ankle_gain * pitch_corr)
+        self._add_joint_deg(corrected, 20, right_w * cfg.pitch_hip_gain * pitch_corr)
+        self._add_joint_deg(corrected, 13, left_w * cfg.pitch_hip_gain * pitch_corr)
 
-        self._add_joint_deg(corrected, 1, right_w * cfg.roll_ankle_gain * roll_corr)
-        self._add_joint_deg(corrected, 24, left_w * cfg.roll_ankle_gain * roll_corr)
-        self._add_joint_deg(corrected, 5, right_w * cfg.roll_hip_gain * roll_corr)
-        self._add_joint_deg(corrected, 20, left_w * cfg.roll_hip_gain * roll_corr)
+        self._add_joint_deg(corrected, 17, right_w * cfg.roll_ankle_gain * roll_corr)
+        self._add_joint_deg(corrected, 16, left_w * cfg.roll_ankle_gain * roll_corr)
+        self._add_joint_deg(corrected, 21, right_w * cfg.roll_hip_gain * roll_corr)
+        self._add_joint_deg(corrected, 12, left_w * cfg.roll_hip_gain * roll_corr)
 
         return corrected
 

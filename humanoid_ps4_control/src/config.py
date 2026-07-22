@@ -44,48 +44,25 @@ GAIT = {
     "stop_extra_steps": 4,
 }
 
-# Internal joint IDs are kept stable so gait, balance, get-up and vision share
-# one calibrated pose model. Backends translate them to the physical channels
-# on the 32-servo controller immediately before transmission.
-SERVO_CHANNELS = {
-    19: 9,   # Left elbow
-    18: 10,  # Left upper arm lift
-    17: 11,  # Left shoulder
-    20: 12,  # Left hip roll/abduction
-    21: 13,  # Left hip pitch
-    22: 14,  # Left knee
-    23: 15,  # Left ankle pitch
-    24: 16,  # Left foot / ankle roll
-    1: 17,   # Right foot / ankle roll
-    2: 18,   # Right ankle pitch
-    3: 19,   # Right knee
-    4: 20,   # Right hip pitch
-    5: 21,   # Right hip roll/abduction
-    8: 22,   # Right shoulder
-    7: 23,   # Right upper arm lift
-    6: 24,   # Right elbow
-    16: 25,  # Head
-}
-
-# --- Calibrated standing pulse widths (internal joint IDs) ---
+# --- Calibrated standing pulse widths ---
 STANDING = {
-    1: 1500,    # Right ankle roll
-    2: 1500,    # Right ankle pitch
-    3: 1500,    # Right knee
-    4: 1500,    # Right hip pitch, standing forward bias
-    5: 1500,    # Right hip roll/abduction
-    6: 1500,    # Right elbow
-    7: 500,     # Right upper arm down
-    8: 1470,    # Right shoulder swing
-    16: 1500,   # Head
-    17: 1500,   # Left shoulder swing
-    18: 2450,   # Left upper arm down
-    19: 1500,   # Left elbow
-    20: 1500,   # Left hip roll/abduction
-    21: 1500,   # Left hip pitch, standing forward bias
-    22: 1500,   # Left knee
-    23: 1500,   # Left ankle pitch
-    24: 1500,   # Left ankle roll
+    9: 1500,    # Left elbow
+    10: 2450,   # Left upper arm down
+    11: 1500,   # Left shoulder swing
+    12: 1500,   # Left hip roll/abduction
+    13: 1500,   # Left hip pitch
+    14: 1500,   # Left knee
+    15: 1500,   # Left ankle pitch
+    16: 1500,   # Left ankle roll / foot
+    17: 1500,   # Right ankle roll / foot
+    18: 1500,   # Right ankle pitch
+    19: 1500,   # Right knee
+    20: 1500,   # Right hip pitch
+    21: 1500,   # Right hip roll/abduction
+    22: 1470,   # Right shoulder swing
+    23: 500,    # Right upper arm down
+    24: 1500,   # Right elbow
+    25: 1500,   # Head
 }
 
 # --- Calibrated standing joint angles ---
@@ -103,16 +80,16 @@ STAND_ANG = {
 
 # --- Direction configuration per servo ---
 DIR = {
-    1: -1,
-    2: -1,
-    3: -1,
-    4: -1,
-    5: -1,
-    20: +1,
-    21: +1,
-    22: +1,
-    23: +1,
-    24: +1,
+    12: +1,
+    13: +1,
+    14: +1,
+    15: +1,
+    16: +1,
+    17: -1,
+    18: -1,
+    19: -1,
+    20: -1,
+    21: -1,
 }
 
 PWM_PER_DEG = 2000.0 / 180.0

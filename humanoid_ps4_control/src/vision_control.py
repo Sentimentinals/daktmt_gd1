@@ -7,7 +7,7 @@ from typing import Optional, Sequence, cast
 from .config import PWM_PER_DEG, STANDING
 
 
-ARM_IDS = (6, 7, 8, 17, 18, 19)
+ARM_IDS = (9, 10, 11, 22, 23, 24)
 CONTROLLED_IDS = tuple(STANDING)
 NOSE, LEFT_EAR, RIGHT_EAR = 0, 7, 8
 LEFT_SHOULDER, RIGHT_SHOULDER = 11, 12
@@ -151,17 +151,17 @@ class VisionBodyController:
         left_arm = self._points(source, LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST)
         if left_arm is not None:
             left_lift, left_sweep, left_elbow = self._arm_values(*left_arm, up, lateral)
-            target[18] = self._clamp_servo(18, STANDING[18] - round(left_lift * self.lift_pwm))
-            target[17] = self._clamp_servo(17, STANDING[17] + round(left_sweep * self.shoulder_pwm))
-            target[19] = self._clamp_servo(19, STANDING[19] - round(left_elbow * self.elbow_pwm))
+            target[10] = self._clamp_servo(10, STANDING[10] - round(left_lift * self.lift_pwm))
+            target[11] = self._clamp_servo(11, STANDING[11] + round(left_sweep * self.shoulder_pwm))
+            target[9] = self._clamp_servo(9, STANDING[9] - round(left_elbow * self.elbow_pwm))
             visible_parts.append("left_arm")
 
         right_arm = self._points(source, RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST)
         if right_arm is not None:
             right_lift, right_sweep, right_elbow = self._arm_values(*right_arm, up, lateral)
-            target[7] = self._clamp_servo(7, STANDING[7] + round(right_lift * self.lift_pwm))
-            target[8] = self._clamp_servo(8, STANDING[8] + round(right_sweep * self.shoulder_pwm))
-            target[6] = self._clamp_servo(6, STANDING[6] + round(right_elbow * self.elbow_pwm))
+            target[23] = self._clamp_servo(23, STANDING[23] + round(right_lift * self.lift_pwm))
+            target[22] = self._clamp_servo(22, STANDING[22] + round(right_sweep * self.shoulder_pwm))
+            target[24] = self._clamp_servo(24, STANDING[24] + round(right_elbow * self.elbow_pwm))
             visible_parts.append("right_arm")
 
         head_points = self._points(source, NOSE, LEFT_EAR, RIGHT_EAR)
@@ -172,9 +172,9 @@ class VisionBodyController:
                 self._dot(self._sub(nose, ear_mid), lateral) / max(0.05, shoulder_width * 0.35),
                 0.12,
             )
-            target[16] = self._clamp_servo(
-                16,
-                STANDING[16] + round(self._clamp_unit(head_offset) * self.head_pwm),
+            target[25] = self._clamp_servo(
+                25,
+                STANDING[25] + round(self._clamp_unit(head_offset) * self.head_pwm),
             )
             visible_parts.append("head")
 
@@ -200,12 +200,12 @@ class VisionBodyController:
                     hip_delta = round(self.squat_deg * 0.5 * PWM_PER_DEG * squat)
                     knee_delta = round(self.squat_deg * PWM_PER_DEG * squat)
                     ankle_pwm = round(self.squat_deg * 0.5 * PWM_PER_DEG * squat)
-                    target[4] = self._clamp_servo(4, STANDING[4] - hip_delta)
-                    target[3] = self._clamp_servo(3, STANDING[3] - knee_delta)
-                    target[2] = self._clamp_servo(2, STANDING[2] - ankle_pwm)
-                    target[21] = self._clamp_servo(21, STANDING[21] + hip_delta)
-                    target[22] = self._clamp_servo(22, STANDING[22] + knee_delta)
-                    target[23] = self._clamp_servo(23, STANDING[23] + ankle_pwm)
+                    target[20] = self._clamp_servo(20, STANDING[20] - hip_delta)
+                    target[19] = self._clamp_servo(19, STANDING[19] - knee_delta)
+                    target[18] = self._clamp_servo(18, STANDING[18] - ankle_pwm)
+                    target[13] = self._clamp_servo(13, STANDING[13] + hip_delta)
+                    target[14] = self._clamp_servo(14, STANDING[14] + knee_delta)
+                    target[15] = self._clamp_servo(15, STANDING[15] + ankle_pwm)
                 visible_parts.append("legs")
 
         if not visible_parts:
@@ -271,23 +271,23 @@ class VisionBodyController:
     @staticmethod
     def _clamp_servo(sid: int, value: int) -> int:
         limits = {
-            1: (1400, 1600),
-            2: (1380, 1500),
-            3: (1280, 1500),
-            4: (1380, 1500),
-            5: (1400, 1600),
-            6: (1500, 1760),
-            7: (500, 1320),
-            8: (1050, 1890),
-            16: (1320, 1680),
-            17: (1080, 1920),
-            18: (1630, 2450),
-            19: (1240, 1500),
-            20: (1400, 1600),
-            21: (1500, 1620),
-            22: (1500, 1720),
-            23: (1500, 1620),
-            24: (1400, 1600),
+            9: (1240, 1500),
+            10: (1630, 2450),
+            11: (1080, 1920),
+            12: (1400, 1600),
+            13: (1500, 1620),
+            14: (1500, 1720),
+            15: (1500, 1620),
+            16: (1400, 1600),
+            17: (1400, 1600),
+            18: (1380, 1500),
+            19: (1280, 1500),
+            20: (1380, 1500),
+            21: (1400, 1600),
+            22: (1050, 1890),
+            23: (500, 1320),
+            24: (1500, 1760),
+            25: (1320, 1680),
         }
         low, high = limits.get(sid, (500, 2500))
         return max(low, min(high, int(value)))
