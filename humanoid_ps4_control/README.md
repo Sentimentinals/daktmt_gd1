@@ -14,6 +14,10 @@ src/sensors.py         BNO055 + FSR tay reader qua ESP32 USB serial
 POWER_SENSOR_SETUP.md  Huong dan wiring nguon va sensor an toan
 ```
 
+Kenh servo tren board: ben trai `9..16` (khuyu tay den ban chan), ben phai
+`17..24` (ban chan den khuyu tay), dau `25`. Bang remap nam trong
+`SERVO_CHANNELS` cua `src/config.py`.
+
 ## Cai dat
 
 Tren PC hoac Raspberry Pi:

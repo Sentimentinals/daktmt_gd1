@@ -44,7 +44,30 @@ GAIT = {
     "stop_extra_steps": 4,
 }
 
-# --- Calibrated standing pulse widths ---
+# Internal joint IDs are kept stable so gait, balance, get-up and vision share
+# one calibrated pose model. Backends translate them to the physical channels
+# on the 32-servo controller immediately before transmission.
+SERVO_CHANNELS = {
+    19: 9,   # Left elbow
+    18: 10,  # Left upper arm lift
+    17: 11,  # Left shoulder
+    20: 12,  # Left hip roll/abduction
+    21: 13,  # Left hip pitch
+    22: 14,  # Left knee
+    23: 15,  # Left ankle pitch
+    24: 16,  # Left foot / ankle roll
+    1: 17,   # Right foot / ankle roll
+    2: 18,   # Right ankle pitch
+    3: 19,   # Right knee
+    4: 20,   # Right hip pitch
+    5: 21,   # Right hip roll/abduction
+    8: 22,   # Right shoulder
+    7: 23,   # Right upper arm lift
+    6: 24,   # Right elbow
+    16: 25,  # Head
+}
+
+# --- Calibrated standing pulse widths (internal joint IDs) ---
 STANDING = {
     1: 1500,    # Right ankle roll
     2: 1500,    # Right ankle pitch

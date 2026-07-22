@@ -5,13 +5,24 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
+from .config import SERVO_CHANNELS
+
 
 Pose = Dict[int, int]
 
 
+def _physical_pose(pose: Pose) -> Pose:
+    """Translate calibrated internal joint IDs to servo-controller channels."""
+    unknown = set(pose) - set(SERVO_CHANNELS)
+    if unknown:
+        raise ValueError(f"No physical servo channel configured for joint IDs: {sorted(unknown)}")
+    return {SERVO_CHANNELS[sid]: pulse for sid, pulse in pose.items()}
+
+
 def _build_rt_command(pose: Pose, duration_ms: int = 1000) -> str:
-    """Build one RTrobot command: #1P1500#2P1500...T40D0."""
-    parts = [f"#{sid}P{pulse}" for sid, pulse in sorted(pose.items())]
+    """Build one RTrobot command using physical controller channels."""
+    physical = _physical_pose(pose)
+    parts = [f"#{sid}P{pulse}" for sid, pulse in sorted(physical.items())]
     return "".join(parts) + f"T{duration_ms}D0"
 
 
@@ -152,14 +163,15 @@ class CsvLogBackend:
             raise RuntimeError("CsvLogBackend is not open. Call open() first.")
 
         timestamp = round(time.time() - self._start_time, 4)
+        physical = _physical_pose(pose)
         if self._writer is None:
-            servo_cols = [f"servo_{sid}" for sid in sorted(pose.keys())]
+            servo_cols = [f"servo_{sid}" for sid in sorted(physical)]
             self._fieldnames = ["timestamp_s", "duration_ms"] + servo_cols
             self._writer = csv.DictWriter(self._file, fieldnames=self._fieldnames)
             self._writer.writeheader()
 
         row: Dict[str, float | int] = {"timestamp_s": timestamp, "duration_ms": duration_ms}
-        for sid, pulse in sorted(pose.items()):
+        for sid, pulse in sorted(physical.items()):
             row[f"servo_{sid}"] = pulse
 
         self._writer.writerow(row)
