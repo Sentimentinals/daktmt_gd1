@@ -177,7 +177,6 @@ class Config:
     vision_squat_deg: float = 16.0
     vision_leg_lift_threshold_ratio: float = 0.30
     vision_leg_lift_height_mm: float = 34.0
-    vision_fsr_stable_frames: int = 3
 
     # --- Autonomous Terrain Vision ---
     terrain_camera_width: int = 480
@@ -198,9 +197,17 @@ class Config:
     terrain_max_step_elevation_mm: float = 18.0
     terrain_allow_stairs_down: bool = True
     terrain_emergency_tilt_deg: float = 12.0
-    terrain_fsr_invalid_frames: int = 12
-    terrain_touchdown_min_load: float = 0.04
-    terrain_touchdown_invalid_frames: int = 8
+
+    # --- Handshake ---
+    handshake_offer_s: float = 0.75
+    handshake_contact_timeout_s: float = 8.0
+    handshake_release_timeout_s: float = 3.0
+    handshake_frequency_hz: float = 2.2
+    handshake_cycles: int = 4
+    handshake_lift_pwm: int = 500
+    handshake_shoulder_pwm: int = 260
+    handshake_elbow_pwm: int = 260
+    handshake_shake_pwm: int = 75
 
     # --- Dance ---
     dance_period: float = 2.4
@@ -242,13 +249,12 @@ class Config:
     sensor_baudrate: int = 115200
     sensor_timeout_s: float = 0.25
     sensor_use_imu: bool = True
-    sensor_use_fsr: bool = True
+    sensor_use_hand_fsr: bool = True
     sensor_debug: bool = False
-    fsr_invert: bool = False
-    fsr_filter_alpha: float = 0.18
-    fsr_left_zero_raw: int = 0
-    fsr_left_full_raw: int = 4095
-    fsr_right_zero_raw: int = 0
-    fsr_right_full_raw: int = 4095
-    fsr_min_total_load: float = 0.08
-    fsr_support_ratio: float = 0.60
+    hand_fsr_invert: bool = False
+    hand_fsr_filter_alpha: float = 0.18
+    hand_fsr_zero_raw: int = 0
+    hand_fsr_full_raw: int = 4095
+    hand_fsr_contact_threshold: float = 0.12
+    hand_fsr_release_threshold: float = 0.06
+    hand_fsr_stable_frames: int = 3

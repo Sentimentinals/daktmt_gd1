@@ -78,7 +78,7 @@ def run_ps4(args: Config) -> None:
     """
     from .ps4_pygame import PS4Reader
     from .walking_engine import DynamicWalkingEngine, SingleSupportTestEngine, STANDING
-    from .arm_dance import ArmDanceEngine
+    from .arm_dance import ArmDanceEngine, HandshakeEngine
     from .getup import GetupEngine
     from .balance import BalanceConfig, IMUBalanceController
     from .sensors import RobotSensorHub
@@ -148,6 +148,21 @@ def run_ps4(args: Config) -> None:
         max_pwm_per_sec=args.dance_max_pwm_per_sec,
         min_step_pwm=args.dance_min_step_pwm,
     )
+    handshake = HandshakeEngine(
+        dt=args.update_ms / 1000.0,
+        offer_s=args.handshake_offer_s,
+        contact_timeout_s=args.handshake_contact_timeout_s,
+        release_timeout_s=args.handshake_release_timeout_s,
+        frequency_hz=args.handshake_frequency_hz,
+        cycles=args.handshake_cycles,
+        lift_pwm=args.handshake_lift_pwm,
+        shoulder_pwm=args.handshake_shoulder_pwm,
+        elbow_pwm=args.handshake_elbow_pwm,
+        shake_pwm=args.handshake_shake_pwm,
+        contact_threshold=args.hand_fsr_contact_threshold,
+        release_threshold=args.hand_fsr_release_threshold,
+        stable_frames=args.hand_fsr_stable_frames,
+    )
     getup = GetupEngine(
         dt=args.update_ms / 1000.0,
         mode=args.getup_mode,
@@ -158,6 +173,7 @@ def run_ps4(args: Config) -> None:
     prev_getup_pressed = False
     prev_getup_back_pressed = False
     prev_single_support_pressed = False
+    prev_handshake_pressed = False
     prev_options_pressed = False
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
@@ -168,24 +184,23 @@ def run_ps4(args: Config) -> None:
     sensor_snapshot = None
     last_balance_t = time.monotonic()
     balance_has_valid_imu = False
+    previous_handshake_status = handshake.status
     if args.sensor_feedback:
         sensor_hub = RobotSensorHub(
             port=args.sensor_port,
             baudrate=args.sensor_baudrate,
             timeout_s=args.sensor_timeout_s,
             use_imu=args.sensor_use_imu,
-            use_fsr=args.sensor_use_fsr,
+            use_hand_fsr=args.sensor_use_hand_fsr,
             imu_roll_sign=args.imu_roll_sign,
             imu_pitch_sign=args.imu_pitch_sign,
             imu_yaw_sign=args.imu_yaw_sign,
             imu_vertical_mount=args.imu_vertical_mount,
             imu_board_face_sign=args.imu_board_face_sign,
-            fsr_invert=args.fsr_invert,
-            fsr_filter_alpha=args.fsr_filter_alpha,
-            fsr_left_zero_raw=args.fsr_left_zero_raw,
-            fsr_left_full_raw=args.fsr_left_full_raw,
-            fsr_right_zero_raw=args.fsr_right_zero_raw,
-            fsr_right_full_raw=args.fsr_right_full_raw,
+            hand_fsr_invert=args.hand_fsr_invert,
+            hand_fsr_filter_alpha=args.hand_fsr_filter_alpha,
+            hand_fsr_zero_raw=args.hand_fsr_zero_raw,
+            hand_fsr_full_raw=args.hand_fsr_full_raw,
         )
         sensor_hub.open()
         print(f"[main] Sensor feedback enabled: ESP32 serial port={args.sensor_port}.")
@@ -195,7 +210,8 @@ def run_ps4(args: Config) -> None:
 
     print(
         "\n[PS4 Mode - Real-time ZMP] W/S walk, A/D side, arrows also work, stick-X turn, J/K side, "
-        "X single support, L1/L/M dance, R1/G get-up, B get-up back, C stop, Q quit\n"
+        "X single support, Square/V handshake, L1/L/M dance, R1/G get-up, "
+        "B get-up back, C stop, Q quit\n"
     )
 
     try:
@@ -242,12 +258,12 @@ def run_ps4(args: Config) -> None:
 
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
-                        if args.sensor_use_fsr and sensor_snapshot.foot_load is not None:
+                        if args.sensor_use_hand_fsr and sensor_snapshot.hand_force is not None:
                             if args.sensor_debug:
-                                load = sensor_snapshot.foot_load
+                                hand = sensor_snapshot.hand_force
                                 print(
-                                    f"[sensor] FSR L={load.left:.3f} R={load.right:.3f} "
-                                    f"ratio L={load.left_ratio:.2f} R={load.right_ratio:.2f}"
+                                    f"[sensor] hand force={hand.force:.3f} "
+                                    f"voltage={hand.voltage:.3f}V raw={hand.raw}"
                                 )
     
                     axis_forward_cmd = state.signed_axis(args.ps4_forward_axis, args.ps4_forward_sign)
@@ -282,6 +298,7 @@ def run_ps4(args: Config) -> None:
                         prev_stop_pressed = True
                         engine.reset()
                         arm_dance.reset()
+                        handshake.reset()
                         getup.reset()
                         single_support.stop()
                         standing_hold_active = True
@@ -299,6 +316,7 @@ def run_ps4(args: Config) -> None:
                     if getup_pressed and not prev_getup_pressed:
                         engine.reset()
                         arm_dance.reset()
+                        handshake.reset()
                         single_support.stop()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode=args.getup_mode)
@@ -309,6 +327,7 @@ def run_ps4(args: Config) -> None:
                     if getup_back_pressed and not prev_getup_back_pressed:
                         engine.reset()
                         arm_dance.reset()
+                        handshake.reset()
                         single_support.stop()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode="back")
@@ -317,6 +336,7 @@ def run_ps4(args: Config) -> None:
     
                     l1_pressed = state.button(reader.BTN_L1)
                     if l1_pressed and not prev_l1_pressed and not getup.running:
+                        handshake.reset()
                         enabled = arm_dance.toggle()
                         engine.reset()
                         single_support.stop()
@@ -324,10 +344,32 @@ def run_ps4(args: Config) -> None:
                         print("[main] L1 arm dance ON." if enabled else "[main] L1 arm dance OFF - returning to STANDING.")
                     prev_l1_pressed = l1_pressed
 
+                    handshake_pressed = state.button(reader.BTN_SQUARE)
+                    if handshake_pressed and not prev_handshake_pressed and not getup.running:
+                        if handshake.running:
+                            handshake.cancel()
+                            print("[main] Square/V handshake canceled - returning to STANDING.")
+                        elif not standing_hold_active or motion_requested or arm_dance.running or single_support.running:
+                            print("[main] Handshake requires the robot to be stationary in STANDING.")
+                        elif sensor_snapshot is None or sensor_snapshot.hand_force is None:
+                            print("[main] Handshake unavailable: hand FSR data is missing.")
+                        elif sensor_snapshot.hand_force.force >= args.hand_fsr_contact_threshold:
+                            print("[main] Handshake unavailable: release the hand FSR first.")
+                        else:
+                            engine.reset()
+                            arm_dance.reset()
+                            single_support.stop()
+                            handshake.start(last_pose)
+                            standing_hold_active = False
+                            previous_handshake_status = handshake.status
+                            print("[main] Square/V handshake started. Waiting for a hand grip.")
+                    prev_handshake_pressed = handshake_pressed
+
                     single_support_pressed = state.button(reader.BTN_CROSS)
                     if single_support_pressed and not prev_single_support_pressed and not getup.running:
                         engine.reset()
                         arm_dance.reset()
+                        handshake.reset()
                         if single_support.running:
                             single_support.stop()
                             standing_hold_active = True
@@ -344,6 +386,7 @@ def run_ps4(args: Config) -> None:
                         print("[main] Triangle/E pressed. Resetting walking engine and arm dance.")
                         engine.reset()
                         arm_dance.reset()
+                        handshake.reset()
                         getup.reset()
                         single_support.stop()
                         standing_hold_active = True
@@ -364,6 +407,22 @@ def run_ps4(args: Config) -> None:
                             engine.reset()
                             standing_hold_active = True
                             print("[main] Get-up finished. Holding exact STANDING until movement input.")
+                    elif handshake.running:
+                        vy = 0.0
+                        turn_cmd = 0.0
+                        side_cmd = 0.0
+                        motion_requested = False
+                        hand_force = (
+                            sensor_snapshot.hand_force.force
+                            if sensor_snapshot is not None and sensor_snapshot.hand_force is not None
+                            else None
+                        )
+                        pose = handshake.update(hand_force)
+                        if handshake.status != previous_handshake_status:
+                            print(f"[main] Handshake: {handshake.status}.")
+                            previous_handshake_status = handshake.status
+                        if not handshake.running:
+                            standing_hold_active = True
                     elif arm_dance.running:
                         vy = 0.0
                         turn_cmd = 0.0
@@ -398,12 +457,6 @@ def run_ps4(args: Config) -> None:
                             args.imu_min_accel_cal,
                         ):
                             support_leg = single_support.support_leg if single_support.running else engine.support_leg
-                            foot_load = sensor_snapshot.foot_load if args.sensor_use_fsr else None
-                            if foot_load is not None and foot_load.total >= args.fsr_min_total_load:
-                                if foot_load.left_ratio >= args.fsr_support_ratio:
-                                    support_leg = "left"
-                                elif foot_load.right_ratio >= args.fsr_support_ratio:
-                                    support_leg = "right"
                             pose = balance.apply(
                                 pose,
                                 roll_deg=reading.roll_deg,

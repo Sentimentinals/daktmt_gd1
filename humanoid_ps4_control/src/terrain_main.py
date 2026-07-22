@@ -66,12 +66,9 @@ def _angle_error(value: float, reference: float) -> float:
 
 def _sensor_ready(snapshot: SensorSnapshot, args: Config) -> bool:
     imu = snapshot.imu
-    load = snapshot.foot_load
     return bool(
         imu is not None
         and imu.balance_ready(args.imu_min_gyro_cal, args.imu_min_accel_cal)
-        and load is not None
-        and load.total >= args.fsr_min_total_load
     )
 
 
@@ -161,18 +158,12 @@ def run_terrain(args: Config) -> None:
         baudrate=args.sensor_baudrate,
         timeout_s=args.sensor_timeout_s,
         use_imu=True,
-        use_fsr=True,
+        use_hand_fsr=False,
         imu_roll_sign=args.imu_roll_sign,
         imu_pitch_sign=args.imu_pitch_sign,
         imu_yaw_sign=args.imu_yaw_sign,
         imu_vertical_mount=args.imu_vertical_mount,
         imu_board_face_sign=args.imu_board_face_sign,
-        fsr_invert=args.fsr_invert,
-        fsr_filter_alpha=args.fsr_filter_alpha,
-        fsr_left_zero_raw=args.fsr_left_zero_raw,
-        fsr_left_full_raw=args.fsr_left_full_raw,
-        fsr_right_zero_raw=args.fsr_right_zero_raw,
-        fsr_right_full_raw=args.fsr_right_full_raw,
     )
     sensor_hub.open()
 
@@ -198,8 +189,6 @@ def run_terrain(args: Config) -> None:
     reference: Optional[tuple[float, float]] = None
     balance: Optional[IMUBalanceController] = None
     last_balance_t = time.monotonic()
-    support_invalid_frames = 0
-    touchdown_invalid_frames = 0
 
     try:
         camera.start()
@@ -254,7 +243,7 @@ def run_terrain(args: Config) -> None:
                     elif reference is None:
                         print("[terrain] Cannot arm: IMU reference is unavailable.")
                     elif not sensors_ok:
-                        print("[terrain] Cannot arm: IMU/FSR feedback is not ready.")
+                        print("[terrain] Cannot arm: IMU feedback is not ready.")
                     elif not camera_ok or profile is None:
                         print("[terrain] Cannot arm: terrain is not stable or camera calibration is incomplete.")
                     else:
@@ -268,8 +257,6 @@ def run_terrain(args: Config) -> None:
                     armed = False
                     fault_latched = False
                     fault_reason = ""
-                    support_invalid_frames = 0
-                    touchdown_invalid_frames = 0
                     engine.reset()
                     last_pose = dict(STANDING)
                     backend.send(STANDING, duration_ms=800, force=True)
@@ -277,12 +264,11 @@ def run_terrain(args: Config) -> None:
                 previous_stop = stop_pressed
 
                 if armed and (not camera_ok or not sensors_ok):
-                    fault_reason = "CAMERA LOST" if not camera_ok else "IMU/FSR LOST"
+                    fault_reason = "CAMERA LOST" if not camera_ok else "IMU LOST"
                     fault_latched = True
                     armed = False
 
                 imu = snapshot.imu
-                load = snapshot.foot_load
                 if armed and reference is not None and imu is not None:
                     roll_error = abs(_angle_error(imu.roll_deg, reference[0]))
                     pitch_error = abs(_angle_error(imu.pitch_deg, reference[1]))
@@ -290,16 +276,6 @@ def run_terrain(args: Config) -> None:
                         fault_reason = f"TILT {max(roll_error, pitch_error):.1f} DEG"
                         fault_latched = True
                         armed = False
-
-                if armed and load is not None and engine.support_leg in ("left", "right"):
-                    support_ratio = load.left_ratio if engine.support_leg == "left" else load.right_ratio
-                    support_invalid_frames = support_invalid_frames + 1 if support_ratio < 0.42 else 0
-                    if support_invalid_frames >= args.terrain_fsr_invalid_frames:
-                        fault_reason = "SUPPORT FOOT LOST"
-                        fault_latched = True
-                        armed = False
-                else:
-                    support_invalid_frames = 0
 
                 if fault_latched:
                     pose = dict(last_pose)
@@ -314,39 +290,11 @@ def run_terrain(args: Config) -> None:
                         status = profile.label
                     pose = engine.update(command, step_elevation_mm=step_elevation)
 
-                    if (
-                        armed
-                        and load is not None
-                        and abs(engine.last_step_elevation) > 0.05
-                        and engine.last_phase_mode == "land"
-                        and engine.last_landing_progress >= 0.78
-                        and engine.last_swing_leg in ("left", "right")
-                    ):
-                        swing_load = load.left if engine.last_swing_leg == "left" else load.right
-                        touchdown_invalid_frames = (
-                            touchdown_invalid_frames + 1
-                            if swing_load < args.terrain_touchdown_min_load
-                            else 0
-                        )
-                        if touchdown_invalid_frames >= args.terrain_touchdown_invalid_frames:
-                            fault_reason = f"NO {engine.last_swing_leg.upper()} FOOT CONTACT"
-                            fault_latched = True
-                            armed = False
-                            pose = dict(last_pose)
-                            status = f"FAULT: {fault_reason}"
-                    else:
-                        touchdown_invalid_frames = 0
-
                     if balance is not None and imu is not None:
                         now = time.monotonic()
                         dt = now - last_balance_t
                         last_balance_t = now
                         support_leg = engine.support_leg
-                        if load is not None and load.total >= args.fsr_min_total_load:
-                            if load.left_ratio >= args.fsr_support_ratio:
-                                support_leg = "left"
-                            elif load.right_ratio >= args.fsr_support_ratio:
-                                support_leg = "right"
                         pose = balance.apply(
                             pose,
                             roll_deg=imu.roll_deg,
@@ -367,7 +315,7 @@ def run_terrain(args: Config) -> None:
                     confidence = round(observation.confidence * 100)
                     label = font.render(f"{state_label}  {status}", True, (245, 90, 90) if fault_latched else (70, 235, 165))
                     detail = small_font.render(
-                        f"vision {confidence}%  IMU/FSR {'OK' if sensors_ok else 'WAIT'}",
+                        f"vision {confidence}%  IMU {'OK' if sensors_ok else 'WAIT'}",
                         True,
                         (235, 238, 242),
                     )

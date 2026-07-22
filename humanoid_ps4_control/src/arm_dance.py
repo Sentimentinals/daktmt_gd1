@@ -194,3 +194,134 @@ class ArmDanceEngine:
 
         self.current_pose = self._filter_pose(loop_pose)
         return self.current_pose
+
+
+class HandshakeEngine:
+    """Offer the right hand, detect a grip, shake, then return to standing."""
+
+    def __init__(
+        self,
+        dt: float = 0.04,
+        offer_s: float = 0.75,
+        contact_timeout_s: float = 8.0,
+        release_timeout_s: float = 3.0,
+        frequency_hz: float = 2.2,
+        cycles: int = 4,
+        lift_pwm: int = 500,
+        shoulder_pwm: int = 260,
+        elbow_pwm: int = 260,
+        shake_pwm: int = 75,
+        contact_threshold: float = 0.12,
+        release_threshold: float = 0.06,
+        stable_frames: int = 3,
+    ) -> None:
+        self.dt = max(0.01, dt)
+        self.offer_s = max(self.dt, offer_s)
+        self.contact_timeout_s = max(self.dt, contact_timeout_s)
+        self.release_timeout_s = max(self.dt, release_timeout_s)
+        self.frequency_hz = max(0.5, frequency_hz)
+        self.cycles = max(1, cycles)
+        self.lift_pwm = abs(lift_pwm)
+        self.shoulder_pwm = shoulder_pwm
+        self.elbow_pwm = elbow_pwm
+        self.shake_pwm = abs(shake_pwm)
+        self.contact_threshold = max(0.0, min(1.0, contact_threshold))
+        self.release_threshold = max(0.0, min(self.contact_threshold, release_threshold))
+        self.stable_frames = max(1, stable_frames)
+        self.reset()
+
+    @property
+    def running(self) -> bool:
+        return self.mode != "off"
+
+    @property
+    def status(self) -> str:
+        return {
+            "off": "OFF",
+            "offering": "OFFERING HAND",
+            "waiting": "WAITING FOR GRIP",
+            "shaking": "SHAKING",
+            "releasing": "WAITING FOR RELEASE",
+            "returning": "RETURNING",
+        }[self.mode]
+
+    def reset(self) -> None:
+        self.mode = "off"
+        self.elapsed_s = 0.0
+        self.contact_frames = 0
+        self.release_frames = 0
+        self.start_pose = dict(STANDING)
+        self.current_pose = dict(STANDING)
+
+    def start(self, current_pose: dict[int, int] | None = None) -> None:
+        self.mode = "offering"
+        self.elapsed_s = 0.0
+        self.contact_frames = 0
+        self.release_frames = 0
+        self.start_pose = dict(STANDING if current_pose is None else current_pose)
+        self.current_pose = dict(self.start_pose)
+
+    def cancel(self) -> None:
+        if self.running:
+            self._enter_returning()
+
+    def _offer_pose(self, shake_offset: float = 0.0) -> dict[int, int]:
+        pose = dict(STANDING)
+        pose[7] = _clamp_pwm(STANDING[7] + self.lift_pwm + shake_offset)
+        pose[8] = _clamp_pwm(STANDING[8] + self.shoulder_pwm)
+        pose[6] = _clamp_pwm(STANDING[6] + self.elbow_pwm - shake_offset * 0.25)
+        return pose
+
+    def _enter_returning(self) -> None:
+        self.mode = "returning"
+        self.elapsed_s = 0.0
+        self.start_pose = dict(self.current_pose)
+
+    def update(self, hand_force: float | None) -> dict[int, int]:
+        if self.mode == "off":
+            return dict(STANDING)
+
+        self.elapsed_s += self.dt
+        offer_pose = self._offer_pose()
+
+        if self.mode == "offering":
+            self.current_pose = _blend_pose(self.start_pose, offer_pose, self.elapsed_s / self.offer_s)
+            if self.elapsed_s >= self.offer_s:
+                self.mode = "waiting"
+                self.elapsed_s = 0.0
+            return dict(self.current_pose)
+
+        if self.mode == "waiting":
+            self.current_pose = offer_pose
+            self.contact_frames = self.contact_frames + 1 if (
+                hand_force is not None and hand_force >= self.contact_threshold
+            ) else 0
+            if self.contact_frames >= self.stable_frames:
+                self.mode = "shaking"
+                self.elapsed_s = 0.0
+            elif self.elapsed_s >= self.contact_timeout_s:
+                self._enter_returning()
+            return dict(self.current_pose)
+
+        if self.mode == "shaking":
+            shake_duration_s = self.cycles / self.frequency_hz
+            phase = 2.0 * math.pi * self.frequency_hz * min(self.elapsed_s, shake_duration_s)
+            self.current_pose = self._offer_pose(self.shake_pwm * math.sin(phase))
+            if self.elapsed_s >= shake_duration_s:
+                self.mode = "releasing"
+                self.elapsed_s = 0.0
+            return dict(self.current_pose)
+
+        if self.mode == "releasing":
+            self.current_pose = offer_pose
+            self.release_frames = self.release_frames + 1 if (
+                hand_force is not None and hand_force <= self.release_threshold
+            ) else 0
+            if self.release_frames >= self.stable_frames or self.elapsed_s >= self.release_timeout_s:
+                self._enter_returning()
+            return dict(self.current_pose)
+
+        self.current_pose = _blend_pose(self.start_pose, STANDING, self.elapsed_s / self.offer_s)
+        if self.elapsed_s >= self.offer_s:
+            self.reset()
+        return dict(self.current_pose)

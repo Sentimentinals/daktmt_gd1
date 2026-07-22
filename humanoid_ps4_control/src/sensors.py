@@ -10,32 +10,17 @@ from .imu_bno055 import IMUReading, parse_serial_imu_line
 
 
 @dataclass(frozen=True)
-class FootLoadReading:
-    left: float
-    right: float
-    left_voltage: float = 0.0
-    right_voltage: float = 0.0
-    left_raw: Optional[int] = None
-    right_raw: Optional[int] = None
+class HandForceReading:
+    force: float
+    voltage: float = 0.0
+    raw: Optional[int] = None
     sensor_time_ms: int = 0
-
-    @property
-    def total(self) -> float:
-        return max(0.0, self.left + self.right)
-
-    @property
-    def left_ratio(self) -> float:
-        return 0.5 if self.total <= 1e-6 else self.left / self.total
-
-    @property
-    def right_ratio(self) -> float:
-        return 0.5 if self.total <= 1e-6 else self.right / self.total
 
 
 @dataclass(frozen=True)
 class SensorSnapshot:
     imu: Optional[IMUReading]
-    foot_load: Optional[FootLoadReading]
+    hand_force: Optional[HandForceReading]
 
 
 class LowPass:
@@ -51,63 +36,46 @@ class LowPass:
         self.value = None
 
 
-def parse_serial_fsr_line(
+def parse_serial_hand_line(
     line: str,
     invert: bool = False,
-    left_zero_raw: int = 0,
-    left_full_raw: int = 4095,
-    right_zero_raw: int = 0,
-    right_full_raw: int = 4095,
-) -> Optional[FootLoadReading]:
+    zero_raw: int = 0,
+    full_raw: int = 4095,
+) -> Optional[HandForceReading]:
     fields = [field.strip() for field in line.strip().split(",")]
-    if not fields or fields[0] != "F":
+    if not fields or fields[0] != "H":
         return None
 
     values = fields[1:]
     sensor_time_ms = 0
-    if len(values) in {3, 5, 7}:
+    if len(values) == 4:
         try:
             sensor_time_ms = int(values[0])
         except ValueError:
             return None
         values = values[1:]
-    if len(values) < 2:
+    if len(values) < 1:
         return None
 
     try:
-        left = max(0.0, min(1.0, float(values[0])))
-        right = max(0.0, min(1.0, float(values[1])))
-        left_voltage = float(values[2]) if len(values) >= 3 else left * 3.3
-        right_voltage = float(values[3]) if len(values) >= 4 else right * 3.3
-        left_raw = int(values[4]) if len(values) >= 5 else None
-        right_raw = int(values[5]) if len(values) >= 6 else None
+        force = max(0.0, min(1.0, float(values[0])))
+        voltage = float(values[1]) if len(values) >= 2 else force * 3.3
+        raw = int(values[2]) if len(values) >= 3 else None
     except ValueError:
         return None
 
-    if left_raw is not None:
-        left_span = max(1, left_full_raw - left_zero_raw)
-        left = max(0.0, min(1.0, (left_raw - left_zero_raw) / left_span))
-    if right_raw is not None:
-        right_span = max(1, right_full_raw - right_zero_raw)
-        right = max(0.0, min(1.0, (right_raw - right_zero_raw) / right_span))
+    if raw is not None:
+        span = max(1, full_raw - zero_raw)
+        force = max(0.0, min(1.0, (raw - zero_raw) / span))
 
     if invert:
-        left = 1.0 - left
-        right = 1.0 - right
+        force = 1.0 - force
 
-    return FootLoadReading(
-        left,
-        right,
-        left_voltage,
-        right_voltage,
-        left_raw,
-        right_raw,
-        sensor_time_ms,
-    )
+    return HandForceReading(force, voltage, raw, sensor_time_ms)
 
 
 class RobotSensorHub:
-    """Single ESP32 USB sensor stream: Q lines for IMU, F lines for FSR."""
+    """Single ESP32 USB sensor stream: Q lines for IMU, H lines for hand force."""
 
     def __init__(
         self,
@@ -115,36 +83,31 @@ class RobotSensorHub:
         baudrate: int = 115200,
         timeout_s: float = 0.25,
         use_imu: bool = True,
-        use_fsr: bool = False,
+        use_hand_fsr: bool = False,
         imu_roll_sign: float = 1.0,
         imu_pitch_sign: float = 1.0,
         imu_yaw_sign: float = 1.0,
         imu_vertical_mount: bool = True,
         imu_board_face_sign: float = 1.0,
-        fsr_invert: bool = False,
-        fsr_filter_alpha: float = 0.18,
-        fsr_left_zero_raw: int = 0,
-        fsr_left_full_raw: int = 4095,
-        fsr_right_zero_raw: int = 0,
-        fsr_right_full_raw: int = 4095,
+        hand_fsr_invert: bool = False,
+        hand_fsr_filter_alpha: float = 0.18,
+        hand_fsr_zero_raw: int = 0,
+        hand_fsr_full_raw: int = 4095,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout_s = max(0.05, timeout_s)
         self.use_imu = use_imu
-        self.use_fsr = use_fsr
+        self.use_hand_fsr = use_hand_fsr
         self.imu_roll_sign = imu_roll_sign
         self.imu_pitch_sign = imu_pitch_sign
         self.imu_yaw_sign = imu_yaw_sign
         self.imu_vertical_mount = imu_vertical_mount
         self.imu_board_face_sign = 1.0 if imu_board_face_sign >= 0.0 else -1.0
-        self.fsr_invert = fsr_invert
-        self.fsr_left_zero_raw = fsr_left_zero_raw
-        self.fsr_left_full_raw = max(fsr_left_zero_raw + 1, fsr_left_full_raw)
-        self.fsr_right_zero_raw = fsr_right_zero_raw
-        self.fsr_right_full_raw = max(fsr_right_zero_raw + 1, fsr_right_full_raw)
-        self.left_filter = LowPass(fsr_filter_alpha)
-        self.right_filter = LowPass(fsr_filter_alpha)
+        self.hand_fsr_invert = hand_fsr_invert
+        self.hand_fsr_zero_raw = hand_fsr_zero_raw
+        self.hand_fsr_full_raw = max(hand_fsr_zero_raw + 1, hand_fsr_full_raw)
+        self.hand_filter = LowPass(hand_fsr_filter_alpha)
 
         self._serial = None
         self._serial_factory = None
@@ -153,8 +116,8 @@ class RobotSensorHub:
         self._lock = threading.Lock()
         self._imu: Optional[IMUReading] = None
         self._imu_at = 0.0
-        self._fsr: Optional[FootLoadReading] = None
-        self._fsr_at = 0.0
+        self._hand_force: Optional[HandForceReading] = None
+        self._hand_force_at = 0.0
         self._gravity_basis: Optional[
             tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
         ] = None
@@ -195,9 +158,8 @@ class RobotSensorHub:
                 self._serial = None
                 with self._lock:
                     self._imu = None
-                    self._fsr = None
-                    self.left_filter.reset()
-                    self.right_filter.reset()
+                    self._hand_force = None
+                    self.hand_filter.reset()
                 if not self._stop.is_set():
                     self._stop.wait(0.25)
                 continue
@@ -225,37 +187,36 @@ class RobotSensorHub:
                     self._imu_at = now
                 continue
 
-            fsr = (
-                parse_serial_fsr_line(
+            hand_force = (
+                parse_serial_hand_line(
                     line,
-                    invert=self.fsr_invert,
-                    left_zero_raw=self.fsr_left_zero_raw,
-                    left_full_raw=self.fsr_left_full_raw,
-                    right_zero_raw=self.fsr_right_zero_raw,
-                    right_full_raw=self.fsr_right_full_raw,
+                    invert=self.hand_fsr_invert,
+                    zero_raw=self.hand_fsr_zero_raw,
+                    full_raw=self.hand_fsr_full_raw,
                 )
-                if self.use_fsr
+                if self.use_hand_fsr
                 else None
             )
-            if fsr is not None:
+            if hand_force is not None:
                 with self._lock:
-                    self._fsr = FootLoadReading(
-                        self.left_filter.update(fsr.left),
-                        self.right_filter.update(fsr.right),
-                        fsr.left_voltage,
-                        fsr.right_voltage,
-                        fsr.left_raw,
-                        fsr.right_raw,
-                        fsr.sensor_time_ms,
+                    self._hand_force = HandForceReading(
+                        self.hand_filter.update(hand_force.force),
+                        hand_force.voltage,
+                        hand_force.raw,
+                        hand_force.sensor_time_ms,
                     )
-                    self._fsr_at = now
+                    self._hand_force_at = now
 
     def read(self) -> SensorSnapshot:
         now = time.monotonic()
         with self._lock:
             imu = self._imu if self._imu is not None and now - self._imu_at <= self.timeout_s else None
-            fsr = self._fsr if self._fsr is not None and now - self._fsr_at <= self.timeout_s else None
-        return SensorSnapshot(imu=imu, foot_load=fsr)
+            hand_force = (
+                self._hand_force
+                if self._hand_force is not None and now - self._hand_force_at <= self.timeout_s
+                else None
+            )
+        return SensorSnapshot(imu=imu, hand_force=hand_force)
 
     def capture_imu_reference(
         self,

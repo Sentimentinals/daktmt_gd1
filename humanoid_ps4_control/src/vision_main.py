@@ -58,7 +58,6 @@ def run_vision(args: Config) -> None:
         leg_lift_threshold_ratio=args.vision_leg_lift_threshold_ratio,
         min_body_scale=args.vision_min_body_scale,
     )
-    from .sensors import RobotSensorHub
     from .walking_engine import SingleSupportTestEngine, clamp_pose_rate
 
     single_support = SingleSupportTestEngine(
@@ -70,32 +69,11 @@ def run_vision(args: Config) -> None:
         arm_pwm=0,
         ramp_s=args.single_support_ramp_s,
     )
-    sensor_hub = None
-    if args.sensor_feedback and args.sensor_use_fsr:
-        try:
-            sensor_hub = RobotSensorHub(
-                port=args.sensor_port,
-                baudrate=args.sensor_baudrate,
-                timeout_s=args.sensor_timeout_s,
-                use_imu=False,
-                use_fsr=True,
-                fsr_invert=args.fsr_invert,
-                fsr_filter_alpha=args.fsr_filter_alpha,
-                fsr_left_zero_raw=args.fsr_left_zero_raw,
-                fsr_left_full_raw=args.fsr_left_full_raw,
-                fsr_right_zero_raw=args.fsr_right_zero_raw,
-                fsr_right_full_raw=args.fsr_right_full_raw,
-            )
-            sensor_hub.open()
-        except Exception as exc:
-            sensor_hub = None
-            print(f"[vision] FSR unavailable; leg lifting disabled: {exc}")
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
     armed = False
     previous_toggle = False
     last_pose = dict(STANDING)
     active_lifted_leg = None
-    support_ready_frames = 0
     frame_duration_ms = max(args.update_ms, round(1000.0 / max(1, args.vision_fps)))
 
     try:
@@ -116,7 +94,6 @@ def run_vision(args: Config) -> None:
                             controller.reset()
                             single_support.stop()
                             active_lifted_leg = None
-                            support_ready_frames = 0
                             backend.send(STANDING, duration_ms=500, force=True)
                         print("[vision] Mimic ON." if armed else "[vision] Mimic OFF.")
                     previous_toggle = toggle
@@ -131,27 +108,12 @@ def run_vision(args: Config) -> None:
                     if requested_leg != active_lifted_leg:
                         single_support.stop()
                         active_lifted_leg = None
-                        support_ready_frames = 0
                         if requested_leg is not None:
                             support_leg = "right" if requested_leg == "left" else "left"
                             single_support.start(support_leg=support_leg, current_pose=last_pose)
                             active_lifted_leg = requested_leg
 
-                    leg_ready = False
-                    if single_support.running and sensor_hub is not None:
-                        snapshot = sensor_hub.read()
-                        load = snapshot.foot_load
-                        support_valid = False
-                        if load is not None and load.total >= args.fsr_min_total_load:
-                            if single_support.support_leg == "left":
-                                support_valid = load.left_ratio >= args.fsr_support_ratio
-                            else:
-                                support_valid = load.right_ratio >= args.fsr_support_ratio
-                        support_ready_frames = support_ready_frames + 1 if support_valid else 0
-                        leg_ready = support_ready_frames >= max(1, args.vision_fsr_stable_frames)
-                    else:
-                        support_ready_frames = 0
-                    single_support.lift_height = args.vision_leg_lift_height_mm if leg_ready else 0.0
+                    single_support.lift_height = args.vision_leg_lift_height_mm
 
                     if single_support.running:
                         pose = single_support.update()
@@ -168,22 +130,21 @@ def run_vision(args: Config) -> None:
                     preview = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
                     surface = pygame.surfarray.make_surface(preview.swapaxes(0, 1))
                     screen.blit(surface, (0, 0))
-                    if single_support.running and not leg_ready:
-                        status = "SHIFTING WEIGHT"
-                    else:
-                        full_body = all(
-                            part in controller.visible_parts
-                            for part in ("left_arm", "right_arm", "legs")
-                        )
-                        status = (
-                            "FULL BODY"
-                            if armed and controller.tracked and full_body
+                    full_body = all(
+                        part in controller.visible_parts
+                        for part in ("left_arm", "right_arm", "legs")
+                    )
+                    status = (
+                        "FULL BODY"
+                        if armed and controller.tracked and full_body
+                        else (
+                            "TRACKING"
+                            if armed and controller.tracked
                             else (
-                                "TRACKING"
-                                if armed and controller.tracked
-                                else ("SEARCHING" if armed else "MIMIC OFF")
+                                "SEARCHING" if armed else "MIMIC OFF"
                             )
                         )
+                    )
                     color = (58, 210, 148) if armed and controller.tracked else (245, 190, 72)
                     label = font.render(status, True, color)
                     background = pygame.Surface((label.get_width() + 24, label.get_height() + 12), pygame.SRCALPHA)
@@ -205,6 +166,4 @@ def run_vision(args: Config) -> None:
             camera.close()
         except Exception:
             pass
-        if sensor_hub is not None:
-            sensor_hub.close()
         reader.quit()

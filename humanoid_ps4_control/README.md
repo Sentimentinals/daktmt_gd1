@@ -1,7 +1,7 @@
 # Humanoid PS4 Control
 
 Runtime Python cho robot humanoid 17-DOF dung Raspberry Pi, tay cam PS4/keyboard,
-32-channel PWM servo controller, walking engine, IMU balance va FSR feedback.
+32-channel PWM servo controller, walking engine, IMU balance va handshake bang FSR tay.
 
 ## Files chinh
 
@@ -10,7 +10,7 @@ src/config.py          Cau hinh robot, servo, gait, balance, sensor
 src/walking_engine.py  Loi gait: ZMP preview, IK, phase walking
 src/main.py            Vong lap chay robot
 src/balance.py         IMU balance correction
-src/sensors.py         BNO055 + FSR reader qua ESP32 USB serial
+src/sensors.py         BNO055 + FSR tay reader qua ESP32 USB serial
 POWER_SENSOR_SETUP.md  Huong dan wiring nguon va sensor an toan
 ```
 

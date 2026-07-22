@@ -6,8 +6,7 @@
 namespace {
 constexpr uint8_t SDA_PIN = 21;
 constexpr uint8_t SCL_PIN = 22;
-constexpr uint8_t FSR_LEFT_PIN = 34;
-constexpr uint8_t FSR_RIGHT_PIN = 35;
+constexpr uint8_t HAND_FSR_PIN = 34;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;  // 50 Hz
@@ -44,8 +43,7 @@ void setup() {
   delay(800);
 
   analogReadResolution(12);
-  analogSetPinAttenuation(FSR_LEFT_PIN, ADC_11db);
-  analogSetPinAttenuation(FSR_RIGHT_PIN, ADC_11db);
+  analogSetPinAttenuation(HAND_FSR_PIN, ADC_11db);
 
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
@@ -61,7 +59,7 @@ void setup() {
   delay(1000);
   bno.setExtCrystalUse(true);
   Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
-  Serial.println("# READY format=F,ms,left_norm,right_norm,left_voltage,right_voltage,left_raw,right_raw");
+  Serial.println("# READY format=H,ms,force_norm,voltage,raw");
 }
 
 void loop() {
@@ -115,25 +113,16 @@ void loop() {
   Serial.print(',');
   Serial.println(gravity.z(), 4);
 
-  const int left_raw = readAveragedAdc(FSR_LEFT_PIN);
-  const int right_raw = readAveragedAdc(FSR_RIGHT_PIN);
-  const float left_norm = static_cast<float>(left_raw) / 4095.0f;
-  const float right_norm = static_cast<float>(right_raw) / 4095.0f;
-  const float left_voltage = left_norm * 3.3f;
-  const float right_voltage = right_norm * 3.3f;
+  const int hand_raw = readAveragedAdc(HAND_FSR_PIN);
+  const float hand_norm = static_cast<float>(hand_raw) / 4095.0f;
+  const float hand_voltage = hand_norm * 3.3f;
 
-  Serial.print("F,");
+  Serial.print("H,");
   Serial.print(now);
   Serial.print(',');
-  Serial.print(left_norm, 4);
+  Serial.print(hand_norm, 4);
   Serial.print(',');
-  Serial.print(right_norm, 4);
+  Serial.print(hand_voltage, 3);
   Serial.print(',');
-  Serial.print(left_voltage, 3);
-  Serial.print(',');
-  Serial.print(right_voltage, 3);
-  Serial.print(',');
-  Serial.print(left_raw);
-  Serial.print(',');
-  Serial.println(right_raw);
+  Serial.println(hand_raw);
 }

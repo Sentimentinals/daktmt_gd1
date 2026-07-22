@@ -8,7 +8,7 @@ truc tiep vao GPIO cua Pi khi test robot that.
 ```text
 Raspberry Pi nguon rieng
   USB 1 -> 32-channel servo controller logic/control
-  USB 2 -> ESP32/Pico sensor hub -> BNO055 + FSR
+  USB 2 -> ESP32/Pico sensor hub -> BNO055 + FSR tay phai
 
 LiPo 3S
   -> relay / emergency cut
@@ -30,17 +30,14 @@ BNO055 SDA     -> ESP32 GPIO21
 BNO055 SCL     -> ESP32 GPIO22
 ```
 
-FSR trai:
+FSR trong long ban tay phai:
 
 ```text
 ESP32 3V3 -> FSR -> GPIO34/ADC -> 10k resistor -> GND
 ```
 
-FSR phai:
-
-```text
-ESP32 3V3 -> FSR -> GPIO35/ADC -> 10k resistor -> GND
-```
+GPIO35 khong su dung. Khong dat FSR nay duoi chan va khong dung no de suy ra
+chan tru khi walking.
 
 Dien tro `10k 1/4W` la du. Tin hieu vao ADC/GPIO cua ESP32 chi duoc toi da
 3.3V.
@@ -67,7 +64,7 @@ nguon ngoai 6V. USB cua Pi chi dung cho logic/control.
 ## Thu tu test
 
 1. Chua bat nguon servo.
-2. Cam ESP32/Pico vao laptop truoc, test BNO055/FSR.
+2. Cam ESP32/Pico vao laptop truoc, test BNO055 va FSR tay.
 3. Do dien ap: sensor chi co 3.3V, khong co 5V/6V tren signal.
 4. Cam ESP32/Pico vao Pi qua USB.
 5. Kiem tra serial port tren Pi:

@@ -10,4 +10,4 @@ pyserial>=3.5
 # ZMP preview controller and IK trajectory math
 numpy>=1.24
 
-# BNO055 and FSR data arrive from the ESP32 over pyserial.
+# BNO055 and hand-FSR data arrive from the ESP32 over pyserial.
