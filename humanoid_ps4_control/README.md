@@ -1,6 +1,6 @@
-# Humanoid PS4 Control
+# Humanoid Robot Control
 
-Runtime Python cho robot humanoid 17-DOF dung Raspberry Pi, tay cam PS4/keyboard,
+Runtime Python cho robot humanoid 17-DOF dung Raspberry Pi va keyboard,
 32-channel PWM servo controller, walking engine, IMU balance va handshake bang FSR tay.
 
 ## Files chinh
@@ -46,6 +46,22 @@ Chay robot that:
 
 ```bash
 python -m src.main
+```
+
+Phim dieu khien walking:
+
+```text
+W/S       Tien/lui
+A/D       Xoay trai/phai
+J/K       Di ngang trai/phai
+V         Handshake
+X         Test dung mot chan
+L/M       Bat/tat arm dance
+G/B       Dung day tu nam sap/nam ngua
+C         Dung va ve STANDING
+E/T       Reset walking engine
+O/Escape  Ve menu
+Q         Thoat che do hien tai
 ```
 
 Mac dinh hien tai nam trong `src/config.py`:

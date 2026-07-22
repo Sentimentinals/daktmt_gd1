@@ -83,16 +83,11 @@ def run_terrain(args: Config) -> None:
             f"Terrain Auto dependency missing: {exc.name}. Install Picamera2/OpenCV from apt."
         ) from exc
 
-    from .ps4_pygame import PS4Reader
+    from .keyboard_input import KeyboardReader
 
     cv2.setNumThreads(1)
     control_hz = max(10, round(1000.0 / args.update_ms))
-    reader = PS4Reader(
-        joystick_index=args.joystick_index,
-        fallback_keys=True,
-        poll_rate_hz=control_hz,
-        deadzone=args.input_deadzone,
-    )
+    reader = KeyboardReader(poll_rate_hz=control_hz)
     reader.init()
     screen = pygame.display.set_mode((args.terrain_camera_width, args.terrain_camera_height))
     pygame.display.set_caption("Terrain Auto")
@@ -217,9 +212,9 @@ def run_terrain(args: Config) -> None:
             else:
                 print("[terrain] IMU reference failed. Preview works, but autonomous gait cannot arm.")
 
-            print("[terrain] Square toggles AUTO, Circle clears to standing, Options returns to menu.")
+            print("[terrain] V toggles AUTO, C clears to standing, O/Escape returns to menu.")
             for state in reader.poll():
-                if state.quit or state.button(reader.BTN_OPTIONS):
+                if state.quit or state.menu:
                     print("[terrain] Returning to function menu.")
                     break
 
@@ -233,13 +228,13 @@ def run_terrain(args: Config) -> None:
                 if observation is not None:
                     profile, status = controller.select(observation)
 
-                toggle = state.button(reader.BTN_SQUARE)
+                toggle = state.handshake
                 if toggle and not previous_toggle:
                     if armed:
                         armed = False
                         print("[terrain] AUTO OFF.")
                     elif fault_latched:
-                        print(f"[terrain] Fault is latched: {fault_reason}. Press Circle after supporting robot.")
+                        print(f"[terrain] Fault is latched: {fault_reason}. Press C after supporting robot.")
                     elif reference is None:
                         print("[terrain] Cannot arm: IMU reference is unavailable.")
                     elif not sensors_ok:
@@ -252,7 +247,7 @@ def run_terrain(args: Config) -> None:
                         print(f"[terrain] AUTO ON: {profile.label}.")
                 previous_toggle = toggle
 
-                stop_pressed = state.button(reader.BTN_CIRCLE)
+                stop_pressed = state.stop
                 if stop_pressed and not previous_stop:
                     armed = False
                     fault_latched = False

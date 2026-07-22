@@ -1,7 +1,7 @@
-# Runtime dependencies for humanoid_ps4_control
+# Runtime dependencies for humanoid robot control
 # Install with: pip install -r requirements.txt
 
-# PS4 / joystick input and keyboard fallback (cross-platform: Windows, macOS, Linux, Raspberry Pi)
+# Keyboard input and pygame windows (cross-platform: Windows, macOS, Linux, Raspberry Pi)
 pygame>=2.1.0
 
 # Serial communication with RTrobot controller board

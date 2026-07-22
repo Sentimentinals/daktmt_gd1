@@ -707,13 +707,13 @@ class DynamicWalkingEngine:
 
     def update(
         self,
-        joystick_y: float,
+        forward_cmd: float,
         turn_cmd: float = 0.0,
         side_cmd: float = 0.0,
         step_elevation_mm: float = 0.0,
     ) -> dict[int, int]:
         """Advance the walking engine one frame and return servo pulses."""
-        joystick_y = max(-1.0, min(1.0, joystick_y))
+        forward_cmd = max(-1.0, min(1.0, forward_cmd))
         turn_cmd = max(-1.0, min(1.0, turn_cmd))
         side_cmd = max(-1.0, min(1.0, side_cmd))
         step_elevation_mm = max(
@@ -721,14 +721,14 @@ class DynamicWalkingEngine:
             min(self.max_step_elevation, step_elevation_mm),
         )
 
-        if abs(joystick_y) < self.command_deadzone:
-            joystick_y = 0.0
+        if abs(forward_cmd) < self.command_deadzone:
+            forward_cmd = 0.0
         if abs(turn_cmd) < self.command_deadzone:
             turn_cmd = 0.0
         if abs(side_cmd) < self.command_deadzone:
             side_cmd = 0.0
 
-        requested_step_len = joystick_y * self.max_step_len
+        requested_step_len = forward_cmd * self.max_step_len
         requested_turn_len = turn_cmd * self.max_turn_step_len
         requested_side_len = -side_cmd * self.max_side_step_len
         input_active = (

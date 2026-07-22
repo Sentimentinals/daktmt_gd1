@@ -7,7 +7,7 @@ from .config import Config
 
 
 def run_getup(args: Config) -> None:
-    """Run one get-up sequence directly, without PS4/keyboard input."""
+    """Run one get-up sequence directly, without keyboard input."""
     from .getup import GetupEngine
     from .walking_engine import STANDING
 
@@ -57,26 +57,25 @@ def run_getup(args: Config) -> None:
     print("[main] Direct get-up done.")
 
 
-def run_ps4(args: Config) -> None:
+def run_keyboard(args: Config) -> None:
     """
     Real-time walking mode.
 
-    D-pad/keyboard:
-      Up/W       : walk forward
-      Down/S     : walk backward
-      Left/A     : side walk left
-      Right/D    : side walk right
-      Stick X    : turn left/right in auto/stick mode
+    Keyboard:
+      W/S        : walk forward/backward
+      A/D        : turn left/right
       J/K        : side walk left/right
-      L1/L       : toggle standing arm dance
-      Cross/X    : toggle single-leg support test
-      R1/G       : run get-up sequence
+      L/M        : toggle standing arm dance
+      X          : toggle single-leg support test
+      V          : handshake
+      G          : run get-up sequence
       B          : run back get-up sequence
-      Circle/C   : stop and hold standing
-      Triangle/E : reset walking engine
+      C          : stop and hold standing
+      E/T        : reset walking engine
+      O/Escape   : return to menu
       Q          : quit
     """
-    from .ps4_pygame import PS4Reader
+    from .keyboard_input import KeyboardReader
     from .walking_engine import DynamicWalkingEngine, SingleSupportTestEngine, STANDING
     from .arm_dance import ArmDanceEngine, HandshakeEngine
     from .getup import GetupEngine
@@ -86,12 +85,7 @@ def run_ps4(args: Config) -> None:
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
 
     poll_hz = int(1000 / args.update_ms)
-    reader = PS4Reader(
-        joystick_index=args.joystick_index,
-        fallback_keys=True,
-        poll_rate_hz=poll_hz,
-        deadzone=args.input_deadzone,
-    )
+    reader = KeyboardReader(poll_rate_hz=poll_hz)
     reader.init()
 
     engine = DynamicWalkingEngine(
@@ -168,13 +162,13 @@ def run_ps4(args: Config) -> None:
         mode=args.getup_mode,
         speed=args.getup_speed,
     )
-    prev_l1_pressed = False
+    prev_dance_pressed = False
     prev_stop_pressed = False
     prev_getup_pressed = False
     prev_getup_back_pressed = False
     prev_single_support_pressed = False
     prev_handshake_pressed = False
-    prev_options_pressed = False
+    prev_menu_pressed = False
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
     standing_hold_active = True
@@ -209,9 +203,9 @@ def run_ps4(args: Config) -> None:
         print("[main] IMU balance requested but IMU sensor feedback is disabled.")
 
     print(
-        "\n[PS4 Mode - Real-time ZMP] W/S walk, A/D side, arrows also work, stick-X turn, J/K side, "
-        "X single support, Square/V handshake, L1/L/M dance, R1/G get-up, "
-        "B get-up back, C stop, Q quit\n"
+        "\n[Keyboard Mode - Real-time ZMP] W/S walk, A/D turn, J/K side, "
+        "X single support, V handshake, L/M dance, G get-up, "
+        "B get-up back, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
 
     try:
@@ -250,11 +244,11 @@ def run_ps4(args: Config) -> None:
                         print("[main] Returning to function menu.")
                         break
 
-                    options_pressed = state.button(reader.BTN_OPTIONS)
-                    if options_pressed and not prev_options_pressed:
-                        print("[main] Options/O pressed. Returning to function menu.")
+                    menu_pressed = state.menu
+                    if menu_pressed and not prev_menu_pressed:
+                        print("[main] O/Escape pressed. Returning to function menu.")
                         break
-                    prev_options_pressed = options_pressed
+                    prev_menu_pressed = menu_pressed
 
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
@@ -266,35 +260,16 @@ def run_ps4(args: Config) -> None:
                                     f"voltage={hand.voltage:.3f}V raw={hand.raw}"
                                 )
     
-                    axis_forward_cmd = state.signed_axis(args.ps4_forward_axis, args.ps4_forward_sign)
-                    axis_turn_cmd = state.signed_axis(args.ps4_turn_axis, args.ps4_turn_sign)
-                    dpad_forward_cmd = 1.0 if state.dpad_up() else (-1.0 if state.dpad_down() else 0.0)
-                    dpad_side_cmd = 1.0 if state.dpad_left() else (-1.0 if state.dpad_right() else 0.0)
-                    button_side_cmd = 1.0 if state.button(reader.BTN_L2) else (-1.0 if state.button(reader.BTN_R2) else 0.0)
-    
-                    if args.input_mode == "stick":
-                        input_cmd = axis_forward_cmd
-                        turn_input_cmd = axis_turn_cmd
-                        side_input_cmd = button_side_cmd
-                    elif args.input_mode == "dpad":
-                        input_cmd = dpad_forward_cmd
-                        turn_input_cmd = 0.0
-                        side_input_cmd = dpad_side_cmd or button_side_cmd
-                    else:
-                        input_cmd = axis_forward_cmd if abs(axis_forward_cmd) > args.input_deadzone else dpad_forward_cmd
-                        turn_input_cmd = axis_turn_cmd if abs(axis_turn_cmd) > args.input_deadzone else 0.0
-                        side_input_cmd = dpad_side_cmd or button_side_cmd
-
-                    vy = input_cmd * args.walk_speed
-                    turn_cmd = turn_input_cmd * args.turn_speed
-                    side_cmd = side_input_cmd * args.side_speed
+                    vy = state.forward * args.walk_speed
+                    turn_cmd = state.turn * args.turn_speed
+                    side_cmd = state.side * args.side_speed
                     motion_requested = vy != 0.0 or turn_cmd != 0.0 or side_cmd != 0.0
     
     
-                    stop_pressed = state.button(reader.BTN_CIRCLE)
+                    stop_pressed = state.stop
                     if stop_pressed:
                         if not prev_stop_pressed:
-                            print("[main] C/Circle pressed. Hard stop to STANDING.")
+                            print("[main] C pressed. Hard stop to STANDING.")
                         prev_stop_pressed = True
                         engine.reset()
                         arm_dance.reset()
@@ -312,7 +287,7 @@ def run_ps4(args: Config) -> None:
                         continue
                     prev_stop_pressed = False
     
-                    getup_pressed = state.button(reader.BTN_R1)
+                    getup_pressed = state.getup
                     if getup_pressed and not prev_getup_pressed:
                         engine.reset()
                         arm_dance.reset()
@@ -320,10 +295,10 @@ def run_ps4(args: Config) -> None:
                         single_support.stop()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode=args.getup_mode)
-                        print(f"[main] R1/G pressed. Running {args.getup_mode} get-up sequence from step {label}.")
+                        print(f"[main] G pressed. Running {args.getup_mode} get-up sequence from step {label}.")
                     prev_getup_pressed = getup_pressed
     
-                    getup_back_pressed = state.button(reader.BTN_GETUP_BACK)
+                    getup_back_pressed = state.getup_back
                     if getup_back_pressed and not prev_getup_back_pressed:
                         engine.reset()
                         arm_dance.reset()
@@ -334,21 +309,21 @@ def run_ps4(args: Config) -> None:
                         print(f"[main] B pressed. Running back get-up sequence from step {label}.")
                     prev_getup_back_pressed = getup_back_pressed
     
-                    l1_pressed = state.button(reader.BTN_L1)
-                    if l1_pressed and not prev_l1_pressed and not getup.running:
+                    dance_pressed = state.dance
+                    if dance_pressed and not prev_dance_pressed and not getup.running:
                         handshake.reset()
                         enabled = arm_dance.toggle()
                         engine.reset()
                         single_support.stop()
                         standing_hold_active = not enabled
-                        print("[main] L1 arm dance ON." if enabled else "[main] L1 arm dance OFF - returning to STANDING.")
-                    prev_l1_pressed = l1_pressed
+                        print("[main] L/M arm dance ON." if enabled else "[main] L/M arm dance OFF - returning to STANDING.")
+                    prev_dance_pressed = dance_pressed
 
-                    handshake_pressed = state.button(reader.BTN_SQUARE)
+                    handshake_pressed = state.handshake
                     if handshake_pressed and not prev_handshake_pressed and not getup.running:
                         if handshake.running:
                             handshake.cancel()
-                            print("[main] Square/V handshake canceled - returning to STANDING.")
+                            print("[main] V handshake canceled - returning to STANDING.")
                         elif not standing_hold_active or motion_requested or arm_dance.running or single_support.running:
                             print("[main] Handshake requires the robot to be stationary in STANDING.")
                         elif sensor_snapshot is None or sensor_snapshot.hand_force is None:
@@ -362,10 +337,10 @@ def run_ps4(args: Config) -> None:
                             handshake.start(last_pose)
                             standing_hold_active = False
                             previous_handshake_status = handshake.status
-                            print("[main] Square/V handshake started. Waiting for a hand grip.")
+                            print("[main] V handshake started. Waiting for a hand grip.")
                     prev_handshake_pressed = handshake_pressed
 
-                    single_support_pressed = state.button(reader.BTN_CROSS)
+                    single_support_pressed = state.single_support
                     if single_support_pressed and not prev_single_support_pressed and not getup.running:
                         engine.reset()
                         arm_dance.reset()
@@ -373,17 +348,17 @@ def run_ps4(args: Config) -> None:
                         if single_support.running:
                             single_support.stop()
                             standing_hold_active = True
-                            print("[main] X/Cross single-support OFF - returning to STANDING.")
+                            print("[main] X single-support OFF - returning to STANDING.")
                         else:
                             single_support.start(next_single_support_leg, current_pose=last_pose)
                             standing_hold_active = False
                             swing_leg = "left" if next_single_support_leg == "right" else "right"
-                            print(f"[main] X/Cross single-support ON: support={next_single_support_leg}, lifted={swing_leg}.")
+                            print(f"[main] X single-support ON: support={next_single_support_leg}, lifted={swing_leg}.")
                             next_single_support_leg = "left" if next_single_support_leg == "right" else "right"
                     prev_single_support_pressed = single_support_pressed
     
-                    if state.button(reader.BTN_TRIANGLE):
-                        print("[main] Triangle/E pressed. Resetting walking engine and arm dance.")
+                    if state.reset:
+                        print("[main] E/T pressed. Resetting walking engine and arm dance.")
                         engine.reset()
                         arm_dance.reset()
                         handshake.reset()
@@ -489,7 +464,7 @@ def run_ps4(args: Config) -> None:
         if sensor_hub is not None:
             sensor_hub.close()
         reader.quit()
-        print("[main] PS4 mode exited.")
+        print("[main] Keyboard mode exited.")
 
 
 def main() -> None:
@@ -501,13 +476,13 @@ def main() -> None:
     from .menu import run_menu
 
     while True:
-        choice = run_menu(args.joystick_index)
+        choice = run_menu()
         if choice == "quit":
             print("[main] Exiting function menu.")
             return
         if choice == "walking":
             try:
-                run_ps4(args)
+                run_keyboard(args)
             except Exception as exc:
                 print(f"[main] Walking mode unavailable: {exc}")
                 time.sleep(1.5)

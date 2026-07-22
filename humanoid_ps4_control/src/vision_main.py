@@ -8,7 +8,7 @@ from .vision_control import ARM_IDS, VisionBodyController
 
 
 def run_vision(args: Config) -> None:
-    """Run bounded full-body mimic mode and return when Options/O is pressed."""
+    """Run bounded full-body mimic mode and return when O/Escape is pressed."""
     try:
         import cv2
         import pygame
@@ -20,16 +20,11 @@ def run_vision(args: Config) -> None:
             "and ai-edge-litert from requirements-vision.txt."
         ) from exc
 
-    from .ps4_pygame import PS4Reader
+    from .keyboard_input import KeyboardReader
 
     cv2.setNumThreads(1)
     estimator = MoveNetPoseEstimator(args.vision_model_path, num_threads=args.vision_threads)
-    reader = PS4Reader(
-        joystick_index=args.joystick_index,
-        fallback_keys=True,
-        poll_rate_hz=args.vision_fps,
-        deadzone=args.input_deadzone,
-    )
+    reader = KeyboardReader(poll_rate_hz=args.vision_fps)
     reader.init()
     screen = pygame.display.set_mode((args.vision_camera_width, args.vision_camera_height))
     pygame.display.set_caption("Camera Mimic")
@@ -83,11 +78,11 @@ def run_vision(args: Config) -> None:
             backend.send(STANDING, duration_ms=600, force=True)
             try:
                 for state in reader.poll():
-                    if state.quit or state.button(reader.BTN_OPTIONS):
+                    if state.quit or state.menu:
                         print("[vision] Returning to function menu.")
                         break
 
-                    toggle = state.button(reader.BTN_SQUARE)
+                    toggle = state.handshake
                     if toggle and not previous_toggle:
                         armed = not armed
                         if not armed:

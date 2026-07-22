@@ -30,7 +30,7 @@ class ArmDanceEngine:
     """
     Standing arm keyframe loop.
 
-    It only drives arm/head channels and keeps the legs at STANDING. L1 toggles
+    It only drives arm/head channels and keeps the legs at STANDING. L/M toggles
     between running the loop and returning smoothly to STANDING.
     """
 

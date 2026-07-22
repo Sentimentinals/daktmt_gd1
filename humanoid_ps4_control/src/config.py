@@ -150,15 +150,6 @@ class Config:
     arm_min_pwm: int = GAIT["arm_min_pwm"]
     arm_quantum_pwm: int = GAIT["arm_quantum_pwm"]
 
-    # --- Control Mode ---
-    input_mode: str = "auto"
-    joystick_index: int = 0
-    input_deadzone: float = 0.08
-    ps4_forward_axis: int = 1
-    ps4_forward_sign: float = -1.0
-    ps4_turn_axis: int = 0
-    ps4_turn_sign: float = -1.0
-
     # --- Camera Mimic ---
     vision_camera_width: int = 480
     vision_camera_height: int = 360

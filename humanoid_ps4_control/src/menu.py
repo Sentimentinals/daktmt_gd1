@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def run_menu(joystick_index: int = 0) -> str:
+def run_menu() -> str:
     """Show the top-level mode picker and return walking, vision, terrain, or quit."""
     try:
         import pygame
@@ -9,7 +9,6 @@ def run_menu(joystick_index: int = 0) -> str:
         raise ImportError("The function menu requires pygame: pip install pygame") from exc
 
     pygame.init()
-    pygame.joystick.init()
     screen = pygame.display.set_mode((680, 480))
     pygame.display.set_caption("Humanoid Robot Control")
     clock = pygame.time.Clock()
@@ -17,21 +16,13 @@ def run_menu(joystick_index: int = 0) -> str:
     item_font = pygame.font.Font(None, 32)
     detail_font = pygame.font.Font(None, 22)
 
-    joystick = None
-    if pygame.joystick.get_count() > 0:
-        index = min(max(0, joystick_index), pygame.joystick.get_count() - 1)
-        joystick = pygame.joystick.Joystick(index)
-        joystick.init()
-
     entries = [
-        ("Walking & Balance", "PS4 / keyboard locomotion", "walking"),
+        ("Walking & Balance", "Keyboard locomotion", "walking"),
         ("Camera Mimic", "Pi Camera full-body tracking", "vision"),
         ("Terrain Auto", "Continuous ramp and stair adaptation", "terrain"),
         ("Exit", "Return all servos to standing", "quit"),
     ]
     selected = 0
-    previous_hat_y = 0
-    previous_buttons: dict[int, bool] = {}
 
     try:
         while True:
@@ -59,23 +50,6 @@ def run_menu(joystick_index: int = 0) -> str:
                     rect = pygame.Rect(70, 105 + selected * 82, 540, 64)
                     if rect.collidepoint(event.pos):
                         return entries[selected][2]
-
-            if joystick is not None:
-                hat_y = joystick.get_hat(0)[1] if joystick.get_numhats() else 0
-                if hat_y != 0 and previous_hat_y == 0:
-                    selected = (selected - hat_y) % len(entries)
-                previous_hat_y = hat_y
-
-                buttons = {index: bool(joystick.get_button(index)) for index in range(joystick.get_numbuttons())}
-                if buttons.get(0, False) and not previous_buttons.get(0, False):
-                    return entries[selected][2]
-                if buttons.get(2, False) and not previous_buttons.get(2, False):
-                    return "vision"
-                if buttons.get(3, False) and not previous_buttons.get(3, False):
-                    return "terrain"
-                if buttons.get(1, False) and not previous_buttons.get(1, False):
-                    return "quit"
-                previous_buttons = buttons
 
             screen.fill((18, 22, 28))
             title = title_font.render("Humanoid Robot", True, (238, 242, 246))
