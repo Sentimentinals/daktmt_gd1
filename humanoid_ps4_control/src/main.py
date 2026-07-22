@@ -13,7 +13,7 @@ def run_getup(args: Config) -> None:
 
     dt = args.update_ms / 1000.0
     engine = GetupEngine(dt=dt, mode=args.getup_mode, speed=args.getup_speed)
-    debug_ids = [1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+    debug_ids = list(range(9, 26))
 
     print(
         f"[main] Direct get-up: mode={args.getup_mode}, backend={args.backend}, "
@@ -75,7 +75,7 @@ def run_keyboard(args: Config) -> None:
       O/Escape   : return to menu
       Q          : quit
     """
-    from .keyboard_input import KeyboardReader
+    from .keyboard_input import KeyboardReader, LiveCameraPreview
     from .walking_engine import DynamicWalkingEngine, SingleSupportTestEngine, STANDING
     from .arm_dance import ArmDanceEngine, HandshakeEngine
     from .getup import GetupEngine
@@ -87,6 +87,11 @@ def run_keyboard(args: Config) -> None:
     poll_hz = int(1000 / args.update_ms)
     reader = KeyboardReader(poll_rate_hz=poll_hz)
     reader.init()
+    camera_preview = LiveCameraPreview(
+        width=args.vision_camera_width,
+        height=args.vision_camera_height,
+        fps=args.vision_fps,
+    )
 
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
@@ -208,6 +213,7 @@ def run_keyboard(args: Config) -> None:
         "B get-up back, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
 
+    camera_preview.start()
     try:
         with backend:
             if args.imu_balance and sensor_hub is not None and args.sensor_use_imu:
@@ -264,8 +270,7 @@ def run_keyboard(args: Config) -> None:
                     turn_cmd = state.turn * args.turn_speed
                     side_cmd = state.side * args.side_speed
                     motion_requested = vy != 0.0 or turn_cmd != 0.0 or side_cmd != 0.0
-    
-    
+
                     stop_pressed = state.stop
                     if stop_pressed:
                         if not prev_stop_pressed:
@@ -284,6 +289,7 @@ def run_keyboard(args: Config) -> None:
                             last_pose = dict(pose)
                         except Exception as exc:
                             print(f"[main] Backend send exception: {exc}")
+                        camera_preview.render("STOP / STANDING")
                         continue
                     prev_stop_pressed = False
     
@@ -452,6 +458,31 @@ def run_keyboard(args: Config) -> None:
                         last_pose = dict(pose)
                     except Exception as exc:
                         print(f"[main] Backend send exception: {exc}")
+
+                    if getup.running:
+                        camera_status = f"GET-UP: {getup.label.upper()}"
+                    elif handshake.running:
+                        camera_status = f"HANDSHAKE: {handshake.status}"
+                    elif arm_dance.running:
+                        camera_status = "ARM DANCE"
+                    elif single_support.running:
+                        camera_status = f"SINGLE SUPPORT: {single_support.support_leg.upper()}"
+                    else:
+                        directions = []
+                        if vy > 0.0:
+                            directions.append("FORWARD")
+                        elif vy < 0.0:
+                            directions.append("BACKWARD")
+                        if turn_cmd > 0.0:
+                            directions.append("TURN LEFT")
+                        elif turn_cmd < 0.0:
+                            directions.append("TURN RIGHT")
+                        if side_cmd > 0.0:
+                            directions.append("SIDE LEFT")
+                        elif side_cmd < 0.0:
+                            directions.append("SIDE RIGHT")
+                        camera_status = " + ".join(directions) if directions else "STANDING"
+                    camera_preview.render(camera_status)
             except KeyboardInterrupt:
                 print("\n[main] Ctrl+C received. Returning to STANDING.")
             finally:
@@ -463,6 +494,7 @@ def run_keyboard(args: Config) -> None:
     finally:
         if sensor_hub is not None:
             sensor_hub.close()
+        camera_preview.close()
         reader.quit()
         print("[main] Keyboard mode exited.")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 
@@ -97,3 +98,107 @@ class KeyboardReader:
             pygame.quit()
         except Exception:
             pass
+
+
+class LiveCameraPreview:
+    def __init__(self, width: int, height: int, fps: int) -> None:
+        self.width = width
+        self.height = height
+        self.fps = max(1, fps)
+        self.camera = None
+        self.screen = None
+        self.font = None
+        self._frame = None
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = None
+        self._cv2 = None
+        self._pygame = None
+
+    def start(self) -> bool:
+        try:
+            import cv2
+            import pygame
+            from picamera2 import Picamera2
+        except ImportError as exc:
+            print(f"[camera] Live preview unavailable: missing {exc.name}.")
+            return False
+
+        self._cv2 = cv2
+        self._pygame = pygame
+        camera = None
+        try:
+            camera = Picamera2()
+            camera.configure(
+                camera.create_preview_configuration(
+                    main={"format": "RGB888", "size": (self.width, self.height)},
+                    controls={"FrameRate": self.fps},
+                )
+            )
+            camera.start()
+        except Exception as exc:
+            if camera is not None:
+                try:
+                    camera.close()
+                except Exception:
+                    pass
+            print(f"[camera] Live preview unavailable: {exc}")
+            return False
+
+        self.camera = camera
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        pygame.display.set_caption("Humanoid Live Control")
+        self.font = pygame.font.Font(None, 28)
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._capture_loop, name="live-camera", daemon=True)
+        self._thread.start()
+        print("[camera] Live preview started.")
+        return True
+
+    def _capture_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                frame = self.camera.capture_array("main")
+            except Exception as exc:
+                if not self._stop.is_set():
+                    print(f"[camera] Capture stopped: {exc}")
+                break
+            with self._lock:
+                self._frame = frame
+
+    def render(self, status: str) -> None:
+        if self.screen is None or self._pygame is None or self._cv2 is None:
+            return
+        with self._lock:
+            frame = self._frame
+        if frame is None:
+            self.screen.fill((10, 14, 18))
+        else:
+            rgb = self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB)
+            surface = self._pygame.surfarray.make_surface(rgb.swapaxes(0, 1))
+            self.screen.blit(surface, (0, 0))
+        label = self.font.render(status, True, (238, 245, 248))
+        panel = self._pygame.Surface((label.get_width() + 24, label.get_height() + 12), self._pygame.SRCALPHA)
+        panel.fill((10, 14, 18, 205))
+        self.screen.blit(panel, (12, 12))
+        self.screen.blit(label, (24, 18))
+        self._pygame.display.flip()
+
+    def close(self) -> None:
+        was_running = self.camera is not None
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+        if self.camera is not None:
+            try:
+                self.camera.stop()
+            except Exception:
+                pass
+            try:
+                self.camera.close()
+            except Exception:
+                pass
+        self.camera = None
+        self._thread = None
+        if was_running:
+            print("[camera] Live preview stopped.")
