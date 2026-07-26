@@ -72,10 +72,14 @@ def run_keyboard(args: Config) -> None:
       B          : run back get-up sequence
       C          : stop and hold standing
       E/T        : reset walking engine
+      Y/N        : follow detected person / ignore or stop following
       O/Escape   : return to menu
       Q          : quit
     """
+    from pathlib import Path
+
     from .keyboard_input import KeyboardReader, LiveCameraPreview
+    from .person_follow import PersonDetector, PersonFollowController, PersonFrame
     from .walking_engine import DynamicWalkingEngine, SingleSupportTestEngine, STANDING
     from .arm_dance import ArmDanceEngine, HandshakeEngine
     from .getup import GetupEngine
@@ -87,10 +91,34 @@ def run_keyboard(args: Config) -> None:
     poll_hz = int(1000 / args.update_ms)
     reader = KeyboardReader(poll_rate_hz=poll_hz)
     reader.init()
+    package_root = Path(__file__).resolve().parent.parent
+    prototxt_path = package_root / args.person_detect_prototxt
+    model_path = package_root / args.person_detect_model
+    detector = None
+    try:
+        detector = PersonDetector(
+            prototxt_path=str(prototxt_path.resolve()),
+            model_path=str(model_path.resolve()),
+            confidence=args.person_detect_confidence,
+            detect_every_frames=args.person_detect_every_frames,
+        )
+        print("[main] MobileNet-SSD person detector ready.")
+    except Exception as exc:
+        print(f"[main] Person detection unavailable: {exc}")
+
     camera_preview = LiveCameraPreview(
         width=args.vision_camera_width,
         height=args.vision_camera_height,
         fps=args.vision_fps,
+        detector=detector,
+        stable_frames=args.person_detect_stable_frames,
+    )
+    person_follow = PersonFollowController(
+        turn_deadband=args.person_follow_turn_deadband,
+        stop_height_ratio=args.person_follow_stop_height_ratio,
+        lost_timeout_s=args.person_follow_lost_timeout_s,
+        forward_speed=args.person_follow_speed,
+        turn_speed=args.person_follow_turn_speed,
     )
 
     engine = DynamicWalkingEngine(
@@ -173,6 +201,8 @@ def run_keyboard(args: Config) -> None:
     prev_getup_back_pressed = False
     prev_single_support_pressed = False
     prev_handshake_pressed = False
+    prev_follow_pressed = False
+    prev_ignore_person_pressed = False
     prev_menu_pressed = False
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
@@ -271,11 +301,62 @@ def run_keyboard(args: Config) -> None:
                     side_cmd = state.side * args.side_speed
                     motion_requested = vy != 0.0 or turn_cmd != 0.0 or side_cmd != 0.0
 
+                    if motion_requested and person_follow.enabled:
+                        person_follow.disable()
+                        print("[main] Manual movement canceled person follow.")
+
+                    ignore_pressed = state.ignore_person
+                    if ignore_pressed and not prev_ignore_person_pressed:
+                        if person_follow.enabled:
+                            person_follow.disable()
+                            engine.reset()
+                            standing_hold_active = True
+                            print("[main] Person follow stopped.")
+                        else:
+                            camera_preview.ignore_person()
+                            print("[main] Detected person ignored.")
+                    prev_ignore_person_pressed = ignore_pressed
+
+                    follow_pressed = state.follow
+                    if follow_pressed and not prev_follow_pressed:
+                        can_follow = (
+                            camera_preview.person_ready()
+                            and not getup.running
+                            and not handshake.running
+                            and not arm_dance.running
+                            and not single_support.running
+                            and not motion_requested
+                        )
+                        if can_follow:
+                            person_follow.enable()
+                            engine.reset()
+                            standing_hold_active = False
+                            print("[main] Person follow enabled. Press N, C, or move manually to stop.")
+                        else:
+                            print("[main] Follow rejected: one stable person and STANDING are required.")
+                    prev_follow_pressed = follow_pressed
+
+                    follow_status = "OFF"
+                    if person_follow.enabled:
+                        person_frame = camera_preview.person_frame() or PersonFrame()
+                        vy, turn_cmd, follow_status = person_follow.command(person_frame)
+                        side_cmd = 0.0
+                        motion_requested = vy != 0.0 or turn_cmd != 0.0
+                        if follow_status in ("TARGET LOST", "MULTIPLE PEOPLE"):
+                            person_follow.disable()
+                            engine.reset()
+                            standing_hold_active = True
+                            vy = 0.0
+                            turn_cmd = 0.0
+                            motion_requested = False
+                            print(f"[main] Person follow stopped: {follow_status.lower()}.")
+
                     stop_pressed = state.stop
                     if stop_pressed:
                         if not prev_stop_pressed:
                             print("[main] C pressed. Hard stop to STANDING.")
                         prev_stop_pressed = True
+                        person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
                         handshake.reset()
@@ -289,12 +370,13 @@ def run_keyboard(args: Config) -> None:
                             last_pose = dict(pose)
                         except Exception as exc:
                             print(f"[main] Backend send exception: {exc}")
-                        camera_preview.render("STOP / STANDING")
+                        camera_preview.render("STOP / STANDING", follow_enabled=False)
                         continue
                     prev_stop_pressed = False
     
                     getup_pressed = state.getup
                     if getup_pressed and not prev_getup_pressed:
+                        person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
                         handshake.reset()
@@ -306,6 +388,7 @@ def run_keyboard(args: Config) -> None:
     
                     getup_back_pressed = state.getup_back
                     if getup_back_pressed and not prev_getup_back_pressed:
+                        person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
                         handshake.reset()
@@ -317,6 +400,7 @@ def run_keyboard(args: Config) -> None:
     
                     dance_pressed = state.dance
                     if dance_pressed and not prev_dance_pressed and not getup.running:
+                        person_follow.disable()
                         handshake.reset()
                         enabled = arm_dance.toggle()
                         engine.reset()
@@ -327,6 +411,7 @@ def run_keyboard(args: Config) -> None:
 
                     handshake_pressed = state.handshake
                     if handshake_pressed and not prev_handshake_pressed and not getup.running:
+                        person_follow.disable()
                         if handshake.running:
                             handshake.cancel()
                             print("[main] V handshake canceled - returning to STANDING.")
@@ -348,6 +433,7 @@ def run_keyboard(args: Config) -> None:
 
                     single_support_pressed = state.single_support
                     if single_support_pressed and not prev_single_support_pressed and not getup.running:
+                        person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
                         handshake.reset()
@@ -371,6 +457,7 @@ def run_keyboard(args: Config) -> None:
                         getup.reset()
                         single_support.stop()
                         standing_hold_active = True
+                        person_follow.disable()
                         vy = 0.0
                         turn_cmd = 0.0
                         side_cmd = 0.0
@@ -459,7 +546,9 @@ def run_keyboard(args: Config) -> None:
                     except Exception as exc:
                         print(f"[main] Backend send exception: {exc}")
 
-                    if getup.running:
+                    if person_follow.enabled:
+                        camera_status = follow_status
+                    elif getup.running:
                         camera_status = f"GET-UP: {getup.label.upper()}"
                     elif handshake.running:
                         camera_status = f"HANDSHAKE: {handshake.status}"
@@ -482,7 +571,7 @@ def run_keyboard(args: Config) -> None:
                         elif side_cmd < 0.0:
                             directions.append("SIDE RIGHT")
                         camera_status = " + ".join(directions) if directions else "STANDING"
-                    camera_preview.render(camera_status)
+                    camera_preview.render(camera_status, follow_enabled=person_follow.enabled)
             except KeyboardInterrupt:
                 print("\n[main] Ctrl+C received. Returning to STANDING.")
             finally:

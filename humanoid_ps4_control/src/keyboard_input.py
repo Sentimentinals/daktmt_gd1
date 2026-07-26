@@ -16,6 +16,8 @@ class KeyboardState:
     getup_back: bool = False
     stop: bool = False
     reset: bool = False
+    follow: bool = False
+    ignore_person: bool = False
     menu: bool = False
     quit: bool = False
 
@@ -41,7 +43,8 @@ class KeyboardReader:
         self._pygame_ready = True
         print(
             "[KeyboardReader] W/S walk, A/D turn, J/K side, V handshake, "
-            "X single support, L/M dance, G/B get-up, C stop, E/T reset, O/Esc menu."
+            "X single support, L/M dance, G/B get-up, Y follow, N ignore/stop follow, "
+            "C stop, E/T reset, O/Esc menu."
         )
         return True
 
@@ -87,6 +90,8 @@ class KeyboardReader:
                 getup_back=bool(keys[pygame.K_b]),
                 stop=bool(keys[pygame.K_c]),
                 reset=bool(keys[pygame.K_e] or keys[pygame.K_t]),
+                follow=bool(keys[pygame.K_y]),
+                ignore_person=bool(keys[pygame.K_n]),
                 menu=bool(keys[pygame.K_o] or keys[pygame.K_ESCAPE]),
             )
             clock.tick(self.poll_rate_hz)
@@ -101,7 +106,14 @@ class KeyboardReader:
 
 
 class LiveCameraPreview:
-    def __init__(self, width: int, height: int, fps: int) -> None:
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        fps: int,
+        detector=None,
+        stable_frames: int = 3,
+    ) -> None:
         self.width = width
         self.height = height
         self.fps = max(1, fps)
@@ -114,6 +126,12 @@ class LiveCameraPreview:
         self._thread = None
         self._cv2 = None
         self._pygame = None
+        self._detector = detector
+        self.stable_frames = max(1, stable_frames)
+        self._person_frame = None
+        self._person_stable_frames = 0
+        self._last_person_timestamp = None
+        self._person_ignored = False
 
     def start(self) -> bool:
         try:
@@ -163,10 +181,43 @@ class LiveCameraPreview:
                 if not self._stop.is_set():
                     print(f"[camera] Capture stopped: {exc}")
                 break
+            person_frame = None
+            if self._detector is not None:
+                try:
+                    person_frame = self._detector.detect(frame)
+                except Exception as exc:
+                    print(f"[camera] Person detection stopped: {exc}")
+                    self._detector = None
             with self._lock:
                 self._frame = frame
+                if person_frame is not None:
+                    self._person_frame = person_frame
+                    is_new_detection = person_frame.captured_at != self._last_person_timestamp
+                    if person_frame.single_person is not None and is_new_detection:
+                        self._person_stable_frames += 1
+                    elif person_frame.single_person is None and is_new_detection:
+                        self._person_stable_frames = 0
+                        self._person_ignored = False
+                    self._last_person_timestamp = person_frame.captured_at
 
-    def render(self, status: str) -> None:
+    def person_frame(self):
+        with self._lock:
+            return self._person_frame
+
+    def person_ready(self) -> bool:
+        with self._lock:
+            return (
+                self._person_frame is not None
+                and self._person_frame.single_person is not None
+                and self._person_stable_frames >= self.stable_frames
+                and not self._person_ignored
+            )
+
+    def ignore_person(self) -> None:
+        with self._lock:
+            self._person_ignored = True
+
+    def render(self, status: str, follow_enabled: bool = False) -> None:
         if self.screen is None or self._pygame is None or self._cv2 is None:
             return
         with self._lock:
@@ -177,11 +228,46 @@ class LiveCameraPreview:
             rgb = self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB)
             surface = self._pygame.surfarray.make_surface(rgb.swapaxes(0, 1))
             self.screen.blit(surface, (0, 0))
+        person_frame = self.person_frame()
+        if person_frame is not None:
+            for person in person_frame.people:
+                x1, y1, x2, y2 = person.box
+                self._pygame.draw.rect(
+                    self.screen,
+                    (58, 210, 148),
+                    self._pygame.Rect(x1, y1, x2 - x1, y2 - y1),
+                    2,
+                )
+                confidence = self.font.render(
+                    f"PERSON {person.confidence:.2f}",
+                    True,
+                    (58, 210, 148),
+                )
+                self.screen.blit(confidence, (x1, max(2, y1 - 24)))
         label = self.font.render(status, True, (238, 245, 248))
         panel = self._pygame.Surface((label.get_width() + 24, label.get_height() + 12), self._pygame.SRCALPHA)
         panel.fill((10, 14, 18, 205))
         self.screen.blit(panel, (12, 12))
         self.screen.blit(label, (24, 18))
+        prompt = None
+        prompt_color = (245, 190, 72)
+        if follow_enabled:
+            prompt = "FOLLOW ON - N/C: STOP"
+            prompt_color = (58, 210, 148)
+        elif self.person_ready():
+            prompt = "PERSON DETECTED - Y: FOLLOW / N: IGNORE"
+        elif person_frame is not None and len(person_frame.people) > 1:
+            prompt = "MULTIPLE PEOPLE - FOLLOW DISABLED"
+        if prompt is not None:
+            prompt_label = self.font.render(prompt, True, prompt_color)
+            prompt_panel = self._pygame.Surface(
+                (prompt_label.get_width() + 24, prompt_label.get_height() + 12),
+                self._pygame.SRCALPHA,
+            )
+            prompt_panel.fill((10, 14, 18, 220))
+            y = self.height - prompt_panel.get_height() - 12
+            self.screen.blit(prompt_panel, (12, y))
+            self.screen.blit(prompt_label, (24, y + 6))
         self._pygame.display.flip()
 
     def close(self) -> None:

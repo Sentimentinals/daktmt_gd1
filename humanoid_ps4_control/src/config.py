@@ -169,6 +169,18 @@ class Config:
     vision_leg_lift_threshold_ratio: float = 0.30
     vision_leg_lift_height_mm: float = 34.0
 
+    # --- Person Detection & Follow ---
+    person_detect_prototxt: str = "../person_detect/MobileNetSSD_deploy.prototxt"
+    person_detect_model: str = "../person_detect/MobileNetSSD_deploy.caffemodel"
+    person_detect_confidence: float = 0.55
+    person_detect_every_frames: int = 3
+    person_detect_stable_frames: int = 3
+    person_follow_lost_timeout_s: float = 1.0
+    person_follow_turn_deadband: float = 0.10
+    person_follow_stop_height_ratio: float = 0.58
+    person_follow_speed: float = 0.22
+    person_follow_turn_speed: float = 0.16
+
     # --- Autonomous Terrain Vision ---
     terrain_camera_width: int = 480
     terrain_camera_height: int = 360
