@@ -150,24 +150,10 @@ class Config:
     arm_min_pwm: int = GAIT["arm_min_pwm"]
     arm_quantum_pwm: int = GAIT["arm_quantum_pwm"]
 
-    # --- Camera Mimic ---
+    # --- Live Camera & Person Follow ---
     vision_camera_width: int = 480
     vision_camera_height: int = 360
     vision_fps: int = 12
-    vision_threads: int = 3
-    vision_confidence: float = 0.30
-    vision_model_path: str = "models/movenet_lightning_int8.tflite"
-    vision_min_body_scale: float = 0.10
-    vision_lost_timeout_s: float = 0.35
-    vision_smooth_tau_s: float = 0.12
-    vision_max_pwm_per_s: float = 900.0
-    vision_lift_pwm: int = 820
-    vision_shoulder_pwm: int = 420
-    vision_elbow_pwm: int = 260
-    vision_head_pwm: int = 180
-    vision_squat_deg: float = 16.0
-    vision_leg_lift_threshold_ratio: float = 0.30
-    vision_leg_lift_height_mm: float = 34.0
 
     # --- Person Detection & Follow ---
     person_detect_prototxt: str = "../person_detect/MobileNetSSD_deploy.prototxt"

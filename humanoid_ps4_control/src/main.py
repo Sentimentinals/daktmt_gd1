@@ -607,14 +607,6 @@ def main() -> None:
             except Exception as exc:
                 print(f"[main] Walking mode unavailable: {exc}")
                 time.sleep(1.5)
-        elif choice == "vision":
-            try:
-                from .vision_main import run_vision
-
-                run_vision(args)
-            except Exception as exc:
-                print(f"[main] Camera Mimic unavailable: {exc}")
-                time.sleep(1.5)
         elif choice == "terrain":
             try:
                 from .terrain_main import run_terrain

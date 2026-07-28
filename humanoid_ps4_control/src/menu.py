@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def run_menu() -> str:
-    """Show the top-level mode picker and return walking, vision, terrain, or quit."""
+    """Show the top-level mode picker and return walking, terrain, or quit."""
     try:
         import pygame
     except ImportError as exc:
@@ -17,8 +17,7 @@ def run_menu() -> str:
     detail_font = pygame.font.Font(None, 22)
 
     entries = [
-        ("Walking & Balance", "Keyboard locomotion", "walking"),
-        ("Camera Mimic", "Pi Camera full-body tracking", "vision"),
+        ("Walking & Balance", "Keyboard locomotion with live camera", "walking"),
         ("Terrain Auto", "Continuous ramp and stair adaptation", "terrain"),
         ("Exit", "Return all servos to standing", "quit"),
     ]
@@ -36,8 +35,6 @@ def run_menu() -> str:
                         selected = (selected + 1) % len(entries)
                     elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                         return entries[selected][2]
-                    elif event.key == pygame.K_v:
-                        return "vision"
                     elif event.key == pygame.K_t:
                         return "terrain"
                     elif event.key in (pygame.K_q, pygame.K_ESCAPE):
