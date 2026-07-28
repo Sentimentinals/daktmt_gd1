@@ -137,6 +137,7 @@ class LiveCameraPreview:
         try:
             import cv2
             import pygame
+            from libcamera import Transform
             from picamera2 import Picamera2
         except ImportError as exc:
             print(f"[camera] Live preview unavailable: missing {exc.name}.")
@@ -151,6 +152,7 @@ class LiveCameraPreview:
                 camera.create_preview_configuration(
                     main={"format": "RGB888", "size": (self.width, self.height)},
                     controls={"FrameRate": self.fps},
+                    transform=Transform(hflip=True, vflip=True),
                 )
             )
             camera.start()

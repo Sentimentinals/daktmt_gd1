@@ -77,6 +77,7 @@ def run_terrain(args: Config) -> None:
     try:
         import cv2
         import pygame
+        from libcamera import Transform
         from picamera2 import Picamera2
     except ImportError as exc:
         raise RuntimeError(
@@ -170,6 +171,7 @@ def run_terrain(args: Config) -> None:
                 "size": (args.terrain_camera_width, args.terrain_camera_height),
             },
             controls={"FrameRate": args.terrain_camera_fps},
+            transform=Transform(hflip=True, vflip=True),
         )
     )
     camera_worker = _TerrainCameraWorker(camera, perception)
