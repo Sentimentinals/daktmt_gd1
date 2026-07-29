@@ -41,9 +41,9 @@ class PushRecoveryTests(unittest.TestCase):
         controller = self.make_controller()
         controller.update(0.0, 0.0, 0.04, True, True, now=1.0)
         decision = controller.update(0.0, 6.0, 0.04, True, True, now=1.04)
-        self.assertEqual(decision.state, RecoveryState.RECOVERY_STEP)
+        self.assertEqual(decision.state, RecoveryState.STOMP)
         self.assertTrue(decision.start_step)
-        self.assertLess(decision.forward_cmd, 0.0)
+        self.assertGreater(decision.forward_cmd, 0.0)
         self.assertEqual(decision.side_cmd, 0.0)
 
     def test_lateral_push_uses_side_step(self) -> None:
@@ -52,7 +52,7 @@ class PushRecoveryTests(unittest.TestCase):
         decision = controller.update(6.0, 0.0, 0.04, True, True, now=1.04)
         self.assertTrue(decision.start_step)
         self.assertEqual(decision.forward_cmd, 0.0)
-        self.assertLess(decision.side_cmd, 0.0)
+        self.assertGreater(decision.side_cmd, 0.0)
 
     def test_missing_fsr_blocks_recovery_step(self) -> None:
         controller = self.make_controller()
@@ -67,7 +67,16 @@ class PushRecoveryTests(unittest.TestCase):
         controller.update(0.0, 0.0, 0.04, True, True, now=1.0)
         controller.update(0.0, 6.0, 0.04, True, True, now=1.04)
         decision = controller.update(0.0, 6.0, 0.04, False, True, support_leg="right", now=1.08)
-        self.assertEqual(decision.state, RecoveryState.RECOVERY_STEP)
+        self.assertEqual(decision.state, RecoveryState.STOMP)
+
+    def test_stomp_transitions_to_counter_lean_after_landing(self) -> None:
+        controller = self.make_controller()
+        controller.update(0.0, 0.0, 0.04, True, True, now=1.0)
+        controller.update(0.0, 6.0, 0.04, True, True, now=1.04)
+        decision = controller.complete_step(now=1.50)
+        self.assertEqual(decision.state, RecoveryState.COUNTER_LEAN)
+        decision = controller.update(0.0, 1.0, 0.04, True, True, now=2.0)
+        self.assertEqual(decision.state, RecoveryState.ANKLE_HIP)
 
     def test_lost_single_support_or_large_tilt_latches_safe_lower(self) -> None:
         controller = self.make_controller()
@@ -90,7 +99,7 @@ class PushRecoveryTests(unittest.TestCase):
             command_rate_limit=1000.0,
         )
         engine.stop_extra_steps = 0
-        poses = [engine.update(-0.20)]
+        poses = [engine.update(0.10)]
         poses.extend(engine.update(0.0) for _ in range(120))
         self.assertTrue(all(500 <= pwm <= 2500 for pose in poses for pwm in pose.values()))
 

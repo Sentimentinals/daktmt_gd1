@@ -241,11 +241,12 @@ class Config:
     push_recovery_safe_lower_tilt_deg: float = 9.0
     push_recovery_rate_deg_s: float = 28.0
     push_recovery_settle_tilt_deg: float = 1.4
-    push_recovery_step_forward_cmd: float = 0.20
-    push_recovery_step_side_cmd: float = 0.16
-    push_recovery_step_time_s: float = 1.35
-    push_recovery_step_height_mm: float = 12.0
+    push_recovery_step_forward_cmd: float = 0.10
+    push_recovery_step_side_cmd: float = 0.08
+    push_recovery_step_time_s: float = 0.80
+    push_recovery_step_height_mm: float = 8.0
     push_recovery_timeout_s: float = 3.0
+    push_recovery_counter_lean_s: float = 0.40
     push_recovery_lower_rate_pwm_s: float = 300.0
 
     # --- Sensor Feedback ---

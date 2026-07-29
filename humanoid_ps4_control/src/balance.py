@@ -74,7 +74,8 @@ class BalanceConfig:
 class RecoveryState(str, Enum):
     STABLE = "stable"
     ANKLE_HIP = "ankle-hip"
-    RECOVERY_STEP = "recovery-step"
+    STOMP = "stomp"
+    COUNTER_LEAN = "counter-lean"
     SAFE_LOWER = "safe-lower"
 
 
@@ -85,9 +86,10 @@ class PushRecoveryConfig:
     safe_lower_tilt_deg: float = 9.0
     recovery_rate_deg_s: float = 28.0
     settle_tilt_deg: float = 1.4
-    recovery_step_forward_cmd: float = 0.20
-    recovery_step_side_cmd: float = 0.16
+    recovery_step_forward_cmd: float = 0.10
+    recovery_step_side_cmd: float = 0.08
     recovery_step_timeout_s: float = 3.0
+    counter_lean_s: float = 0.40
 
 
 @dataclass(frozen=True)
@@ -128,10 +130,11 @@ class PushRecoveryController:
         self.reason = reason
         return RecoveryDecision(self.state, self.reason)
 
-    def complete_step(self) -> RecoveryDecision:
-        if self.state is RecoveryState.RECOVERY_STEP:
-            self.state = RecoveryState.ANKLE_HIP
-            self.reason = "recovery step complete"
+    def complete_step(self, now: float) -> RecoveryDecision:
+        if self.state is RecoveryState.STOMP:
+            self.state = RecoveryState.COUNTER_LEAN
+            self.reason = "stomp landed; counter-lean"
+            self._started_at = now
         return RecoveryDecision(self.state, self.reason)
 
     def update(
@@ -164,13 +167,20 @@ class PushRecoveryController:
             return self.force_safe_lower("tilt limit")
         if single_support and not support_contact:
             return self.force_safe_lower("support FSR lost")
-        if self.state is RecoveryState.RECOVERY_STEP:
+        if self.state is RecoveryState.STOMP:
             if support_leg in ("left", "right") and not support_contact:
-                return self.force_safe_lower("support FSR lost during recovery")
+                return self.force_safe_lower("support FSR lost during stomp")
             if support_leg == "double" and not both_contact:
-                return self.force_safe_lower("foot FSR unavailable during recovery")
+                return self.force_safe_lower("foot FSR unavailable during stomp")
             if now > 0.0 and now - self._started_at > cfg.recovery_step_timeout_s:
-                return self.force_safe_lower("recovery step timeout")
+                return self.force_safe_lower("stomp timeout")
+            return RecoveryDecision(self.state, self.reason)
+        if self.state is RecoveryState.COUNTER_LEAN:
+            if not both_contact:
+                return self.force_safe_lower("foot FSR unavailable during counter-lean")
+            if now > 0.0 and now - self._started_at >= cfg.counter_lean_s:
+                self.state = RecoveryState.ANKLE_HIP
+                self.reason = "settling"
             return RecoveryDecision(self.state, self.reason)
 
         if single_support and max_tilt >= cfg.recovery_tilt_deg:
@@ -180,10 +190,10 @@ class PushRecoveryController:
             max_rate >= cfg.recovery_rate_deg_s or max_tilt >= cfg.recovery_tilt_deg + 1.0
         )
         if step_triggered and both_contact and not single_support:
-            self.state = RecoveryState.RECOVERY_STEP
-            self.reason = "tilt recovery"
+            self.state = RecoveryState.STOMP
+            self.reason = "stomp recovery"
             self._started_at = now
-            forward_cmd, side_cmd = self._opposite_fall_command(roll_deg, pitch_deg)
+            forward_cmd, side_cmd = self._fall_command(roll_deg, pitch_deg)
             return RecoveryDecision(
                 self.state,
                 self.reason,
@@ -210,11 +220,11 @@ class PushRecoveryController:
         delta = (value - previous + 180.0) % 360.0 - 180.0
         return delta / dt
 
-    def _opposite_fall_command(self, roll_deg: float, pitch_deg: float) -> tuple[float, float]:
+    def _fall_command(self, roll_deg: float, pitch_deg: float) -> tuple[float, float]:
         cfg = self.config
         if abs(pitch_deg) >= abs(roll_deg):
-            return (-cfg.recovery_step_forward_cmd if pitch_deg > 0.0 else cfg.recovery_step_forward_cmd), 0.0
-        return 0.0, (-cfg.recovery_step_side_cmd if roll_deg > 0.0 else cfg.recovery_step_side_cmd)
+            return (cfg.recovery_step_forward_cmd if pitch_deg > 0.0 else -cfg.recovery_step_forward_cmd), 0.0
+        return 0.0, (cfg.recovery_step_side_cmd if roll_deg > 0.0 else -cfg.recovery_step_side_cmd)
 
 
 def lower_toward_standing(

@@ -314,6 +314,7 @@ def run_keyboard(args: Config) -> None:
                                 recovery_step_forward_cmd=args.push_recovery_step_forward_cmd,
                                 recovery_step_side_cmd=args.push_recovery_step_side_cmd,
                                 recovery_step_timeout_s=args.push_recovery_timeout_s,
+                                counter_lean_s=args.push_recovery_counter_lean_s,
                             )
                         )
                     print(
@@ -666,7 +667,7 @@ def run_keyboard(args: Config) -> None:
                                     engine.reset()
                                     person_follow.disable()
                                     standing_hold_active = False
-                                    print("[main] Push recovery: starting one short step.")
+                                    print("[main] Push recovery: starting near-in-place stomp.")
                                 if decision.safe_lower:
                                     single_support.stop()
                                     recovery_step_active = False
@@ -702,7 +703,8 @@ def run_keyboard(args: Config) -> None:
                                             args.push_recovery_lower_rate_pwm_s,
                                         )
                                     elif recovery_engine.is_idle_ready():
-                                        recovery.complete_step()
+                                        completed = recovery.complete_step(now)
+                                        recovery_status = f"{completed.state.value}: {completed.reason}"
                                         recovery_step_active = False
                             pose = balance.apply(
                                 pose,

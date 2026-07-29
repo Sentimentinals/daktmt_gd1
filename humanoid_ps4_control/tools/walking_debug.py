@@ -154,6 +154,7 @@ def make_recovery_controller() -> PushRecoveryController:
             recovery_step_forward_cmd=settings.push_recovery_step_forward_cmd,
             recovery_step_side_cmd=settings.push_recovery_step_side_cmd,
             recovery_step_timeout_s=settings.push_recovery_timeout_s,
+            counter_lean_s=settings.push_recovery_counter_lean_s,
         )
     )
 
@@ -505,7 +506,8 @@ def main() -> None:
                                 settings.push_recovery_lower_rate_pwm_s,
                             )
                         elif recovery_engine.is_idle_ready():
-                            recovery.complete_step()
+                            completed = recovery.complete_step(now)
+                            recovery_status = f"{completed.state.value}: {completed.reason}"
                             recovery_step_active = False
                 elif recovery is not None and recovery.state is RecoveryState.SAFE_LOWER:
                     recovery_status = f"{recovery.state.value}: {recovery.reason}"
