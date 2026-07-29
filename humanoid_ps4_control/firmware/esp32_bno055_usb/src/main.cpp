@@ -37,6 +37,16 @@ void printI2cDevices() {
     }
   }
 }
+
+int readBnoRegister(uint8_t reg) {
+  Wire.beginTransmission(BNO055_ADDRESS);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0 ||
+      Wire.requestFrom(static_cast<uint8_t>(BNO055_ADDRESS), static_cast<uint8_t>(1)) != 1) {
+    return -1;
+  }
+  return Wire.read();
+}
 }  // namespace
 
 void setup() {
@@ -49,6 +59,9 @@ void setup() {
 
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
+  printI2cDevices();
+  Serial.printf("# BNO chip-id=0x%02X op-mode=0x%02X\n", readBnoRegister(0x00),
+                readBnoRegister(0x3D));
 
   if (!bno.begin(OPERATION_MODE_IMUPLUS)) {
     Serial.println("# ERROR: BNO055 not found. Expected I2C address 0x28.");
@@ -59,7 +72,6 @@ void setup() {
   }
 
   delay(1000);
-  bno.setExtCrystalUse(true);
   Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
   Serial.println("# READY format=F,ms,left_norm,left_voltage,left_raw,right_norm,right_voltage,right_raw");
 }
