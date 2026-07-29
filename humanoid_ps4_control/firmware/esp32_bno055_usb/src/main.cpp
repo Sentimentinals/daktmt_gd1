@@ -1,7 +1,5 @@
+#include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BNO055.h>
-#include <utility/imumaths.h>
 
 namespace {
 constexpr uint8_t SDA_PIN = 21;
@@ -9,11 +7,11 @@ constexpr uint8_t SCL_PIN = 22;
 constexpr uint8_t LEFT_FSR_PIN = 34;
 constexpr uint8_t RIGHT_FSR_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
+constexpr uint8_t BNO055_IMUPLUS_MODE = 0x08;
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;  // 50 Hz
 constexpr uint8_t FSR_ADC_SAMPLES = 8;
 
-Adafruit_BNO055 bno(55, BNO055_ADDRESS, &Wire);
 uint32_t last_sample_ms = 0;
 
 int readAveragedAdc(uint8_t pin) {
@@ -47,6 +45,44 @@ int readBnoRegister(uint8_t reg) {
   }
   return Wire.read();
 }
+
+bool writeBnoRegister(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(BNO055_ADDRESS);
+  Wire.write(reg);
+  Wire.write(value);
+  return Wire.endTransmission() == 0;
+}
+
+bool readBnoBlock(uint8_t reg, uint8_t *data, uint8_t size) {
+  Wire.beginTransmission(BNO055_ADDRESS);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0 ||
+      Wire.requestFrom(static_cast<uint8_t>(BNO055_ADDRESS), size) != size) {
+    return false;
+  }
+  for (uint8_t i = 0; i < size; ++i) {
+    data[i] = Wire.read();
+  }
+  return true;
+}
+
+int16_t readInt16(const uint8_t *data) {
+  return static_cast<int16_t>(static_cast<uint16_t>(data[0]) |
+                              (static_cast<uint16_t>(data[1]) << 8));
+}
+
+bool configureBnoWithoutReset() {
+  if (!writeBnoRegister(0x3D, 0x00)) {
+    return false;
+  }
+  delay(25);
+  if (!writeBnoRegister(0x3E, 0x00) || !writeBnoRegister(0x07, 0x00) ||
+      !writeBnoRegister(0x3D, BNO055_IMUPLUS_MODE)) {
+    return false;
+  }
+  delay(25);
+  return true;
+}
 }  // namespace
 
 void setup() {
@@ -63,15 +99,14 @@ void setup() {
   Serial.printf("# BNO chip-id=0x%02X op-mode=0x%02X\n", readBnoRegister(0x00),
                 readBnoRegister(0x3D));
 
-  if (!bno.begin(OPERATION_MODE_IMUPLUS)) {
-    Serial.println("# ERROR: BNO055 not found. Expected I2C address 0x28.");
-    printI2cDevices();
+  if (readBnoRegister(0x00) != 0xA0 || !configureBnoWithoutReset()) {
+    Serial.println("# ERROR: BNO055 setup failed.");
     while (true) {
       delay(1000);
     }
   }
 
-  delay(1000);
+  delay(50);
   Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
   Serial.println("# READY format=F,ms,left_norm,left_voltage,left_raw,right_norm,right_voltage,right_raw");
 }
@@ -84,48 +119,58 @@ void loop() {
   }
   last_sample_ms = now;
 
-  const imu::Quaternion quat = bno.getQuat();
-  const imu::Vector<3> euler =
-      bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-  const imu::Vector<3> gravity =
-      bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
+  uint8_t quat_data[8];
+  uint8_t euler_data[6];
+  uint8_t gravity_data[6];
+  int calibration = 0;
+  if (!readBnoBlock(0x20, quat_data, sizeof(quat_data)) ||
+      !readBnoBlock(0x1A, euler_data, sizeof(euler_data)) ||
+      !readBnoBlock(0x2E, gravity_data, sizeof(gravity_data)) ||
+      (calibration = readBnoRegister(0x35)) < 0) {
+    return;
+  }
 
-  uint8_t system_cal = 0;
-  uint8_t gyro_cal = 0;
-  uint8_t accel_cal = 0;
-  uint8_t mag_cal = 0;
-  bno.getCalibration(&system_cal, &gyro_cal, &accel_cal, &mag_cal);
+  const float quat_w = readInt16(&quat_data[0]) / 16384.0f;
+  const float quat_x = readInt16(&quat_data[2]) / 16384.0f;
+  const float quat_y = readInt16(&quat_data[4]) / 16384.0f;
+  const float quat_z = readInt16(&quat_data[6]) / 16384.0f;
+  const float heading = readInt16(&euler_data[0]) / 16.0f;
+  const float roll = readInt16(&euler_data[2]) / 16.0f;
+  const float pitch = readInt16(&euler_data[4]) / 16.0f;
+  const float gravity_x = readInt16(&gravity_data[0]) / 100.0f;
+  const float gravity_y = readInt16(&gravity_data[2]) / 100.0f;
+  const float gravity_z = readInt16(&gravity_data[4]) / 100.0f;
 
   Serial.print("Q,");
   Serial.print(now);
   Serial.print(',');
-  Serial.print(quat.w(), 6);
+  Serial.print(quat_w, 6);
   Serial.print(',');
-  Serial.print(quat.x(), 6);
+  Serial.print(quat_x, 6);
   Serial.print(',');
-  Serial.print(quat.y(), 6);
+  Serial.print(quat_y, 6);
   Serial.print(',');
-  Serial.print(quat.z(), 6);
+  Serial.print(quat_z, 6);
   Serial.print(',');
-  Serial.print(euler.x(), 2);  // heading
+  Serial.print(heading, 2);
   Serial.print(',');
-  Serial.print(euler.z(), 2);  // roll
+  Serial.print(roll, 2);
   Serial.print(',');
-  Serial.print(euler.y(), 2);  // pitch
+  Serial.print(pitch, 2);
   Serial.print(',');
-  Serial.print(system_cal);
+  Serial.print((calibration >> 6) & 0x03);
   Serial.print(',');
-  Serial.print(gyro_cal);
+  Serial.print((calibration >> 4) & 0x03);
   Serial.print(',');
-  Serial.print(accel_cal);
+  Serial.print((calibration >> 2) & 0x03);
   Serial.print(',');
-  Serial.print(mag_cal);
+  Serial.print(calibration & 0x03);
   Serial.print(',');
-  Serial.print(gravity.x(), 4);
+  Serial.print(gravity_x, 4);
   Serial.print(',');
-  Serial.print(gravity.y(), 4);
+  Serial.print(gravity_y, 4);
   Serial.print(',');
-  Serial.println(gravity.z(), 4);
+  Serial.println(gravity_z, 4);
 
   const int left_raw = readAveragedAdc(LEFT_FSR_PIN);
   const int right_raw = readAveragedAdc(RIGHT_FSR_PIN);
