@@ -251,11 +251,11 @@ class Config:
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True
-    sensor_port: str = "/dev/ttyUSB0"
+    sensor_port: str = "auto"
     sensor_baudrate: int = 115200
     sensor_timeout_s: float = 0.25
     sensor_use_imu: bool = True
-    sensor_use_hand_fsr: bool = True
+    sensor_use_hand_fsr: bool = False
     sensor_use_foot_fsr: bool = True
     sensor_debug: bool = False
     hand_fsr_invert: bool = False

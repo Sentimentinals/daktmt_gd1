@@ -95,9 +95,11 @@ def parse_serial_feet_line(
         return None
     try:
         sensor_time_ms = int(fields[1])
-        left_raw = int(fields[4])
-        right_raw = int(fields[7])
+        left_raw = int(round(float(fields[4])))
+        right_raw = int(round(float(fields[7])))
     except ValueError:
+        return None
+    if not 0 <= left_raw <= 4095 or not 0 <= right_raw <= 4095:
         return None
 
     span = max(1, full_raw - zero_raw)
@@ -157,6 +159,8 @@ class RobotSensorHub:
 
         self._serial = None
         self._serial_factory = None
+        self._list_ports = None
+        self._active_port: Optional[str] = None
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -173,12 +177,14 @@ class RobotSensorHub:
     def open(self) -> None:
         try:
             import serial
+            from serial.tools import list_ports
         except ImportError as exc:
             raise ImportError("ESP32 sensor support requires: pip install pyserial") from exc
 
+        self._serial_factory = serial.Serial
+        self._list_ports = list_ports.comports
         try:
-            self._serial_factory = serial.Serial
-            self._serial = self._serial_factory(self.port, self.baudrate, timeout=0.05)
+            self._serial = self._connect_serial()
         except Exception as exc:
             raise RuntimeError(f"Cannot open ESP32 sensor port {self.port}: {exc}") from exc
 
@@ -190,9 +196,8 @@ class RobotSensorHub:
         while not self._stop.is_set():
             if self._serial is None:
                 try:
-                    assert self._serial_factory is not None
-                    self._serial = self._serial_factory(self.port, self.baudrate, timeout=0.05)
-                    print(f"[sensors] Reconnected ESP32 on {self.port}.")
+                    self._serial = self._connect_serial()
+                    print(f"[sensors] Reconnected ESP32 on {self._active_port}.")
                 except Exception:
                     self._stop.wait(0.5)
                     continue
@@ -204,6 +209,7 @@ class RobotSensorHub:
                 except Exception:
                     pass
                 self._serial = None
+                self._active_port = None
                 with self._lock:
                     self._imu = None
                     self._hand_force = None
@@ -279,6 +285,48 @@ class RobotSensorHub:
                         feet.sensor_time_ms,
                     )
                     self._feet_at = now
+
+    @property
+    def active_port(self) -> Optional[str]:
+        return self._active_port
+
+    def _connect_serial(self):
+        assert self._serial_factory is not None
+        errors = []
+        for candidate in self._port_candidates():
+            try:
+                serial_port = self._serial_factory(candidate, self.baudrate, timeout=0.05)
+                self._active_port = candidate
+                return serial_port
+            except Exception as exc:
+                errors.append(f"{candidate}: {exc}")
+        detail = "; ".join(errors) if errors else "no CP210x ESP32 port found"
+        raise RuntimeError(detail)
+
+    def _port_candidates(self) -> list[str]:
+        requested = self.port.strip()
+        candidates = [] if requested.lower() == "auto" else [requested]
+        if self._list_ports is None:
+            return candidates
+
+        detected = []
+        for info in self._list_ports():
+            device = str(getattr(info, "device", "") or "")
+            if not device:
+                continue
+            vid = getattr(info, "vid", None)
+            pid = getattr(info, "pid", None)
+            description = " ".join(
+                str(getattr(info, field, "") or "")
+                for field in ("description", "manufacturer", "hwid")
+            ).lower()
+            if (vid, pid) == (0x10C4, 0xEA60) or "cp210" in description:
+                detected.append(device)
+
+        for device in sorted(detected):
+            if device not in candidates:
+                candidates.append(device)
+        return candidates
 
     def read(self) -> SensorSnapshot:
         now = time.monotonic()
@@ -458,3 +506,4 @@ class RobotSensorHub:
                 self._serial.close()
             finally:
                 self._serial = None
+                self._active_port = None

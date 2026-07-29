@@ -40,7 +40,10 @@ def main() -> int:
         foot_fsr_full_raw=settings.foot_fsr_full_raw,
     )
     hub.open()
-    print(f"[sensor-monitor] Reading {args.port} at {args.baudrate} baud for {args.seconds:.0f}s.")
+    print(
+        f"[sensor-monitor] Reading {hub.active_port or args.port} "
+        f"at {args.baudrate} baud for {args.seconds:.0f}s."
+    )
     deadline = time.monotonic() + max(1.0, args.seconds)
     next_print = 0.0
     imu_seen = False
