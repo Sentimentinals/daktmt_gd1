@@ -237,6 +237,7 @@ def main() -> None:
     phase_step = False
     phase_started: str | None = None
     direction = 1
+    phase_pose = dict(STANDING)
     sensor_hub = None
     balance = None
     last_balance_at = time.monotonic()
@@ -269,6 +270,7 @@ def main() -> None:
                             phase_running = False
                             phase_step = False
                             walking.reset()
+                            phase_pose = dict(STANDING)
                             changed = True
                             print("[walking-debug] Phase debugger reset: DOUBLE SUPPORT.")
                         elif event.key == pygame.K_i:
@@ -329,13 +331,15 @@ def main() -> None:
                                 phase_running = False
                                 phase_step = False
                                 phase_started = None
+                                phase_pose = dict(STANDING)
                                 changed = True
                                 print("[walking-debug] Gait reset to standing.")
 
                 base_pose = dict(calibration_pose)
                 support_leg = "double"
                 if mode == "phases" and phase_running:
-                    base_pose = walking.update(direction * abs(args.step_command))
+                    phase_pose = walking.update(direction * abs(args.step_command))
+                    base_pose = dict(phase_pose)
                     support_leg = walking.support_leg
                     current_phase = walking.last_phase_mode
                     if phase_step:
@@ -347,7 +351,7 @@ def main() -> None:
                             phase_step = False
                             print(f"[walking-debug] Paused at {phase_label(walking)}.")
                 elif mode == "phases":
-                    base_pose = dict(last_sent_pose or STANDING)
+                    base_pose = dict(phase_pose)
                     support_leg = walking.support_leg
 
                 command_pose, last_balance_at, imu_message = apply_imu(
