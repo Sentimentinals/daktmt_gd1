@@ -6,7 +6,8 @@
 namespace {
 constexpr uint8_t SDA_PIN = 21;
 constexpr uint8_t SCL_PIN = 22;
-constexpr uint8_t HAND_FSR_PIN = 34;
+constexpr uint8_t LEFT_FSR_PIN = 34;
+constexpr uint8_t RIGHT_FSR_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;  // 50 Hz
@@ -43,7 +44,8 @@ void setup() {
   delay(800);
 
   analogReadResolution(12);
-  analogSetPinAttenuation(HAND_FSR_PIN, ADC_11db);
+  analogSetPinAttenuation(LEFT_FSR_PIN, ADC_11db);
+  analogSetPinAttenuation(RIGHT_FSR_PIN, ADC_11db);
 
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
@@ -59,7 +61,7 @@ void setup() {
   delay(1000);
   bno.setExtCrystalUse(true);
   Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
-  Serial.println("# READY format=H,ms,force_norm,voltage,raw");
+  Serial.println("# READY format=F,ms,left_norm,left_voltage,left_raw,right_norm,right_voltage,right_raw");
 }
 
 void loop() {
@@ -113,16 +115,23 @@ void loop() {
   Serial.print(',');
   Serial.println(gravity.z(), 4);
 
-  const int hand_raw = readAveragedAdc(HAND_FSR_PIN);
-  const float hand_norm = static_cast<float>(hand_raw) / 4095.0f;
-  const float hand_voltage = hand_norm * 3.3f;
+  const int left_raw = readAveragedAdc(LEFT_FSR_PIN);
+  const int right_raw = readAveragedAdc(RIGHT_FSR_PIN);
+  const float left_norm = static_cast<float>(left_raw) / 4095.0f;
+  const float right_norm = static_cast<float>(right_raw) / 4095.0f;
 
-  Serial.print("H,");
+  Serial.print("F,");
   Serial.print(now);
   Serial.print(',');
-  Serial.print(hand_norm, 4);
+  Serial.print(left_norm, 4);
   Serial.print(',');
-  Serial.print(hand_voltage, 3);
+  Serial.print(left_norm * 3.3f, 3);
   Serial.print(',');
-  Serial.println(hand_raw);
+  Serial.print(left_raw);
+  Serial.print(',');
+  Serial.print(right_norm, 4);
+  Serial.print(',');
+  Serial.print(right_norm * 3.3f, 3);
+  Serial.print(',');
+  Serial.println(right_raw);
 }

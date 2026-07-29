@@ -243,6 +243,7 @@ class Config:
     sensor_timeout_s: float = 0.25
     sensor_use_imu: bool = True
     sensor_use_hand_fsr: bool = True
+    sensor_use_foot_fsr: bool = True
     sensor_debug: bool = False
     hand_fsr_invert: bool = False
     hand_fsr_filter_alpha: float = 0.18
@@ -251,3 +252,11 @@ class Config:
     hand_fsr_contact_threshold: float = 0.12
     hand_fsr_release_threshold: float = 0.06
     hand_fsr_stable_frames: int = 3
+    foot_fsr_invert: bool = True
+    foot_fsr_filter_alpha: float = 0.18
+    foot_fsr_zero_raw: int = 0
+    foot_fsr_full_raw: int = 4095
+    foot_fsr_contact_threshold: float = 0.12
+    foot_fsr_stable_frames: int = 5
+    one_foot_lift_height: float = 18.0
+    one_foot_ramp_s: float = 1.5

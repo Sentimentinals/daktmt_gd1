@@ -6,43 +6,22 @@ import time
 from src.balance import BalanceConfig, IMUBalanceController
 from src.backends import SerialRTBackend
 from src.config import Config, STANDING
-from src.sensors import RobotSensorHub
-from src.walking_engine import DynamicWalkingEngine
-
-
-LEGS = (
-    (12, "Left hip roll"),
-    (13, "Left hip pitch"),
-    (14, "Left knee"),
-    (15, "Left ankle pitch"),
-    (16, "Left ankle roll"),
-    (17, "Right ankle roll"),
-    (18, "Right ankle pitch"),
-    (19, "Right knee"),
-    (20, "Right hip pitch"),
-    (21, "Right hip roll"),
-)
+from src.sensors import FootForceReading, RobotSensorHub, SensorSnapshot
+from src.walking_engine import DynamicWalkingEngine, SingleSupportTestEngine
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Walking phase and leg calibration debugger")
+    parser = argparse.ArgumentParser(description="Walking phase and one-foot balance debugger")
     parser.add_argument("--port", default="/dev/ttyACM0")
     parser.add_argument("--baudrate", type=int, default=115200)
     parser.add_argument("--sensor-port", default="/dev/ttyUSB0")
     parser.add_argument("--sensor-baudrate", type=int, default=115200)
-    parser.add_argument("--min-pwm", type=int, default=1350)
-    parser.add_argument("--max-pwm", type=int, default=1650)
     parser.add_argument("--step-command", type=float, default=0.22)
     parser.add_argument("--step-time", type=float, default=1.60)
     return parser.parse_args()
 
 
-def print_pose(pose: dict[int, int]) -> None:
-    values = ", ".join(f"{servo_id}: {pose[servo_id]}" for servo_id, _ in LEGS)
-    print(f"LEG_STANDING = {{{values}}}")
-
-
-def open_imu(args: argparse.Namespace):
+def open_sensors(args: argparse.Namespace) -> tuple[RobotSensorHub, IMUBalanceController]:
     settings = Config()
     sensor_hub = RobotSensorHub(
         port=args.sensor_port,
@@ -50,11 +29,16 @@ def open_imu(args: argparse.Namespace):
         timeout_s=settings.sensor_timeout_s,
         use_imu=True,
         use_hand_fsr=False,
+        use_foot_fsr=True,
         imu_roll_sign=settings.imu_roll_sign,
         imu_pitch_sign=settings.imu_pitch_sign,
         imu_yaw_sign=settings.imu_yaw_sign,
         imu_vertical_mount=settings.imu_vertical_mount,
         imu_board_face_sign=settings.imu_board_face_sign,
+        foot_fsr_invert=settings.foot_fsr_invert,
+        foot_fsr_filter_alpha=settings.foot_fsr_filter_alpha,
+        foot_fsr_zero_raw=settings.foot_fsr_zero_raw,
+        foot_fsr_full_raw=settings.foot_fsr_full_raw,
     )
     sensor_hub.open()
     print("[walking-debug] Keep robot still while IMU reference is captured.")
@@ -78,15 +62,14 @@ def open_imu(args: argparse.Namespace):
             pitch_deadband_deg=settings.balance_deadband_deg,
         )
     )
-    print(f"[walking-debug] IMU ON: reference roll={roll:.2f}, pitch={pitch:.2f}.")
+    print(f"[walking-debug] Sensors ready: roll={roll:.2f}, pitch={pitch:.2f}.")
     return sensor_hub, balance
 
 
 def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
     settings = Config()
-    dt = 0.04
     return DynamicWalkingEngine(
-        dt=dt,
+        dt=0.04,
         t_step=max(1.20, args.step_time),
         t_dbl=settings.t_dbl,
         max_step_len=settings.max_step_len,
@@ -122,13 +105,58 @@ def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
     )
 
 
+def make_one_foot_engine() -> SingleSupportTestEngine:
+    settings = Config()
+    return SingleSupportTestEngine(
+        dt=0.04,
+        lift_height=settings.one_foot_lift_height,
+        zmp_support_ratio=settings.zmp_support_ratio,
+        hip_abduct_gain=settings.hip_abduct_gain,
+        ankle_roll_gain=settings.ankle_roll_gain,
+        arm_pwm=0,
+        ramp_s=settings.one_foot_ramp_s,
+    )
+
+
 def phase_label(engine: DynamicWalkingEngine) -> str:
     labels = {
         "idle": "DOUBLE SUPPORT",
-        "swing": "SWING: shift weight, raise and advance foot",
-        "land": "LAND: lower foot and transfer support",
+        "swing": "SWING: shift, raise, advance",
+        "land": "LAND: lower and transfer",
     }
     return labels.get(engine.last_phase_mode, engine.last_phase_mode.upper())
+
+
+def foot_text(feet: FootForceReading | None, leg: str) -> str:
+    if feet is None:
+        return "NO DATA"
+    force = feet.left_force if leg == "left" else feet.right_force
+    raw = feet.left_raw if leg == "left" else feet.right_raw
+    return f"{force:.2f}  raw={raw if raw is not None else '-'}"
+
+
+def foot_contact(feet: FootForceReading | None, leg: str, threshold: float) -> bool:
+    if feet is None:
+        return False
+    force = feet.left_force if leg == "left" else feet.right_force
+    return force >= threshold
+
+
+def apply_imu(
+    pose: dict[int, int],
+    snapshot: SensorSnapshot | None,
+    balance: IMUBalanceController | None,
+    support_leg: str,
+    last_balance_at: float,
+) -> tuple[dict[int, int], float, str | None]:
+    if balance is None:
+        return pose, last_balance_at, None
+    now = time.monotonic()
+    reading = snapshot.imu if snapshot is not None else None
+    settings = Config()
+    if reading is None or not reading.balance_ready(settings.imu_min_gyro_cal, settings.imu_min_accel_cal):
+        return pose, now, "IMU: WAITING"
+    return balance.apply(pose, reading.roll_deg, reading.pitch_deg, now - last_balance_at, support_leg), now, None
 
 
 def draw(
@@ -137,39 +165,28 @@ def draw(
     font,
     small_font,
     mode: str,
-    selected: int,
-    calibration_pose: dict[int, int],
-    minimum: int,
-    maximum: int,
-    imu_status: str,
     engine: DynamicWalkingEngine,
     phase_running: bool,
     phase_step: bool,
     direction: int,
+    support_leg: str,
+    one_foot: SingleSupportTestEngine,
+    snapshot: SensorSnapshot | None,
+    one_foot_status: str,
+    sensor_status: str,
 ) -> None:
     screen.fill((18, 22, 28))
-    title = font.render("Walking Phase Debug", True, (238, 242, 246))
-    screen.blit(title, (28, 18))
-    tabs = "1: Calibration   2: Gait phases"
-    screen.blit(small_font.render(tabs, True, (184, 194, 204)), (28, 56))
+    screen.blit(font.render("Walking Debug", True, (238, 242, 246)), (28, 18))
+    screen.blit(small_font.render("1: Gait phases   2: One-foot balance", True, (184, 194, 204)), (28, 56))
 
-    if mode == "calibration":
-        help_text = "Up/Down select  Left/Right: 5us  Shift: 20us  Home: 1500  S: print  C: all 1500"
-        screen.blit(small_font.render(help_text, True, (184, 194, 204)), (28, 82))
-        for index, (servo_id, label) in enumerate(LEGS):
-            y = 116 + index * 38
-            active = index == selected
-            rect = pygame.Rect(28, y, 620, 30)
-            pygame.draw.rect(screen, (43, 104, 92) if active else (39, 45, 54), rect)
-            pygame.draw.rect(screen, (100, 210, 174) if active else (75, 84, 96), rect, 2)
-            text = f"{servo_id:02d}  {label:<20} {calibration_pose[servo_id]:4d} us"
-            screen.blit(small_font.render(text, True, (248, 250, 252)), (42, y + 7))
-    else:
-        help_text = "N: one complete phase  Space: continuous  F/B: direction  R: reset standing"
-        screen.blit(small_font.render(help_text, True, (184, 194, 204)), (28, 82))
+    if mode == "phases":
+        screen.blit(
+            small_font.render("N: one phase  Space: continuous  F/B: direction  R: reset", True, (184, 194, 204)),
+            (28, 82),
+        )
         state = "RUNNING" if phase_running else "PAUSED"
         if phase_step:
-            state += " - stop at next phase boundary"
+            state += " - stop at boundary"
         rows = (
             ("Current phase", phase_label(engine)),
             ("Support leg", engine.support_leg),
@@ -179,81 +196,79 @@ def draw(
             ("Direction", "FORWARD" if direction > 0 else "BACKWARD"),
             ("Execution", state),
         )
-        for index, (label, value) in enumerate(rows):
-            y = 126 + index * 48
-            screen.blit(small_font.render(label, True, (149, 161, 175)), (42, y))
-            screen.blit(font.render(value, True, (72, 204, 166)), (42, y + 16))
+    else:
+        lifted_leg = "right" if support_leg == "left" else "left"
+        screen.blit(
+            small_font.render("L/R: support leg  Space: start/stop  C: standing", True, (184, 194, 204)),
+            (28, 82),
+        )
+        rows = (
+            ("Support leg", support_leg.upper()),
+            ("Lifted leg", lifted_leg.upper()),
+            ("Left FSR", foot_text(snapshot.feet if snapshot is not None else None, "left")),
+            ("Right FSR", foot_text(snapshot.feet if snapshot is not None else None, "right")),
+            ("Lift progress", f"{one_foot.phase:.2f}"),
+            ("State", one_foot_status),
+        )
 
-    footer = "I: IMU on/off   Q/Esc: exit. Keep robot supported during phase debugging."
-    screen.blit(small_font.render(footer, True, (245, 190, 72)), (28, 535))
-    screen.blit(small_font.render(imu_status, True, (58, 210, 148)), (28, 562))
+    for index, (label, value) in enumerate(rows):
+        y = 126 + index * 54
+        screen.blit(small_font.render(label, True, (149, 161, 175)), (42, y))
+        screen.blit(font.render(value, True, (72, 204, 166)), (42, y + 18))
+
+    screen.blit(small_font.render("I: sensors on/off   Q/Esc: exit. Keep robot supported.", True, (245, 190, 72)), (28, 535))
+    screen.blit(small_font.render(sensor_status, True, (58, 210, 148)), (28, 562))
     pygame.display.flip()
-
-
-def apply_imu(
-    pose: dict[int, int],
-    sensor_hub: RobotSensorHub | None,
-    balance: IMUBalanceController | None,
-    support_leg: str,
-    last_balance_at: float,
-    minimum: int,
-    maximum: int,
-) -> tuple[dict[int, int], float, str | None]:
-    if sensor_hub is None or balance is None:
-        return pose, last_balance_at, None
-    now = time.monotonic()
-    reading = sensor_hub.read().imu
-    if reading is None or not reading.balance_ready(Config().imu_min_gyro_cal, Config().imu_min_accel_cal):
-        return pose, now, "IMU: ON - waiting for valid reading"
-    corrected = balance.apply(
-        pose,
-        roll_deg=reading.roll_deg,
-        pitch_deg=reading.pitch_deg,
-        dt=now - last_balance_at,
-        support_leg=support_leg,
-    )
-    corrected = {servo_id: max(minimum, min(maximum, value)) for servo_id, value in corrected.items()}
-    return corrected, now, None
 
 
 def main() -> None:
     args = parse_args()
-    minimum = min(args.min_pwm, args.max_pwm)
-    maximum = max(args.min_pwm, args.max_pwm)
-    calibration_pose = {servo_id: max(minimum, min(maximum, STANDING[servo_id])) for servo_id, _ in LEGS}
+    settings = Config()
     walking = make_walking_engine(args)
+    one_foot = make_one_foot_engine()
 
     import pygame
 
     pygame.init()
     screen = pygame.display.set_mode((760, 610))
-    pygame.display.set_caption("Humanoid Walking Phase Debug")
+    pygame.display.set_caption("Humanoid Walking Debug")
     font = pygame.font.Font(None, 30)
     small_font = pygame.font.Font(None, 22)
     clock = pygame.time.Clock()
-    selected = 0
-    mode = "calibration"
+    mode = "phases"
     phase_running = False
     phase_step = False
     phase_started: str | None = None
     direction = 1
+    selected_support = "right"
     phase_pose = dict(STANDING)
     sensor_hub = None
     balance = None
+    snapshot = None
     last_balance_at = time.monotonic()
     last_sent_pose = None
-    imu_status = "IMU: OFF (press I to compare without/with balance)"
+    one_foot_status = "SENSORS OFF"
+    sensor_status = "SENSORS: OFF (press I to connect IMU + foot FSR)"
+    contact_frames = 0
 
     try:
         with SerialRTBackend(args.port, args.baudrate) as backend:
-            backend.send(calibration_pose, duration_ms=1200, force=True)
-            last_sent_pose = dict(calibration_pose)
+            backend.send(STANDING, duration_ms=1200, force=True)
+            last_sent_pose = dict(STANDING)
             print(f"[walking-debug] Connected to {args.port}.")
-            print("[walking-debug] Use mode 2, then N to run one gait phase at a time.")
-            print_pose(calibration_pose)
             running = True
             while running:
                 changed = False
+                if sensor_hub is not None:
+                    snapshot = sensor_hub.read()
+                else:
+                    snapshot = None
+                feet = snapshot.feet if snapshot is not None else None
+                both_contact = foot_contact(feet, "left", settings.foot_fsr_contact_threshold) and foot_contact(
+                    feet, "right", settings.foot_fsr_contact_threshold
+                )
+                contact_frames = contact_frames + 1 if both_contact else 0
+
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         running = False
@@ -261,67 +276,46 @@ def main() -> None:
                         if event.key in (pygame.K_q, pygame.K_ESCAPE):
                             running = False
                         elif event.key == pygame.K_1:
-                            mode = "calibration"
+                            mode = "phases"
+                            one_foot.stop()
                             phase_running = False
                             phase_step = False
                             changed = True
                         elif event.key == pygame.K_2:
-                            mode = "phases"
+                            mode = "one-foot"
+                            walking.reset()
                             phase_running = False
                             phase_step = False
-                            walking.reset()
-                            phase_pose = dict(STANDING)
+                            one_foot.stop()
+                            one_foot_status = "READY: select support L/R"
                             changed = True
-                            print("[walking-debug] Phase debugger reset: DOUBLE SUPPORT.")
                         elif event.key == pygame.K_i:
                             if sensor_hub is not None:
+                                one_foot.stop()
                                 sensor_hub.close()
                                 sensor_hub = None
                                 balance = None
-                                imu_status = "IMU: OFF (press I to compare without/with balance)"
-                                print("[walking-debug] IMU OFF.")
+                                one_foot_status = "SENSORS OFF"
+                                sensor_status = "SENSORS: OFF"
+                                changed = True
                             else:
                                 try:
-                                    sensor_hub, balance = open_imu(args)
+                                    sensor_hub, balance = open_sensors(args)
                                     last_balance_at = time.monotonic()
-                                    imu_status = "IMU: ON - balance correction active"
+                                    sensor_status = "SENSORS: READY (IMU + 2 foot FSR)"
+                                    one_foot_status = "READY: place both feet down"
                                 except Exception as exc:
-                                    imu_status = f"IMU: OFF - {exc}"
-                                    print(f"[walking-debug] {imu_status}")
-                        elif mode == "calibration":
-                            if event.key == pygame.K_UP:
-                                selected = (selected - 1) % len(LEGS)
-                            elif event.key == pygame.K_DOWN:
-                                selected = (selected + 1) % len(LEGS)
-                            elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                                step = 20 if event.mod & pygame.KMOD_SHIFT else 5
-                                if event.key == pygame.K_LEFT:
-                                    step = -step
-                                servo_id = LEGS[selected][0]
-                                calibration_pose[servo_id] = max(
-                                    minimum, min(maximum, calibration_pose[servo_id] + step)
-                                )
-                                changed = True
-                            elif event.key == pygame.K_HOME:
-                                calibration_pose[LEGS[selected][0]] = 1500
-                                changed = True
-                            elif event.key == pygame.K_c:
-                                for servo_id, _ in LEGS:
-                                    calibration_pose[servo_id] = 1500
-                                changed = True
-                            elif event.key == pygame.K_s:
-                                print_pose(calibration_pose)
+                                    sensor_status = f"SENSORS: OFF - {exc}"
+                                    print(f"[walking-debug] {sensor_status}")
                         elif mode == "phases":
                             if event.key == pygame.K_n:
                                 phase_running = True
                                 phase_step = True
                                 phase_started = None
-                                print("[walking-debug] Running one complete gait phase.")
                             elif event.key == pygame.K_SPACE:
                                 phase_running = not phase_running
                                 phase_step = False
                                 phase_started = None
-                                print(f"[walking-debug] Continuous gait {'ON' if phase_running else 'PAUSED'}.")
                             elif event.key == pygame.K_f:
                                 direction = 1
                             elif event.key == pygame.K_b:
@@ -333,9 +327,29 @@ def main() -> None:
                                 phase_started = None
                                 phase_pose = dict(STANDING)
                                 changed = True
-                                print("[walking-debug] Gait reset to standing.")
+                        else:
+                            if event.key == pygame.K_l:
+                                selected_support = "left"
+                            elif event.key == pygame.K_r:
+                                selected_support = "right"
+                            elif event.key == pygame.K_c:
+                                one_foot.stop()
+                                one_foot_status = "STANDING"
+                                changed = True
+                            elif event.key == pygame.K_SPACE:
+                                if one_foot.running:
+                                    one_foot.stop()
+                                    one_foot_status = "STANDING"
+                                    changed = True
+                                elif balance is None or feet is None:
+                                    one_foot_status = "WAIT: press I for IMU + FSR"
+                                elif contact_frames < settings.foot_fsr_stable_frames:
+                                    one_foot_status = "WAIT: both feet must contact floor"
+                                else:
+                                    one_foot.start(selected_support)
+                                    one_foot_status = "LIFTING"
 
-                base_pose = dict(calibration_pose)
+                base_pose = dict(STANDING)
                 support_leg = "double"
                 if mode == "phases" and phase_running:
                     phase_pose = walking.update(direction * abs(args.step_command))
@@ -345,29 +359,43 @@ def main() -> None:
                     if phase_step:
                         if phase_started is None and current_phase != "idle":
                             phase_started = current_phase
-                            print(f"[walking-debug] Entered {phase_label(walking)}.")
                         elif phase_started is not None and current_phase != phase_started:
                             phase_running = False
                             phase_step = False
-                            print(f"[walking-debug] Paused at {phase_label(walking)}.")
                 elif mode == "phases":
                     base_pose = dict(phase_pose)
                     support_leg = walking.support_leg
+                elif one_foot.running:
+                    support_leg = selected_support
+                    if not foot_contact(feet, selected_support, settings.foot_fsr_contact_threshold):
+                        one_foot.stop()
+                        one_foot_status = "FAULT: SUPPORT FSR LOST - STANDING"
+                        changed = True
+                    else:
+                        base_pose = one_foot.update()
+                        lifted_leg = "right" if selected_support == "left" else "left"
+                        if one_foot.phase >= 1.0 and foot_contact(
+                            feet,
+                            lifted_leg,
+                            settings.foot_fsr_contact_threshold,
+                        ):
+                            one_foot_status = "LIFT BLOCKED: SWING FSR CONTACT"
+                        else:
+                            one_foot_status = "HOLDING" if one_foot.phase >= 1.0 else "LIFTING"
 
                 command_pose, last_balance_at, imu_message = apply_imu(
                     base_pose,
-                    sensor_hub,
+                    snapshot,
                     balance,
                     support_leg,
                     last_balance_at,
-                    minimum,
-                    maximum,
                 )
                 if imu_message is not None:
-                    imu_status = imu_message
+                    sensor_status = imu_message
 
+                moving = phase_running or one_foot.running
                 if changed or command_pose != last_sent_pose:
-                    backend.send(command_pose, duration_ms=80 if phase_running else 250, force=True)
+                    backend.send(command_pose, duration_ms=80 if moving else 350, force=True)
                     last_sent_pose = command_pose
 
                 draw(
@@ -376,15 +404,15 @@ def main() -> None:
                     font,
                     small_font,
                     mode,
-                    selected,
-                    calibration_pose,
-                    minimum,
-                    maximum,
-                    imu_status,
                     walking,
                     phase_running,
                     phase_step,
                     direction,
+                    selected_support,
+                    one_foot,
+                    snapshot,
+                    one_foot_status,
+                    sensor_status,
                 )
                 clock.tick(25)
     except KeyboardInterrupt:

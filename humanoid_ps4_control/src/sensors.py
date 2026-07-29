@@ -18,9 +18,19 @@ class HandForceReading:
 
 
 @dataclass(frozen=True)
+class FootForceReading:
+    left_force: float
+    right_force: float
+    left_raw: Optional[int] = None
+    right_raw: Optional[int] = None
+    sensor_time_ms: int = 0
+
+
+@dataclass(frozen=True)
 class SensorSnapshot:
     imu: Optional[IMUReading]
     hand_force: Optional[HandForceReading]
+    feet: Optional[FootForceReading]
 
 
 class LowPass:
@@ -74,8 +84,33 @@ def parse_serial_hand_line(
     return HandForceReading(force, voltage, raw, sensor_time_ms)
 
 
+def parse_serial_feet_line(
+    line: str,
+    invert: bool = False,
+    zero_raw: int = 0,
+    full_raw: int = 4095,
+) -> Optional[FootForceReading]:
+    fields = [field.strip() for field in line.strip().split(",")]
+    if len(fields) != 8 or fields[0] != "F":
+        return None
+    try:
+        sensor_time_ms = int(fields[1])
+        left_raw = int(fields[4])
+        right_raw = int(fields[7])
+    except ValueError:
+        return None
+
+    span = max(1, full_raw - zero_raw)
+    left_force = max(0.0, min(1.0, (left_raw - zero_raw) / span))
+    right_force = max(0.0, min(1.0, (right_raw - zero_raw) / span))
+    if invert:
+        left_force = 1.0 - left_force
+        right_force = 1.0 - right_force
+    return FootForceReading(left_force, right_force, left_raw, right_raw, sensor_time_ms)
+
+
 class RobotSensorHub:
-    """Single ESP32 USB sensor stream: Q lines for IMU, H lines for hand force."""
+    """Single ESP32 USB sensor stream for IMU, hand FSR, and two foot FSRs."""
 
     def __init__(
         self,
@@ -84,6 +119,7 @@ class RobotSensorHub:
         timeout_s: float = 0.25,
         use_imu: bool = True,
         use_hand_fsr: bool = False,
+        use_foot_fsr: bool = False,
         imu_roll_sign: float = 1.0,
         imu_pitch_sign: float = 1.0,
         imu_yaw_sign: float = 1.0,
@@ -93,12 +129,17 @@ class RobotSensorHub:
         hand_fsr_filter_alpha: float = 0.18,
         hand_fsr_zero_raw: int = 0,
         hand_fsr_full_raw: int = 4095,
+        foot_fsr_invert: bool = False,
+        foot_fsr_filter_alpha: float = 0.18,
+        foot_fsr_zero_raw: int = 0,
+        foot_fsr_full_raw: int = 4095,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout_s = max(0.05, timeout_s)
         self.use_imu = use_imu
         self.use_hand_fsr = use_hand_fsr
+        self.use_foot_fsr = use_foot_fsr
         self.imu_roll_sign = imu_roll_sign
         self.imu_pitch_sign = imu_pitch_sign
         self.imu_yaw_sign = imu_yaw_sign
@@ -108,6 +149,11 @@ class RobotSensorHub:
         self.hand_fsr_zero_raw = hand_fsr_zero_raw
         self.hand_fsr_full_raw = max(hand_fsr_zero_raw + 1, hand_fsr_full_raw)
         self.hand_filter = LowPass(hand_fsr_filter_alpha)
+        self.foot_fsr_invert = foot_fsr_invert
+        self.foot_fsr_zero_raw = foot_fsr_zero_raw
+        self.foot_fsr_full_raw = max(foot_fsr_zero_raw + 1, foot_fsr_full_raw)
+        self.left_foot_filter = LowPass(foot_fsr_filter_alpha)
+        self.right_foot_filter = LowPass(foot_fsr_filter_alpha)
 
         self._serial = None
         self._serial_factory = None
@@ -118,6 +164,8 @@ class RobotSensorHub:
         self._imu_at = 0.0
         self._hand_force: Optional[HandForceReading] = None
         self._hand_force_at = 0.0
+        self._feet: Optional[FootForceReading] = None
+        self._feet_at = 0.0
         self._gravity_basis: Optional[
             tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
         ] = None
@@ -159,7 +207,10 @@ class RobotSensorHub:
                 with self._lock:
                     self._imu = None
                     self._hand_force = None
+                    self._feet = None
                     self.hand_filter.reset()
+                    self.left_foot_filter.reset()
+                    self.right_foot_filter.reset()
                 if not self._stop.is_set():
                     self._stop.wait(0.25)
                 continue
@@ -206,6 +257,28 @@ class RobotSensorHub:
                         hand_force.sensor_time_ms,
                     )
                     self._hand_force_at = now
+                continue
+
+            feet = (
+                parse_serial_feet_line(
+                    line,
+                    invert=self.foot_fsr_invert,
+                    zero_raw=self.foot_fsr_zero_raw,
+                    full_raw=self.foot_fsr_full_raw,
+                )
+                if self.use_foot_fsr
+                else None
+            )
+            if feet is not None:
+                with self._lock:
+                    self._feet = FootForceReading(
+                        self.left_foot_filter.update(feet.left_force),
+                        self.right_foot_filter.update(feet.right_force),
+                        feet.left_raw,
+                        feet.right_raw,
+                        feet.sensor_time_ms,
+                    )
+                    self._feet_at = now
 
     def read(self) -> SensorSnapshot:
         now = time.monotonic()
@@ -216,7 +289,8 @@ class RobotSensorHub:
                 if self._hand_force is not None and now - self._hand_force_at <= self.timeout_s
                 else None
             )
-        return SensorSnapshot(imu=imu, hand_force=hand_force)
+            feet = self._feet if self._feet is not None and now - self._feet_at <= self.timeout_s else None
+        return SensorSnapshot(imu=imu, hand_force=hand_force, feet=feet)
 
     def capture_imu_reference(
         self,
