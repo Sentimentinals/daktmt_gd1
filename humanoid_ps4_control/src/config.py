@@ -235,6 +235,18 @@ class Config:
     imu_reference_max_rms_deg: float = 2.0
     imu_min_gyro_cal: int = 2
     imu_min_accel_cal: int = 0
+    push_recovery_enabled: bool = True
+    push_recovery_warning_tilt_deg: float = 3.0
+    push_recovery_tilt_deg: float = 5.0
+    push_recovery_safe_lower_tilt_deg: float = 9.0
+    push_recovery_rate_deg_s: float = 28.0
+    push_recovery_settle_tilt_deg: float = 1.4
+    push_recovery_step_forward_cmd: float = 0.20
+    push_recovery_step_side_cmd: float = 0.16
+    push_recovery_step_time_s: float = 1.35
+    push_recovery_step_height_mm: float = 12.0
+    push_recovery_timeout_s: float = 3.0
+    push_recovery_lower_rate_pwm_s: float = 300.0
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True

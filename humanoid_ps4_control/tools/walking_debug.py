@@ -3,7 +3,15 @@ from __future__ import annotations
 import argparse
 import time
 
-from src.balance import BalanceConfig, IMUBalanceController
+from src.balance import (
+    BalanceConfig,
+    IMUBalanceController,
+    PushRecoveryConfig,
+    PushRecoveryController,
+    RecoveryState,
+    angle_error_deg,
+    lower_toward_standing,
+)
 from src.backends import SerialRTBackend
 from src.config import Config, STANDING
 from src.sensors import FootForceReading, RobotSensorHub, SensorSnapshot
@@ -118,6 +126,38 @@ def make_one_foot_engine() -> SingleSupportTestEngine:
     )
 
 
+def make_recovery_engine() -> DynamicWalkingEngine:
+    settings = Config()
+    engine = DynamicWalkingEngine(
+        dt=0.04,
+        t_step=settings.push_recovery_step_time_s,
+        t_dbl=settings.t_dbl,
+        max_step_len=settings.max_step_len,
+        max_side_step_len=settings.max_side_step_len,
+        step_height=settings.push_recovery_step_height_mm,
+        command_rate_limit=1000.0,
+        trajectory_smoothing=settings.trajectory_smoothing,
+    )
+    engine.stop_extra_steps = 0
+    return engine
+
+
+def make_recovery_controller() -> PushRecoveryController:
+    settings = Config()
+    return PushRecoveryController(
+        PushRecoveryConfig(
+            warning_tilt_deg=settings.push_recovery_warning_tilt_deg,
+            recovery_tilt_deg=settings.push_recovery_tilt_deg,
+            safe_lower_tilt_deg=settings.push_recovery_safe_lower_tilt_deg,
+            recovery_rate_deg_s=settings.push_recovery_rate_deg_s,
+            settle_tilt_deg=settings.push_recovery_settle_tilt_deg,
+            recovery_step_forward_cmd=settings.push_recovery_step_forward_cmd,
+            recovery_step_side_cmd=settings.push_recovery_step_side_cmd,
+            recovery_step_timeout_s=settings.push_recovery_timeout_s,
+        )
+    )
+
+
 def phase_label(engine: DynamicWalkingEngine) -> str:
     labels = {
         "idle": "DOUBLE SUPPORT",
@@ -174,6 +214,7 @@ def draw(
     snapshot: SensorSnapshot | None,
     one_foot_status: str,
     sensor_status: str,
+    recovery_status: str,
 ) -> None:
     screen.fill((18, 22, 28))
     screen.blit(font.render("Walking Debug", True, (238, 242, 246)), (28, 18))
@@ -216,6 +257,9 @@ def draw(
         screen.blit(small_font.render(label, True, (149, 161, 175)), (42, y))
         screen.blit(font.render(value, True, (72, 204, 166)), (42, y + 18))
 
+    reading = snapshot.imu if snapshot is not None else None
+    tilt = "IMU: NO DATA" if reading is None else f"IMU: roll={reading.roll_deg:+.1f} pitch={reading.pitch_deg:+.1f}"
+    screen.blit(small_font.render(f"Balance: {recovery_status}   {tilt}", True, (72, 204, 166)), (28, 508))
     screen.blit(small_font.render("I: sensors on/off   Q/Esc: exit. Keep robot supported.", True, (245, 190, 72)), (28, 535))
     screen.blit(small_font.render(sensor_status, True, (58, 210, 148)), (28, 562))
     pygame.display.flip()
@@ -226,6 +270,7 @@ def main() -> None:
     settings = Config()
     walking = make_walking_engine(args)
     one_foot = make_one_foot_engine()
+    recovery_engine = make_recovery_engine()
 
     import pygame
 
@@ -244,6 +289,9 @@ def main() -> None:
     phase_pose = dict(STANDING)
     sensor_hub = None
     balance = None
+    recovery = None
+    recovery_step_active = False
+    recovery_status = "STABLE"
     snapshot = None
     last_balance_at = time.monotonic()
     last_sent_pose = None
@@ -295,13 +343,19 @@ def main() -> None:
                                 sensor_hub.close()
                                 sensor_hub = None
                                 balance = None
+                                recovery = None
+                                recovery_engine.reset()
+                                recovery_step_active = False
+                                recovery_status = "SENSORS OFF"
                                 one_foot_status = "SENSORS OFF"
                                 sensor_status = "SENSORS: OFF"
                                 changed = True
                             else:
                                 try:
                                     sensor_hub, balance = open_sensors(args)
+                                    recovery = make_recovery_controller()
                                     last_balance_at = time.monotonic()
+                                    recovery_status = "STABLE"
                                     sensor_status = "SENSORS: READY (IMU + 2 foot FSR)"
                                     one_foot_status = "READY: place both feet down"
                                 except Exception as exc:
@@ -334,6 +388,11 @@ def main() -> None:
                                 selected_support = "right"
                             elif event.key == pygame.K_c:
                                 one_foot.stop()
+                                recovery_engine.reset()
+                                recovery_step_active = False
+                                if recovery is not None:
+                                    recovery.reset()
+                                    recovery_status = "STABLE"
                                 one_foot_status = "STANDING"
                                 changed = True
                             elif event.key == pygame.K_SPACE:
@@ -383,6 +442,74 @@ def main() -> None:
                         else:
                             one_foot_status = "HOLDING" if one_foot.phase >= 1.0 else "LIFTING"
 
+                reading = snapshot.imu if snapshot is not None else None
+                if recovery_step_active:
+                    support_leg = recovery_engine.support_leg
+                recovery_allowed = mode == "one-foot" or (
+                    mode == "phases" and not phase_running and walking.is_idle_ready()
+                )
+                if recovery is not None and reading is not None and recovery_allowed:
+                    now = time.monotonic()
+                    left_contact = foot_contact(feet, "left", settings.foot_fsr_contact_threshold)
+                    right_contact = foot_contact(feet, "right", settings.foot_fsr_contact_threshold)
+                    decision = recovery.update(
+                        -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
+                        -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
+                        now - last_balance_at,
+                        left_contact,
+                        right_contact,
+                        single_support=one_foot.running,
+                        support_leg=support_leg,
+                        now=now,
+                    )
+                    recovery_status = f"{decision.state.value}: {decision.reason}"
+                    if decision.start_step:
+                        recovery_engine.reset()
+                        recovery_engine.stop_extra_steps = 0
+                        recovery_step_active = True
+                        walking.reset()
+                        one_foot.stop()
+                        one_foot_status = "RECOVERY STEP"
+                    if decision.safe_lower:
+                        recovery_step_active = False
+                        recovery_engine.reset()
+                        walking.reset()
+                        one_foot.stop()
+                        one_foot_status = "SAFE LOWER"
+                        base_pose = lower_toward_standing(
+                            last_sent_pose or STANDING,
+                            STANDING,
+                            now - last_balance_at,
+                            settings.push_recovery_lower_rate_pwm_s,
+                        )
+                    elif recovery_step_active:
+                        base_pose = recovery_engine.update(
+                            decision.forward_cmd if decision.start_step else 0.0,
+                            side_cmd=decision.side_cmd if decision.start_step else 0.0,
+                        )
+                        support_leg = recovery_engine.support_leg
+                        swing_leg = recovery_engine.last_swing_leg
+                        if (
+                            recovery_engine.last_phase_mode == "land"
+                            and recovery_engine.last_landing_progress >= 0.85
+                            and swing_leg in ("left", "right")
+                            and not foot_contact(feet, swing_leg, settings.foot_fsr_contact_threshold)
+                        ):
+                            recovery.force_safe_lower("swing FSR did not contact")
+                            recovery_status = "safe-lower: swing FSR did not contact"
+                            recovery_step_active = False
+                            base_pose = lower_toward_standing(
+                                last_sent_pose or STANDING,
+                                STANDING,
+                                now - last_balance_at,
+                                settings.push_recovery_lower_rate_pwm_s,
+                            )
+                        elif recovery_engine.is_idle_ready():
+                            recovery.complete_step()
+                            recovery_step_active = False
+                elif recovery is not None and recovery.state is RecoveryState.SAFE_LOWER:
+                    recovery_status = f"{recovery.state.value}: {recovery.reason}"
+
                 command_pose, last_balance_at, imu_message = apply_imu(
                     base_pose,
                     snapshot,
@@ -393,7 +520,7 @@ def main() -> None:
                 if imu_message is not None:
                     sensor_status = imu_message
 
-                moving = phase_running or one_foot.running
+                moving = phase_running or one_foot.running or recovery_step_active
                 if changed or command_pose != last_sent_pose:
                     backend.send(command_pose, duration_ms=80 if moving else 350, force=True)
                     last_sent_pose = command_pose
@@ -413,6 +540,7 @@ def main() -> None:
                     snapshot,
                     one_foot_status,
                     sensor_status,
+                    recovery_status,
                 )
                 clock.tick(25)
     except KeyboardInterrupt:

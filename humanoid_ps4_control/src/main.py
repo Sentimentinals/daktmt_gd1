@@ -83,7 +83,15 @@ def run_keyboard(args: Config) -> None:
     from .walking_engine import DynamicWalkingEngine, SingleSupportTestEngine, STANDING
     from .arm_dance import ArmDanceEngine, HandshakeEngine
     from .getup import GetupEngine
-    from .balance import BalanceConfig, IMUBalanceController
+    from .balance import (
+        BalanceConfig,
+        IMUBalanceController,
+        PushRecoveryConfig,
+        PushRecoveryController,
+        RecoveryState,
+        angle_error_deg,
+        lower_toward_standing,
+    )
     from .sensors import RobotSensorHub
 
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
@@ -162,6 +170,17 @@ def run_keyboard(args: Config) -> None:
         arm_pwm=args.single_support_arm_pwm,
         ramp_s=args.single_support_ramp_s,
     )
+    recovery_engine = DynamicWalkingEngine(
+        dt=args.update_ms / 1000.0,
+        t_step=args.push_recovery_step_time_s,
+        t_dbl=args.t_dbl,
+        max_step_len=args.max_step_len,
+        max_side_step_len=args.max_side_step_len,
+        step_height=args.push_recovery_step_height_mm,
+        command_rate_limit=1000.0,
+        trajectory_smoothing=args.trajectory_smoothing,
+    )
+    recovery_engine.stop_extra_steps = 0
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,
         period_s=args.dance_period,
@@ -209,8 +228,13 @@ def run_keyboard(args: Config) -> None:
     standing_hold_active = True
 
     balance = None
+    recovery = None
+    recovery_step_active = False
+    recovery_status = "STABLE"
+    previous_recovery_status = recovery_status
     sensor_hub = None
     sensor_snapshot = None
+    foot_contact_frames = 0
     last_balance_t = time.monotonic()
     balance_has_valid_imu = False
     previous_handshake_status = handshake.status
@@ -225,6 +249,7 @@ def run_keyboard(args: Config) -> None:
             timeout_s=args.sensor_timeout_s,
             use_imu=args.sensor_use_imu,
             use_hand_fsr=args.sensor_use_hand_fsr,
+            use_foot_fsr=args.sensor_use_foot_fsr,
             imu_roll_sign=args.imu_roll_sign,
             imu_pitch_sign=args.imu_pitch_sign,
             imu_yaw_sign=args.imu_yaw_sign,
@@ -234,6 +259,10 @@ def run_keyboard(args: Config) -> None:
             hand_fsr_filter_alpha=args.hand_fsr_filter_alpha,
             hand_fsr_zero_raw=args.hand_fsr_zero_raw,
             hand_fsr_full_raw=args.hand_fsr_full_raw,
+            foot_fsr_invert=args.foot_fsr_invert,
+            foot_fsr_filter_alpha=args.foot_fsr_filter_alpha,
+            foot_fsr_zero_raw=args.foot_fsr_zero_raw,
+            foot_fsr_full_raw=args.foot_fsr_full_raw,
         )
         sensor_hub.open()
         print(f"[main] Sensor feedback enabled: ESP32 serial port={args.sensor_port}.")
@@ -274,6 +303,19 @@ def run_keyboard(args: Config) -> None:
                             pitch_deadband_deg=args.balance_deadband_deg,
                         )
                     )
+                    if args.push_recovery_enabled:
+                        recovery = PushRecoveryController(
+                            PushRecoveryConfig(
+                                warning_tilt_deg=args.push_recovery_warning_tilt_deg,
+                                recovery_tilt_deg=args.push_recovery_tilt_deg,
+                                safe_lower_tilt_deg=args.push_recovery_safe_lower_tilt_deg,
+                                recovery_rate_deg_s=args.push_recovery_rate_deg_s,
+                                settle_tilt_deg=args.push_recovery_settle_tilt_deg,
+                                recovery_step_forward_cmd=args.push_recovery_step_forward_cmd,
+                                recovery_step_side_cmd=args.push_recovery_step_side_cmd,
+                                recovery_step_timeout_s=args.push_recovery_timeout_s,
+                            )
+                        )
                     print(
                         f"[main] IMU balance enabled: reference roll={target_roll:.2f}, "
                         f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
@@ -292,6 +334,13 @@ def run_keyboard(args: Config) -> None:
 
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
+                        feet = sensor_snapshot.feet
+                        both_feet_contact = (
+                            feet is not None
+                            and feet.left_force >= args.foot_fsr_contact_threshold
+                            and feet.right_force >= args.foot_fsr_contact_threshold
+                        )
+                        foot_contact_frames = foot_contact_frames + 1 if both_feet_contact else 0
                         if args.sensor_use_hand_fsr and sensor_snapshot.hand_force is not None:
                             if args.sensor_debug:
                                 hand = sensor_snapshot.hand_force
@@ -381,6 +430,11 @@ def run_keyboard(args: Config) -> None:
                         handshake.reset()
                         getup.reset()
                         single_support.stop()
+                        recovery_engine.reset()
+                        recovery_step_active = False
+                        if recovery is not None:
+                            recovery.reset()
+                            recovery_status = "STABLE"
                         standing_hold_active = True
                         pose = dict(STANDING)
 
@@ -460,6 +514,8 @@ def run_keyboard(args: Config) -> None:
                             single_support.stop()
                             standing_hold_active = True
                             print("[main] X single-support OFF - returning to STANDING.")
+                        elif foot_contact_frames < args.foot_fsr_stable_frames:
+                            print("[main] X single-support requires stable contact on both foot FSRs.")
                         else:
                             single_support.start(next_single_support_leg, current_pose=last_pose)
                             standing_hold_active = False
@@ -475,6 +531,11 @@ def run_keyboard(args: Config) -> None:
                         handshake.reset()
                         getup.reset()
                         single_support.stop()
+                        recovery_engine.reset()
+                        recovery_step_active = False
+                        if recovery is not None:
+                            recovery.reset()
+                            recovery_status = "STABLE"
                         standing_hold_active = True
                         person_follow.disable()
                         vy = 0.0
@@ -521,7 +582,26 @@ def run_keyboard(args: Config) -> None:
                         turn_cmd = 0.0
                         side_cmd = 0.0
                         motion_requested = False
-                        pose = single_support.update()
+                        feet = sensor_snapshot.feet if sensor_snapshot is not None else None
+                        support_force = (
+                            feet.left_force if single_support.support_leg == "left" and feet is not None
+                            else feet.right_force if feet is not None
+                            else 0.0
+                        )
+                        if support_force < args.foot_fsr_contact_threshold:
+                            single_support.stop()
+                            standing_hold_active = True
+                            if recovery is not None:
+                                recovery.force_safe_lower("support FSR lost")
+                                recovery_status = "safe-lower: support FSR lost"
+                            pose = lower_toward_standing(
+                                last_pose,
+                                STANDING,
+                                args.update_ms / 1000.0,
+                                args.push_recovery_lower_rate_pwm_s,
+                            )
+                        else:
+                            pose = single_support.update()
                     elif standing_hold_active and not motion_requested:
                         pose = dict(STANDING)
                     else:
@@ -543,7 +623,87 @@ def run_keyboard(args: Config) -> None:
                             args.imu_min_gyro_cal,
                             args.imu_min_accel_cal,
                         ):
-                            support_leg = single_support.support_leg if single_support.running else engine.support_leg
+                            support_leg = (
+                                recovery_engine.support_leg
+                                if recovery_step_active
+                                else single_support.support_leg if single_support.running else engine.support_leg
+                            )
+                            recovery_allowed = (
+                                recovery_step_active
+                                or single_support.running
+                                or (
+                                    standing_hold_active
+                                    and not motion_requested
+                                    and not handshake.running
+                                    and not arm_dance.running
+                                )
+                            )
+                            if recovery is not None and recovery_allowed:
+                                feet = sensor_snapshot.feet if sensor_snapshot is not None else None
+                                left_contact = (
+                                    feet is not None
+                                    and feet.left_force >= args.foot_fsr_contact_threshold
+                                )
+                                right_contact = (
+                                    feet is not None
+                                    and feet.right_force >= args.foot_fsr_contact_threshold
+                                )
+                                decision = recovery.update(
+                                    -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
+                                    -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
+                                    balance_dt,
+                                    left_contact,
+                                    right_contact,
+                                    single_support=single_support.running,
+                                    support_leg=support_leg,
+                                    now=now,
+                                )
+                                recovery_status = f"{decision.state.value}: {decision.reason}"
+                                if decision.start_step:
+                                    recovery_engine.reset()
+                                    recovery_engine.stop_extra_steps = 0
+                                    recovery_step_active = True
+                                    engine.reset()
+                                    person_follow.disable()
+                                    standing_hold_active = False
+                                    print("[main] Push recovery: starting one short step.")
+                                if decision.safe_lower:
+                                    single_support.stop()
+                                    recovery_step_active = False
+                                    recovery_engine.reset()
+                                    engine.reset()
+                                    standing_hold_active = True
+                                    pose = lower_toward_standing(
+                                        last_pose,
+                                        STANDING,
+                                        balance_dt,
+                                        args.push_recovery_lower_rate_pwm_s,
+                                    )
+                                elif recovery_step_active:
+                                    pose = recovery_engine.update(
+                                        decision.forward_cmd if decision.start_step else 0.0,
+                                        side_cmd=decision.side_cmd if decision.start_step else 0.0,
+                                    )
+                                    support_leg = recovery_engine.support_leg
+                                    swing_leg = recovery_engine.last_swing_leg
+                                    if (
+                                        recovery_engine.last_phase_mode == "land"
+                                        and recovery_engine.last_landing_progress >= 0.85
+                                        and swing_leg in ("left", "right")
+                                        and not (left_contact if swing_leg == "left" else right_contact)
+                                    ):
+                                        recovery.force_safe_lower("swing FSR did not contact")
+                                        recovery_status = "safe-lower: swing FSR did not contact"
+                                        recovery_step_active = False
+                                        pose = lower_toward_standing(
+                                            last_pose,
+                                            STANDING,
+                                            balance_dt,
+                                            args.push_recovery_lower_rate_pwm_s,
+                                        )
+                                    elif recovery_engine.is_idle_ready():
+                                        recovery.complete_step()
+                                        recovery_step_active = False
                             pose = balance.apply(
                                 pose,
                                 roll_deg=reading.roll_deg,
@@ -558,6 +718,10 @@ def run_keyboard(args: Config) -> None:
                     elif balance is not None and balance_has_valid_imu:
                         balance.reset()
                         balance_has_valid_imu = False
+
+                    if recovery_status != previous_recovery_status:
+                        print(f"[main] Push recovery: {recovery_status}.")
+                        previous_recovery_status = recovery_status
 
                     if not pose_from_getup and not handshake.running and not arm_dance.running:
                         head_target = STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
@@ -583,6 +747,8 @@ def run_keyboard(args: Config) -> None:
                         camera_status = f"HANDSHAKE: {handshake.status}"
                     elif arm_dance.running:
                         camera_status = "ARM DANCE"
+                    elif recovery is not None and recovery.state is not RecoveryState.STABLE:
+                        camera_status = f"BALANCE: {recovery_status.upper()}"
                     elif single_support.running:
                         camera_status = f"SINGLE SUPPORT: {single_support.support_leg.upper()}"
                     else:

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, Optional
 
 
 Pose = Dict[int, int]
+
+
+def angle_error_deg(value: float, target: float) -> float:
+    return (target - value + 180.0) % 360.0 - 180.0
 
 
 @dataclass
@@ -66,6 +71,167 @@ class BalanceConfig:
     double_support_gain: float = 0.70
 
 
+class RecoveryState(str, Enum):
+    STABLE = "stable"
+    ANKLE_HIP = "ankle-hip"
+    RECOVERY_STEP = "recovery-step"
+    SAFE_LOWER = "safe-lower"
+
+
+@dataclass
+class PushRecoveryConfig:
+    warning_tilt_deg: float = 3.0
+    recovery_tilt_deg: float = 5.0
+    safe_lower_tilt_deg: float = 9.0
+    recovery_rate_deg_s: float = 28.0
+    settle_tilt_deg: float = 1.4
+    recovery_step_forward_cmd: float = 0.20
+    recovery_step_side_cmd: float = 0.16
+    recovery_step_timeout_s: float = 3.0
+
+
+@dataclass(frozen=True)
+class RecoveryDecision:
+    state: RecoveryState
+    reason: str
+    start_step: bool = False
+    forward_cmd: float = 0.0
+    side_cmd: float = 0.0
+
+    @property
+    def safe_lower(self) -> bool:
+        return self.state is RecoveryState.SAFE_LOWER
+
+
+class PushRecoveryController:
+    """Safety state machine around the bounded ankle/hip stabilizer.
+
+    It does not generate servo corrections itself.  The caller keeps the
+    existing IMU PID post-IK and runs a short gait step only after this class
+    confirms that both foot FSRs are present.  This keeps knees and swing
+    trajectories under the walking engine rather than under IMU feedback.
+    """
+
+    def __init__(self, config: Optional[PushRecoveryConfig] = None) -> None:
+        self.config = config or PushRecoveryConfig()
+        self.reset()
+
+    def reset(self) -> None:
+        self.state = RecoveryState.STABLE
+        self.reason = "stable"
+        self._previous_roll: Optional[float] = None
+        self._previous_pitch: Optional[float] = None
+        self._started_at = 0.0
+
+    def force_safe_lower(self, reason: str) -> RecoveryDecision:
+        self.state = RecoveryState.SAFE_LOWER
+        self.reason = reason
+        return RecoveryDecision(self.state, self.reason)
+
+    def complete_step(self) -> RecoveryDecision:
+        if self.state is RecoveryState.RECOVERY_STEP:
+            self.state = RecoveryState.ANKLE_HIP
+            self.reason = "recovery step complete"
+        return RecoveryDecision(self.state, self.reason)
+
+    def update(
+        self,
+        roll_deg: float,
+        pitch_deg: float,
+        dt: float,
+        left_contact: bool,
+        right_contact: bool,
+        single_support: bool = False,
+        support_leg: str = "double",
+        now: float = 0.0,
+    ) -> RecoveryDecision:
+        cfg = self.config
+        dt = max(0.005, min(0.10, dt))
+        roll_rate = self._rate(roll_deg, self._previous_roll, dt)
+        pitch_rate = self._rate(pitch_deg, self._previous_pitch, dt)
+        self._previous_roll = roll_deg
+        self._previous_pitch = pitch_deg
+
+        if self.state is RecoveryState.SAFE_LOWER:
+            return RecoveryDecision(self.state, self.reason)
+
+        max_tilt = max(abs(roll_deg), abs(pitch_deg))
+        max_rate = max(abs(roll_rate), abs(pitch_rate))
+        support_contact = left_contact if support_leg == "left" else right_contact
+        both_contact = left_contact and right_contact
+
+        if max_tilt >= cfg.safe_lower_tilt_deg:
+            return self.force_safe_lower("tilt limit")
+        if single_support and not support_contact:
+            return self.force_safe_lower("support FSR lost")
+        if self.state is RecoveryState.RECOVERY_STEP:
+            if support_leg in ("left", "right") and not support_contact:
+                return self.force_safe_lower("support FSR lost during recovery")
+            if support_leg == "double" and not both_contact:
+                return self.force_safe_lower("foot FSR unavailable during recovery")
+            if now > 0.0 and now - self._started_at > cfg.recovery_step_timeout_s:
+                return self.force_safe_lower("recovery step timeout")
+            return RecoveryDecision(self.state, self.reason)
+
+        if single_support and max_tilt >= cfg.recovery_tilt_deg:
+            return self.force_safe_lower("single-support tilt")
+
+        step_triggered = max_tilt >= cfg.recovery_tilt_deg and (
+            max_rate >= cfg.recovery_rate_deg_s or max_tilt >= cfg.recovery_tilt_deg + 1.0
+        )
+        if step_triggered and both_contact and not single_support:
+            self.state = RecoveryState.RECOVERY_STEP
+            self.reason = "tilt recovery"
+            self._started_at = now
+            forward_cmd, side_cmd = self._opposite_fall_command(roll_deg, pitch_deg)
+            return RecoveryDecision(
+                self.state,
+                self.reason,
+                start_step=True,
+                forward_cmd=forward_cmd,
+                side_cmd=side_cmd,
+            )
+
+        if max_tilt >= cfg.warning_tilt_deg:
+            self.state = RecoveryState.ANKLE_HIP
+            self.reason = "FSR recovery blocked" if not both_contact else "ankle/hip correction"
+        elif max_tilt <= cfg.settle_tilt_deg:
+            self.state = RecoveryState.STABLE
+            self.reason = "stable"
+        else:
+            self.state = RecoveryState.ANKLE_HIP
+            self.reason = "settling"
+        return RecoveryDecision(self.state, self.reason)
+
+    @staticmethod
+    def _rate(value: float, previous: Optional[float], dt: float) -> float:
+        if previous is None:
+            return 0.0
+        delta = (value - previous + 180.0) % 360.0 - 180.0
+        return delta / dt
+
+    def _opposite_fall_command(self, roll_deg: float, pitch_deg: float) -> tuple[float, float]:
+        cfg = self.config
+        if abs(pitch_deg) >= abs(roll_deg):
+            return (-cfg.recovery_step_forward_cmd if pitch_deg > 0.0 else cfg.recovery_step_forward_cmd), 0.0
+        return 0.0, (-cfg.recovery_step_side_cmd if roll_deg > 0.0 else cfg.recovery_step_side_cmd)
+
+
+def lower_toward_standing(
+    pose: Pose,
+    standing: Pose,
+    dt: float,
+    max_rate_pwm_s: float,
+) -> Pose:
+    """Return a bounded transition from the current pose back to standing."""
+    max_delta = max(1, round(max_rate_pwm_s * max(0.005, min(0.10, dt))))
+    return {
+        servo_id: current + max(-max_delta, min(max_delta, standing[servo_id] - current))
+        for servo_id, current in pose.items()
+        if servo_id in standing
+    }
+
+
 class IMUBalanceController:
     """
     PID stabilizer that adds small closed-loop corrections to ankle and hip servos.
@@ -108,8 +274,8 @@ class IMUBalanceController:
         support_leg: str = "double",
     ) -> Pose:
         cfg = self.config
-        roll_error = (cfg.target_roll_deg - roll_deg + 180.0) % 360.0 - 180.0
-        pitch_error = (cfg.target_pitch_deg - pitch_deg + 180.0) % 360.0 - 180.0
+        roll_error = angle_error_deg(roll_deg, cfg.target_roll_deg)
+        pitch_error = angle_error_deg(pitch_deg, cfg.target_pitch_deg)
 
         if abs(roll_error) < cfg.roll_deadband_deg:
             roll_error = 0.0
