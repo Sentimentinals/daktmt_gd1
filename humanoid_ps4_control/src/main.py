@@ -265,7 +265,7 @@ def run_keyboard(args: Config) -> None:
             foot_fsr_full_raw=args.foot_fsr_full_raw,
         )
         sensor_hub.open()
-        print(f"[main] Sensor feedback enabled: ESP32 serial port={args.sensor_port}.")
+        print(f"[main] Sensor feedback enabled: ESP32 serial port={sensor_hub.active_port}.")
 
     if args.imu_balance and (sensor_hub is None or not args.sensor_use_imu):
         print("[main] IMU balance requested but IMU sensor feedback is disabled.")
