@@ -13,6 +13,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", default=settings.sensor_port)
     parser.add_argument("--baudrate", type=int, default=settings.sensor_baudrate)
     parser.add_argument("--seconds", type=float, default=15.0)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--imu-only", action="store_true")
+    mode.add_argument("--fsr-only", action="store_true")
     return parser.parse_args()
 
 
@@ -23,9 +26,9 @@ def main() -> int:
         port=args.port,
         baudrate=args.baudrate,
         timeout_s=settings.sensor_timeout_s,
-        use_imu=True,
+        use_imu=not args.fsr_only,
         use_hand_fsr=False,
-        use_foot_fsr=True,
+        use_foot_fsr=not args.imu_only,
         imu_roll_sign=settings.imu_roll_sign,
         imu_pitch_sign=settings.imu_pitch_sign,
         imu_yaw_sign=settings.imu_yaw_sign,
@@ -54,6 +57,9 @@ def main() -> int:
             imu = snapshot.imu
             feet = snapshot.feet
             imu_text = (
+                "IMU: disabled"
+                if args.fsr_only
+                else
                 "IMU: waiting"
                 if imu is None
                 else (
@@ -62,6 +68,9 @@ def main() -> int:
                 )
             )
             feet_text = (
+                "FSR: disabled"
+                if args.imu_only
+                else
                 "FSR: waiting"
                 if feet is None
                 else (
@@ -74,10 +83,13 @@ def main() -> int:
     finally:
         hub.close()
 
-    if imu_seen and feet_seen:
-        print("[sensor-monitor] PASS: IMU and both foot FSR streams were received.")
+    passed = imu_seen if args.imu_only else feet_seen if args.fsr_only else imu_seen and feet_seen
+    if passed:
+        label = "IMU" if args.imu_only else "foot FSR" if args.fsr_only else "IMU and both foot FSR"
+        print(f"[sensor-monitor] PASS: {label} stream was received.")
         return 0
-    print("[sensor-monitor] FAIL: missing IMU or FSR stream. Check ESP32 USB port and firmware.")
+    label = "IMU" if args.imu_only else "foot FSR" if args.fsr_only else "IMU or FSR"
+    print(f"[sensor-monitor] FAIL: missing {label} stream. Check ESP32 USB port and firmware.")
     return 2
 
 
