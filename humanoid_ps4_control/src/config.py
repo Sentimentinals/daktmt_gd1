@@ -22,7 +22,7 @@ GAIT = {
     "step_x_ratio": 1.72,
     "thigh_lift_forward_mm": 0.0,
     "left_swing_x_scale": 1.0,
-    "left_step_height_scale": 1.0,
+    "left_step_height_scale": 1.12,
     "landing_gap_mm": 68.0,
     "right_swing_x_scale": 1.0,
     "right_step_height_scale": 1.0,
@@ -49,7 +49,7 @@ STANDING = {
     9: 1500,    # Left elbow
     10: 2450,   # Left upper arm down
     11: 1500,   # Left shoulder swing
-    12: 1500,   # Left hip roll/abduction
+    12: 1533,   # Left hip roll/abduction
     13: 1500,   # Left hip pitch
     14: 1500,   # Left knee
     15: 1500,   # Left ankle pitch
@@ -57,7 +57,7 @@ STANDING = {
     17: 1500,   # Right ankle roll / foot
     18: 1500,   # Right ankle pitch
     19: 1500,   # Right knee
-    20: 1500,   # Right hip pitch
+    20: 1467,   # Right hip pitch
     21: 1500,   # Right hip roll/abduction
     22: 1470,   # Right shoulder swing
     23: 500,    # Right upper arm down
