@@ -57,8 +57,8 @@ STANDING = {
     17: 1500,   # Right ankle roll / foot
     18: 1500,   # Right ankle pitch
     19: 1500,   # Right knee
-    20: 1467,   # Right hip pitch
-    21: 1500,   # Right hip roll/abduction
+    20: 1500,   # Right hip pitch
+    21: 1467,   # Right hip roll/abduction
     22: 1470,   # Right shoulder swing
     23: 500,    # Right upper arm down
     24: 1500,   # Right elbow
