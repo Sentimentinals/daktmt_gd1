@@ -296,6 +296,8 @@ class RobotSensorHub:
         for candidate in self._port_candidates():
             try:
                 serial_port = self._serial_factory(candidate, self.baudrate, timeout=0.05)
+                serial_port.dtr = False
+                serial_port.rts = False
                 self._active_port = candidate
                 return serial_port
             except Exception as exc:
