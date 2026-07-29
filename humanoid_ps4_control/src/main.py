@@ -214,6 +214,10 @@ def run_keyboard(args: Config) -> None:
     last_balance_t = time.monotonic()
     balance_has_valid_imu = False
     previous_handshake_status = handshake.status
+    head_pwm = float(STANDING[25])
+    head_turn_sign = 0
+    head_turn_lead_until = 0.0
+    last_head_update_t = time.monotonic()
     if args.sensor_feedback:
         sensor_hub = RobotSensorHub(
             port=args.sensor_port,
@@ -238,7 +242,7 @@ def run_keyboard(args: Config) -> None:
         print("[main] IMU balance requested but IMU sensor feedback is disabled.")
 
     print(
-        "\n[Keyboard Mode - Real-time ZMP] W/S walk, A/D turn, J/K side, "
+        "\n[Keyboard Mode - Real-time ZMP] W/S walk, A/D turn (head leads), J/K side, "
         "X single support, V handshake, L/M dance, G get-up, "
         "B get-up back, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
@@ -350,6 +354,21 @@ def run_keyboard(args: Config) -> None:
                             turn_cmd = 0.0
                             motion_requested = False
                             print(f"[main] Person follow stopped: {follow_status.lower()}.")
+
+                    head_turn_cmd = turn_cmd
+                    turn_sign = 1 if turn_cmd > 0.0 else -1 if turn_cmd < 0.0 else 0
+                    now = time.monotonic()
+                    if not person_follow.enabled and turn_sign != 0 and turn_sign != head_turn_sign:
+                        head_turn_sign = turn_sign
+                        head_turn_lead_until = now + args.head_turn_lead_s
+                    elif turn_sign == 0:
+                        head_turn_sign = 0
+                        head_turn_lead_until = 0.0
+                    if now < head_turn_lead_until:
+                        vy = 0.0
+                        turn_cmd = 0.0
+                        side_cmd = 0.0
+                        motion_requested = False
 
                     stop_pressed = state.stop
                     if stop_pressed:
@@ -539,6 +558,16 @@ def run_keyboard(args: Config) -> None:
                     elif balance is not None and balance_has_valid_imu:
                         balance.reset()
                         balance_has_valid_imu = False
+
+                    if not pose_from_getup and not handshake.running and not arm_dance.running:
+                        head_target = STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
+                            1 if head_turn_cmd > 0.0 else -1 if head_turn_cmd < 0.0 else 0
+                        )
+                        now = time.monotonic()
+                        max_head_delta = args.head_pan_rate_pwm_s * max(0.0, now - last_head_update_t)
+                        head_pwm += max(-max_head_delta, min(max_head_delta, head_target - head_pwm))
+                        last_head_update_t = now
+                        pose[25] = max(500, min(2500, round(head_pwm)))
     
                     try:
                         backend.send(pose, duration_ms=args.update_ms)

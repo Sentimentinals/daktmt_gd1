@@ -43,7 +43,7 @@ class KeyboardReader:
         pygame.display.set_caption("Humanoid Keyboard Control")
         self._pygame_ready = True
         print(
-            "[KeyboardReader] W/S walk, A/D turn, J/K side, V handshake, "
+            "[KeyboardReader] W/S walk, A/D turn (head leads), J/K side, V handshake, "
             "X single support, L/M dance, G/B get-up, Y follow, N ignore/stop follow, "
             "C stop, E/T reset, O/Esc menu."
         )

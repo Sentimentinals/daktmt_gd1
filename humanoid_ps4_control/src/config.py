@@ -154,6 +154,10 @@ class Config:
     vision_camera_width: int = 480
     vision_camera_height: int = 360
     vision_fps: int = 12
+    head_pan_pwm: int = 220
+    head_pan_rate_pwm_s: float = 700.0
+    head_turn_lead_s: float = 0.30
+    head_pan_direction: float = 1.0
 
     # --- Person Detection & Follow ---
     person_detect_prototxt: str = "../person_detect/MobileNetSSD_deploy.prototxt"
