@@ -612,12 +612,11 @@ class DynamicWalkingEngine:
         direction = 1.0 if sagittal_cmd > 0.0 else -1.0
         return direction * max(abs(planned_reach), self.landing_gap_mm)
 
-    def _swing_pitch_deltas(self, lift_factor: float, forward_x: float = 0.0, height_scale: float = 1.0) -> tuple[int, int, int]:
+    def _swing_pitch_deltas(self, lift_factor: float, forward_x: float = 0.0) -> tuple[int, int, int]:
         lift_height = self.step_height * lift_factor
         forward_x = max(-self.landing_gap_mm, min(self.landing_gap_mm, forward_x))
         forward_x *= self._smooth01(min(1.0, lift_factor / 0.25))
-        thigh, knee, ankle = lift_pitch_deltas(lift_height, forward_x)
-        return round(thigh * height_scale), round(knee * height_scale), round(ankle * height_scale)
+        return lift_pitch_deltas(lift_height, forward_x)
 
     def _phase_progress(self, phase: float, start: float, end: float) -> float:
         if phase <= start:
@@ -902,7 +901,7 @@ class DynamicWalkingEngine:
                 target_14 = pose[14]
                 target_15 = pose[15]
             else:
-                thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(swing_lift, swing_forward_x, self.left_step_height_scale)
+                thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(swing_lift, swing_forward_x)
                 target_13 = STANDING[13] + thigh_delta
                 target_14 = STANDING[14] + knee_delta
                 target_15 = STANDING[15] + ankle_delta
@@ -1023,7 +1022,7 @@ class DynamicWalkingEngine:
                     swing_forward_x = float(foot_L_now[0] - foot_R_now[0])
                     if abs(self.commanded_step_len) > 0.1:
                         swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
-                    thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(lift_factor_now, swing_forward_x, self.left_step_height_scale)
+                    thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(lift_factor_now, swing_forward_x)
                     pose[13] = max(500, min(2500, STANDING[13] + landing_forward_lean + thigh_delta))
                     pose[14] = max(500, min(2500, STANDING[14] + knee_delta))
                     pose[15] = max(500, min(2500, STANDING[15] + ankle_delta))
