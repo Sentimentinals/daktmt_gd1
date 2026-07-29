@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 
 
@@ -124,6 +125,7 @@ class LiveCameraPreview:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
+        self._detector_thread = None
         self._cv2 = None
         self._pygame = None
         self._detector = detector
@@ -132,6 +134,8 @@ class LiveCameraPreview:
         self._person_stable_frames = 0
         self._last_person_timestamp = None
         self._person_ignored = False
+        self._detection_frame = None
+        self._detection_sequence = 0
 
     def start(self) -> bool:
         try:
@@ -172,6 +176,13 @@ class LiveCameraPreview:
         self._stop.clear()
         self._thread = threading.Thread(target=self._capture_loop, name="live-camera", daemon=True)
         self._thread.start()
+        if self._detector is not None:
+            self._detector_thread = threading.Thread(
+                target=self._detect_loop,
+                name="person-detector",
+                daemon=True,
+            )
+            self._detector_thread.start()
         print("[camera] Live preview started.")
         return True
 
@@ -183,24 +194,37 @@ class LiveCameraPreview:
                 if not self._stop.is_set():
                     print(f"[camera] Capture stopped: {exc}")
                 break
-            person_frame = None
-            if self._detector is not None:
-                try:
-                    person_frame = self._detector.detect(frame)
-                except Exception as exc:
-                    print(f"[camera] Person detection stopped: {exc}")
-                    self._detector = None
             with self._lock:
-                self._frame = frame
-                if person_frame is not None:
-                    self._person_frame = person_frame
-                    is_new_detection = person_frame.captured_at != self._last_person_timestamp
-                    if person_frame.single_person is not None and is_new_detection:
-                        self._person_stable_frames += 1
-                    elif person_frame.single_person is None and is_new_detection:
-                        self._person_stable_frames = 0
-                        self._person_ignored = False
-                    self._last_person_timestamp = person_frame.captured_at
+                self._frame = frame.copy()
+                if self._detector is not None:
+                    self._detection_frame = self._frame
+                    self._detection_sequence += 1
+
+    def _detect_loop(self) -> None:
+        observed_sequence = -1
+        while not self._stop.is_set():
+            with self._lock:
+                sequence = self._detection_sequence
+                frame = self._detection_frame
+            if frame is None or sequence == observed_sequence:
+                time.sleep(0.01)
+                continue
+            observed_sequence = sequence
+            try:
+                person_frame = self._detector.detect(frame)
+            except Exception as exc:
+                print(f"[camera] Person detection stopped: {exc}")
+                self._detector = None
+                return
+            with self._lock:
+                self._person_frame = person_frame
+                is_new_detection = person_frame.captured_at != self._last_person_timestamp
+                if person_frame.single_person is not None and is_new_detection:
+                    self._person_stable_frames += 1
+                elif person_frame.single_person is None and is_new_detection:
+                    self._person_stable_frames = 0
+                    self._person_ignored = False
+                self._last_person_timestamp = person_frame.captured_at
 
     def person_frame(self):
         with self._lock:
@@ -277,6 +301,8 @@ class LiveCameraPreview:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=1.0)
+        if self._detector_thread is not None:
+            self._detector_thread.join(timeout=1.0)
         if self.camera is not None:
             try:
                 self.camera.stop()
@@ -288,5 +314,6 @@ class LiveCameraPreview:
                 pass
         self.camera = None
         self._thread = None
+        self._detector_thread = None
         if was_running:
             print("[camera] Live preview stopped.")
