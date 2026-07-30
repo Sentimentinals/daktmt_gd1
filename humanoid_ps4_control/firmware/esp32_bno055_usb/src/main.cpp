@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <SparkFun_VL53L5CX_Library.h>
 #include <Wire.h>
 
 namespace {
@@ -8,11 +9,17 @@ constexpr uint8_t LEFT_FSR_PIN = 34;
 constexpr uint8_t RIGHT_FSR_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
 constexpr uint8_t BNO055_IMUPLUS_MODE = 0x08;
+constexpr uint8_t VL53L5CX_ADDRESS = 0x29;
+constexpr uint32_t BNO055_I2C_CLOCK = 100000;
+constexpr uint32_t VL53L5CX_I2C_CLOCK = 400000;
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;  // 50 Hz
 constexpr uint8_t FSR_ADC_SAMPLES = 8;
 
+SparkFun_VL53L5CX tof;
+VL53L5CX_ResultsData tof_data;
 uint32_t last_sample_ms = 0;
+bool tof_ready = false;
 
 int readAveragedAdc(uint8_t pin) {
   uint32_t total = 0;
@@ -83,6 +90,23 @@ bool configureBnoWithoutReset() {
   delay(25);
   return true;
 }
+
+bool i2cDevicePresent(uint8_t address) {
+  Wire.beginTransmission(address);
+  return Wire.endTransmission() == 0;
+}
+
+void printDepthFrame(uint32_t now) {
+  Serial.print("D,");
+  Serial.print(now);
+  for (uint8_t y = 0; y < 8; ++y) {
+    for (int8_t x = 7; x >= 0; --x) {
+      Serial.print(',');
+      Serial.print(tof_data.distance_mm[x + y * 8]);
+    }
+  }
+  Serial.println();
+}
 }  // namespace
 
 void setup() {
@@ -94,7 +118,7 @@ void setup() {
   analogSetPinAttenuation(RIGHT_FSR_PIN, ADC_11db);
 
   Wire.begin(SDA_PIN, SCL_PIN);
-  Wire.setClock(100000);
+  Wire.setClock(BNO055_I2C_CLOCK);
   printI2cDevices();
   Serial.printf("# BNO chip-id=0x%02X op-mode=0x%02X\n", readBnoRegister(0x00),
                 readBnoRegister(0x3D));
@@ -106,9 +130,18 @@ void setup() {
     }
   }
 
+  if (i2cDevicePresent(VL53L5CX_ADDRESS)) {
+    Wire.setClock(VL53L5CX_I2C_CLOCK);
+    tof_ready = tof.begin(VL53L5CX_ADDRESS, Wire) && tof.setResolution(8 * 8) &&
+                tof.setRangingFrequency(5) && tof.startRanging();
+    Wire.setClock(BNO055_I2C_CLOCK);
+  }
+
   delay(50);
   Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
   Serial.println("# READY format=F,ms,left_norm,left_voltage,left_raw,right_norm,right_voltage,right_raw");
+  Serial.println(tof_ready ? "# READY format=D,ms,64_distance_mm"
+                           : "# VL53L5CX not detected at 0x29");
 }
 
 void loop() {
@@ -191,4 +224,13 @@ void loop() {
   Serial.print(right_norm * 3.3f, 3);
   Serial.print(',');
   Serial.println(right_raw);
+
+  if (tof_ready) {
+    Wire.setClock(VL53L5CX_I2C_CLOCK);
+    const bool depth_ready = tof.isDataReady() && tof.getRangingData(&tof_data);
+    Wire.setClock(BNO055_I2C_CLOCK);
+    if (depth_ready) {
+      printDepthFrame(now);
+    }
+  }
 }

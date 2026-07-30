@@ -10,4 +10,7 @@ pyserial>=3.5
 # ZMP preview controller and IK trajectory math
 numpy>=1.24
 
+# Live VL53L5CX 8x8 depth visualization
+matplotlib>=3.7
+
 # BNO055 and hand-FSR data arrive from the ESP32 over pyserial.
