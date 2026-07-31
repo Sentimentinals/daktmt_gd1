@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from typing import Optional
 
 import numpy as np
@@ -72,6 +73,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     try:
+        if not os.environ.get("DISPLAY"):
+            raise SystemExit("No graphical display. Run this from the Raspberry Pi desktop or VNC session.")
+        import matplotlib
+
+        matplotlib.use("TkAgg", force=True)
         import matplotlib.pyplot as plt
         from matplotlib.animation import FuncAnimation
         from matplotlib.cm import ScalarMappable
@@ -79,7 +85,7 @@ def main() -> int:
         import serial
     except ImportError as exc:
         raise SystemExit(
-            "Missing viewer dependency. Install pyserial, numpy and matplotlib."
+            "Missing viewer GUI dependency. Install pyserial, numpy, matplotlib and python3-tk."
         ) from exc
 
     args = parse_args()
