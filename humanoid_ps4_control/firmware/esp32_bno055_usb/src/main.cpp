@@ -19,6 +19,7 @@ constexpr uint8_t FSR_ADC_SAMPLES = 8;
 SparkFun_VL53L5CX tof;
 VL53L5CX_ResultsData tof_data;
 uint32_t last_sample_ms = 0;
+bool bno_ready = false;
 bool tof_ready = false;
 
 int readAveragedAdc(uint8_t pin) {
@@ -120,14 +121,12 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(BNO055_I2C_CLOCK);
   printI2cDevices();
-  Serial.printf("# BNO chip-id=0x%02X op-mode=0x%02X\n", readBnoRegister(0x00),
+  const int bno_chip_id = readBnoRegister(0x00);
+  Serial.printf("# BNO chip-id=0x%02X op-mode=0x%02X\n", bno_chip_id,
                 readBnoRegister(0x3D));
-
-  if (readBnoRegister(0x00) != 0xA0 || !configureBnoWithoutReset()) {
+  bno_ready = bno_chip_id == 0xA0 && configureBnoWithoutReset();
+  if (!bno_ready) {
     Serial.println("# ERROR: BNO055 setup failed.");
-    while (true) {
-      delay(1000);
-    }
   }
 
   if (i2cDevicePresent(VL53L5CX_ADDRESS)) {
@@ -138,7 +137,9 @@ void setup() {
   }
 
   delay(50);
-  Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
+  if (bno_ready) {
+    Serial.println("# READY format=Q,ms,w,x,y,z,heading,roll,pitch,sys,gyro,accel,mag,gx,gy,gz");
+  }
   Serial.println("# READY format=F,ms,left_norm,left_voltage,left_raw,right_norm,right_voltage,right_raw");
   Serial.println(tof_ready ? "# READY format=D,ms,64_distance_mm"
                            : "# VL53L5CX not detected at 0x29");
@@ -156,54 +157,27 @@ void loop() {
   uint8_t euler_data[6];
   uint8_t gravity_data[6];
   int calibration = 0;
-  if (!readBnoBlock(0x20, quat_data, sizeof(quat_data)) ||
-      !readBnoBlock(0x1A, euler_data, sizeof(euler_data)) ||
-      !readBnoBlock(0x2E, gravity_data, sizeof(gravity_data)) ||
-      (calibration = readBnoRegister(0x35)) < 0) {
-    return;
+  if (bno_ready && readBnoBlock(0x20, quat_data, sizeof(quat_data)) &&
+      readBnoBlock(0x1A, euler_data, sizeof(euler_data)) &&
+      readBnoBlock(0x2E, gravity_data, sizeof(gravity_data)) &&
+      (calibration = readBnoRegister(0x35)) >= 0) {
+    const float quat_w = readInt16(&quat_data[0]) / 16384.0f;
+    const float quat_x = readInt16(&quat_data[2]) / 16384.0f;
+    const float quat_y = readInt16(&quat_data[4]) / 16384.0f;
+    const float quat_z = readInt16(&quat_data[6]) / 16384.0f;
+    const float heading = readInt16(&euler_data[0]) / 16.0f;
+    const float roll = readInt16(&euler_data[2]) / 16.0f;
+    const float pitch = readInt16(&euler_data[4]) / 16.0f;
+    const float gravity_x = readInt16(&gravity_data[0]) / 100.0f;
+    const float gravity_y = readInt16(&gravity_data[2]) / 100.0f;
+    const float gravity_z = readInt16(&gravity_data[4]) / 100.0f;
+
+    Serial.printf("Q,%lu,%.6f,%.6f,%.6f,%.6f,%.2f,%.2f,%.2f,%d,%d,%d,%d,%.4f,%.4f,%.4f\n",
+                  now, quat_w, quat_x, quat_y, quat_z, heading, roll, pitch,
+                  (calibration >> 6) & 0x03, (calibration >> 4) & 0x03,
+                  (calibration >> 2) & 0x03, calibration & 0x03, gravity_x,
+                  gravity_y, gravity_z);
   }
-
-  const float quat_w = readInt16(&quat_data[0]) / 16384.0f;
-  const float quat_x = readInt16(&quat_data[2]) / 16384.0f;
-  const float quat_y = readInt16(&quat_data[4]) / 16384.0f;
-  const float quat_z = readInt16(&quat_data[6]) / 16384.0f;
-  const float heading = readInt16(&euler_data[0]) / 16.0f;
-  const float roll = readInt16(&euler_data[2]) / 16.0f;
-  const float pitch = readInt16(&euler_data[4]) / 16.0f;
-  const float gravity_x = readInt16(&gravity_data[0]) / 100.0f;
-  const float gravity_y = readInt16(&gravity_data[2]) / 100.0f;
-  const float gravity_z = readInt16(&gravity_data[4]) / 100.0f;
-
-  Serial.print("Q,");
-  Serial.print(now);
-  Serial.print(',');
-  Serial.print(quat_w, 6);
-  Serial.print(',');
-  Serial.print(quat_x, 6);
-  Serial.print(',');
-  Serial.print(quat_y, 6);
-  Serial.print(',');
-  Serial.print(quat_z, 6);
-  Serial.print(',');
-  Serial.print(heading, 2);
-  Serial.print(',');
-  Serial.print(roll, 2);
-  Serial.print(',');
-  Serial.print(pitch, 2);
-  Serial.print(',');
-  Serial.print((calibration >> 6) & 0x03);
-  Serial.print(',');
-  Serial.print((calibration >> 4) & 0x03);
-  Serial.print(',');
-  Serial.print((calibration >> 2) & 0x03);
-  Serial.print(',');
-  Serial.print(calibration & 0x03);
-  Serial.print(',');
-  Serial.print(gravity_x, 4);
-  Serial.print(',');
-  Serial.print(gravity_y, 4);
-  Serial.print(',');
-  Serial.println(gravity_z, 4);
 
   const int left_raw = readAveragedAdc(LEFT_FSR_PIN);
   const int right_raw = readAveragedAdc(RIGHT_FSR_PIN);
