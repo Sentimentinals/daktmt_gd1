@@ -3,8 +3,10 @@
 #include <Wire.h>
 
 namespace {
-constexpr uint8_t SDA_PIN = 21;
-constexpr uint8_t SCL_PIN = 22;
+constexpr uint8_t BNO_SDA_PIN = 21;
+constexpr uint8_t BNO_SCL_PIN = 22;
+constexpr uint8_t TOF_SDA_PIN = 25;
+constexpr uint8_t TOF_SCL_PIN = 26;
 constexpr uint8_t LEFT_FSR_PIN = 34;
 constexpr uint8_t RIGHT_FSR_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
@@ -18,6 +20,7 @@ constexpr uint8_t FSR_ADC_SAMPLES = 8;
 
 SparkFun_VL53L5CX tof;
 VL53L5CX_ResultsData tof_data;
+TwoWire tof_wire(1);
 uint32_t last_sample_ms = 0;
 bool bno_ready = false;
 bool tof_ready = false;
@@ -92,9 +95,9 @@ bool configureBnoWithoutReset() {
   return true;
 }
 
-bool i2cDevicePresent(uint8_t address) {
-  Wire.beginTransmission(address);
-  return Wire.endTransmission() == 0;
+bool i2cDevicePresent(TwoWire &bus, uint8_t address) {
+  bus.beginTransmission(address);
+  return bus.endTransmission() == 0;
 }
 
 void printDepthFrame(uint32_t now) {
@@ -118,7 +121,7 @@ void setup() {
   analogSetPinAttenuation(LEFT_FSR_PIN, ADC_11db);
   analogSetPinAttenuation(RIGHT_FSR_PIN, ADC_11db);
 
-  Wire.begin(SDA_PIN, SCL_PIN);
+  Wire.begin(BNO_SDA_PIN, BNO_SCL_PIN);
   Wire.setClock(BNO055_I2C_CLOCK);
   printI2cDevices();
   const int bno_chip_id = readBnoRegister(0x00);
@@ -129,11 +132,11 @@ void setup() {
     Serial.println("# ERROR: BNO055 setup failed.");
   }
 
-  if (i2cDevicePresent(VL53L5CX_ADDRESS)) {
-    Wire.setClock(VL53L5CX_I2C_CLOCK);
-    tof_ready = tof.begin(VL53L5CX_ADDRESS, Wire) && tof.setResolution(8 * 8) &&
+  tof_wire.begin(TOF_SDA_PIN, TOF_SCL_PIN);
+  tof_wire.setClock(VL53L5CX_I2C_CLOCK);
+  if (i2cDevicePresent(tof_wire, VL53L5CX_ADDRESS)) {
+    tof_ready = tof.begin(VL53L5CX_ADDRESS, tof_wire) && tof.setResolution(8 * 8) &&
                 tof.setRangingFrequency(5) && tof.startRanging();
-    Wire.setClock(BNO055_I2C_CLOCK);
   }
 
   delay(50);
@@ -200,9 +203,7 @@ void loop() {
   Serial.println(right_raw);
 
   if (tof_ready) {
-    Wire.setClock(VL53L5CX_I2C_CLOCK);
     const bool depth_ready = tof.isDataReady() && tof.getRangingData(&tof_data);
-    Wire.setClock(BNO055_I2C_CLOCK);
     if (depth_ready) {
       printDepthFrame(now);
     }
