@@ -5,8 +5,8 @@
 namespace {
 constexpr uint8_t BNO_SDA_PIN = 21;
 constexpr uint8_t BNO_SCL_PIN = 22;
-constexpr uint8_t TOF_SDA_PIN = 25;
-constexpr uint8_t TOF_SCL_PIN = 26;
+constexpr uint8_t TOF_SDA_PIN = 32;
+constexpr uint8_t TOF_SCL_PIN = 33;
 constexpr uint8_t LEFT_FSR_PIN = 34;
 constexpr uint8_t RIGHT_FSR_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
