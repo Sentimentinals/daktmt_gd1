@@ -49,7 +49,7 @@ STANDING = {
     9: 1500,    # Left elbow
     10: 2450,   # Left upper arm down
     11: 1500,   # Left shoulder swing
-    12: 1533,   # Left hip roll/abduction
+    12: 1556,   # Left hip roll/abduction
     13: 1500,   # Left hip pitch
     14: 1500,   # Left knee
     15: 1500,   # Left ankle pitch
@@ -58,7 +58,7 @@ STANDING = {
     18: 1500,   # Right ankle pitch
     19: 1500,   # Right knee
     20: 1500,   # Right hip pitch
-    21: 1467,   # Right hip roll/abduction
+    21: 1444,   # Right hip roll/abduction
     22: 1470,   # Right shoulder swing
     23: 500,    # Right upper arm down
     24: 1500,   # Right elbow
