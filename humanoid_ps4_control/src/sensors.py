@@ -268,7 +268,7 @@ class RobotSensorHub:
             tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
         ] = None
 
-    def open(self) -> None:
+    def open(self, wait_for_connection: bool = True) -> None:
         try:
             import serial
             from serial.tools import list_ports
@@ -277,12 +277,12 @@ class RobotSensorHub:
 
         self._serial_factory = serial.Serial
         self._list_ports = list_ports.comports
-        try:
-            self._serial = self._connect_serial()
-        except Exception as exc:
-            raise RuntimeError(f"Cannot open ESP32 sensor port {self.port}: {exc}") from exc
-
         self._stop.clear()
+        if wait_for_connection:
+            try:
+                self._serial = self._connect_serial()
+            except Exception as exc:
+                raise RuntimeError(f"Cannot open ESP32 sensor port {self.port}: {exc}") from exc
         self._thread = threading.Thread(target=self._read_loop, name="esp32-sensors", daemon=True)
         self._thread.start()
 
@@ -291,6 +291,11 @@ class RobotSensorHub:
             if self._serial is None:
                 try:
                     self._serial = self._connect_serial()
+                    if self._stop.is_set():
+                        self._serial.close()
+                        self._serial = None
+                        self._active_port = None
+                        break
                     print(f"[sensors] Reconnected ESP32 on {self._active_port}.")
                 except Exception:
                     self._stop.wait(0.5)
@@ -417,10 +422,9 @@ class RobotSensorHub:
         detail = "; ".join(errors) if errors else "no CP210x ESP32 port found"
         raise RuntimeError(detail)
 
-    @staticmethod
-    def _probe_sensor_stream(serial_port, timeout_s: float = 15.0) -> bool:
+    def _probe_sensor_stream(self, serial_port, timeout_s: float = 15.0) -> bool:
         deadline = time.monotonic() + timeout_s
-        while time.monotonic() < deadline:
+        while not self._stop.is_set() and time.monotonic() < deadline:
             raw = serial_port.readline()
             if not raw:
                 continue

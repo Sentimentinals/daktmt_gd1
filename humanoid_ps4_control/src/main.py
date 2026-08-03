@@ -301,8 +301,12 @@ def run_keyboard(args: Config) -> None:
             foot_fsr_zero_raw=args.foot_fsr_zero_raw,
             foot_fsr_full_raw=args.foot_fsr_full_raw,
         )
-        sensor_hub.open()
-        print(f"[main] Sensor feedback enabled: ESP32 serial port={sensor_hub.active_port}.")
+        try:
+            sensor_hub.open(wait_for_connection=False)
+            print("[main] Sensor connection started in background; keyboard control is independent.")
+        except Exception as exc:
+            sensor_hub = None
+            print(f"[main] Sensors disabled: {exc}. Keyboard control remains available.")
 
     if args.imu_balance and (sensor_hub is None or not args.sensor_use_imu):
         print("[main] IMU balance requested but IMU sensor feedback is disabled.")
@@ -315,7 +319,16 @@ def run_keyboard(args: Config) -> None:
 
     try:
         with backend:
-            if args.imu_balance and sensor_hub is not None and args.sensor_use_imu:
+            initial_imu = sensor_hub.read().imu if sensor_hub is not None else None
+            sensor_start_deadline = time.monotonic() + 0.5
+            while (
+                sensor_hub is not None
+                and initial_imu is None
+                and time.monotonic() < sensor_start_deadline
+            ):
+                time.sleep(0.02)
+                initial_imu = sensor_hub.read().imu
+            if args.imu_balance and initial_imu is not None:
                 backend.send(STANDING, duration_ms=1000, force=True)
                 time.sleep(1.0)
                 print("[main] Keep the robot upright and still while IMU reference is captured.")
@@ -357,6 +370,8 @@ def run_keyboard(args: Config) -> None:
                         f"[main] IMU balance enabled: reference roll={target_roll:.2f}, "
                         f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
                     )
+            elif args.imu_balance:
+                print("[main] IMU not ready at startup. Manual keyboard control remains enabled without balance.")
             if not reader.init():
                 raise RuntimeError("pygame keyboard control is unavailable")
             camera_ready = camera_preview.start()
@@ -379,7 +394,10 @@ def run_keyboard(args: Config) -> None:
                     both_feet_contact = False
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
-                        obstacle_blocked, obstacle_mm = obstacle_guard.update(sensor_snapshot.depth)
+                        depth = sensor_snapshot.depth
+                        guarded_blocked, guarded_mm = obstacle_guard.update(depth)
+                        obstacle_blocked = guarded_blocked if depth is not None else False
+                        obstacle_mm = guarded_mm if depth is not None else None
                         if obstacle_blocked != previous_obstacle_blocked:
                             print(
                                 f"[main] ToF obstacle {'detected' if obstacle_blocked else 'cleared'}"
@@ -462,7 +480,7 @@ def run_keyboard(args: Config) -> None:
                         and args.sensor_use_depth
                         and (sensor_snapshot is None or sensor_snapshot.depth is None)
                     )
-                    if vy > 0.0 and (obstacle_blocked or depth_missing):
+                    if vy > 0.0 and (obstacle_blocked or (person_follow.enabled and depth_missing)):
                         vy = 0.0
                         motion_requested = turn_cmd != 0.0 or side_cmd != 0.0
                         follow_status = (
