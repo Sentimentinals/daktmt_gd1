@@ -73,14 +73,25 @@ def run_keyboard(args: Config) -> None:
       C          : stop and hold standing
       E/T        : reset walking engine
       Y/N        : follow detected person / ignore or stop following
+      R          : hold adaptive squat toward a centered detected object
       O/Escape   : return to menu
       Q          : quit
     """
     from pathlib import Path
 
     from .keyboard_input import KeyboardReader, LiveCameraPreview
-    from .person_follow import PersonDetector, PersonFollowController, PersonFrame
-    from .walking_engine import DynamicWalkingEngine, SingleSupportTestEngine, STANDING
+    from .person_follow import (
+        PersonDetector,
+        PersonFollowController,
+        PersonFrame,
+        SquatTargetController,
+    )
+    from .walking_engine import (
+        AdaptiveSquatEngine,
+        DynamicWalkingEngine,
+        SingleSupportTestEngine,
+        STANDING,
+    )
     from .arm_dance import ArmDanceEngine, HandshakeEngine
     from .getup import GetupEngine
     from .balance import (
@@ -110,7 +121,7 @@ def run_keyboard(args: Config) -> None:
             confidence=args.person_detect_confidence,
             detect_every_frames=args.person_detect_every_frames,
         )
-        print("[main] MobileNet-SSD person detector ready.")
+        print("[main] MobileNet-SSD person/object detector ready.")
     except Exception as exc:
         print(f"[main] Person detection unavailable: {exc}")
 
@@ -132,6 +143,13 @@ def run_keyboard(args: Config) -> None:
         stop_distance_mm=args.tof_obstacle_stop_mm,
         clear_margin_mm=args.tof_obstacle_clear_margin_mm,
         stable_frames=args.tof_obstacle_stable_frames,
+    )
+    squat_target = SquatTargetController(
+        min_distance_mm=args.squat_min_object_distance_mm,
+        max_distance_mm=args.squat_max_object_distance_mm,
+        camera_center_tolerance=args.squat_camera_center_tolerance,
+        min_depth_ratio=args.squat_min_depth_ratio,
+        target_timeout_s=args.squat_target_timeout_s,
     )
 
     engine = DynamicWalkingEngine(
@@ -174,6 +192,13 @@ def run_keyboard(args: Config) -> None:
         ankle_roll_gain=args.ankle_roll_gain,
         arm_pwm=args.single_support_arm_pwm,
         ramp_s=args.single_support_ramp_s,
+    )
+    squat_engine = AdaptiveSquatEngine(
+        dt=args.update_ms / 1000.0,
+        min_depth_mm=args.squat_min_depth_mm,
+        max_depth_mm=args.squat_max_depth_mm,
+        depth_rate_mm_s=args.squat_depth_rate_mm_s,
+        max_pwm_per_frame=args.squat_max_pwm_per_frame,
     )
     recovery_engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
@@ -246,6 +271,9 @@ def run_keyboard(args: Config) -> None:
     obstacle_blocked = False
     obstacle_mm = None
     previous_obstacle_blocked = False
+    squat_requested = False
+    squat_ratio = 0.0
+    squat_status = "OFF"
     head_pwm = float(STANDING[25])
     head_turn_sign = 0
     head_turn_lead_until = 0.0
@@ -283,7 +311,7 @@ def run_keyboard(args: Config) -> None:
     print(
         "\n[Keyboard Mode - Real-time ZMP] W/S walk, A/D turn (head leads), J/K side, "
         "X single support, V handshake, L/M dance, G get-up, "
-        "B get-up back, C stop, E/T reset, O/Esc menu, Q quit\n"
+        "B get-up back, R hold squat, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
 
     camera_preview.start()
@@ -343,6 +371,7 @@ def run_keyboard(args: Config) -> None:
                         break
                     prev_menu_pressed = menu_pressed
 
+                    both_feet_contact = False
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
                         obstacle_blocked, obstacle_mm = obstacle_guard.update(sensor_snapshot.depth)
@@ -396,6 +425,7 @@ def run_keyboard(args: Config) -> None:
                             and not handshake.running
                             and not arm_dance.running
                             and not single_support.running
+                            and squat_engine.is_idle()
                             and not motion_requested
                         )
                         if can_follow:
@@ -463,6 +493,7 @@ def run_keyboard(args: Config) -> None:
                         getup.reset()
                         single_support.stop()
                         recovery_engine.reset()
+                        squat_engine.reset()
                         recovery_step_active = False
                         if recovery is not None:
                             recovery.reset()
@@ -480,7 +511,7 @@ def run_keyboard(args: Config) -> None:
                     prev_stop_pressed = False
     
                     getup_pressed = state.getup
-                    if getup_pressed and not prev_getup_pressed:
+                    if getup_pressed and not prev_getup_pressed and squat_engine.is_idle():
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
@@ -492,7 +523,7 @@ def run_keyboard(args: Config) -> None:
                     prev_getup_pressed = getup_pressed
     
                     getup_back_pressed = state.getup_back
-                    if getup_back_pressed and not prev_getup_back_pressed:
+                    if getup_back_pressed and not prev_getup_back_pressed and squat_engine.is_idle():
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
@@ -504,7 +535,12 @@ def run_keyboard(args: Config) -> None:
                     prev_getup_back_pressed = getup_back_pressed
     
                     dance_pressed = state.dance
-                    if dance_pressed and not prev_dance_pressed and not getup.running:
+                    if (
+                        dance_pressed
+                        and not prev_dance_pressed
+                        and not getup.running
+                        and squat_engine.is_idle()
+                    ):
                         person_follow.disable()
                         handshake.reset()
                         enabled = arm_dance.toggle()
@@ -515,7 +551,12 @@ def run_keyboard(args: Config) -> None:
                     prev_dance_pressed = dance_pressed
 
                     handshake_pressed = state.handshake
-                    if handshake_pressed and not prev_handshake_pressed and not getup.running:
+                    if (
+                        handshake_pressed
+                        and not prev_handshake_pressed
+                        and not getup.running
+                        and squat_engine.is_idle()
+                    ):
                         person_follow.disable()
                         if handshake.running:
                             handshake.cancel()
@@ -537,7 +578,12 @@ def run_keyboard(args: Config) -> None:
                     prev_handshake_pressed = handshake_pressed
 
                     single_support_pressed = state.single_support
-                    if single_support_pressed and not prev_single_support_pressed and not getup.running:
+                    if (
+                        single_support_pressed
+                        and not prev_single_support_pressed
+                        and not getup.running
+                        and squat_engine.is_idle()
+                    ):
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
@@ -564,6 +610,7 @@ def run_keyboard(args: Config) -> None:
                         getup.reset()
                         single_support.stop()
                         recovery_engine.reset()
+                        squat_engine.reset()
                         recovery_step_active = False
                         if recovery is not None:
                             recovery.reset()
@@ -574,7 +621,50 @@ def run_keyboard(args: Config) -> None:
                         turn_cmd = 0.0
                         side_cmd = 0.0
                         motion_requested = False
-    
+
+                    squat_requested = False
+                    squat_ratio = 0.0
+                    squat_status = "OFF"
+                    if state.squat:
+                        person_follow.disable()
+                        vy = 0.0
+                        turn_cmd = 0.0
+                        side_cmd = 0.0
+                        motion_requested = False
+                        busy = any(
+                            (getup.running, handshake.running, arm_dance.running, single_support.running)
+                        )
+                        if busy:
+                            squat_status = "BUSY"
+                        elif foot_contact_frames < args.foot_fsr_stable_frames:
+                            squat_status = "FSR WAIT"
+                        elif (
+                            balance is None
+                            or sensor_snapshot is None
+                            or sensor_snapshot.imu is None
+                            or not sensor_snapshot.imu.balance_ready(
+                                args.imu_min_gyro_cal,
+                                args.imu_min_accel_cal,
+                            )
+                        ):
+                            squat_status = "IMU WAIT"
+                        elif not standing_hold_active and squat_engine.is_idle():
+                            squat_status = "WAIT STANDING"
+                        else:
+                            target_frame = camera_preview.person_frame() or PersonFrame()
+                            depth = sensor_snapshot.depth if sensor_snapshot is not None else None
+                            squat_ratio, squat_status = squat_target.command(depth, target_frame)
+                            if squat_ratio > 0.0:
+                                squat_requested = True
+                                engine.reset()
+                                standing_hold_active = False
+                        if not squat_requested and not squat_engine.is_idle():
+                            squat_requested = True
+                            squat_status = f"{squat_status} - RETURNING"
+                    elif not squat_engine.is_idle():
+                        squat_requested = True
+                        squat_status = "RETURNING"
+
                     pose_from_getup = False
                     if getup.running:
                         vy = 0.0
@@ -634,6 +724,10 @@ def run_keyboard(args: Config) -> None:
                             )
                         else:
                             pose = single_support.update()
+                    elif squat_requested:
+                        pose = squat_engine.update(squat_ratio)
+                        if squat_engine.is_idle():
+                            standing_hold_active = True
                     elif standing_hold_active and not motion_requested:
                         pose = dict(STANDING)
                     else:
@@ -655,11 +749,14 @@ def run_keyboard(args: Config) -> None:
                             args.imu_min_gyro_cal,
                             args.imu_min_accel_cal,
                         ):
-                            support_leg = (
-                                recovery_engine.support_leg
-                                if recovery_step_active
-                                else single_support.support_leg if single_support.running else engine.support_leg
-                            )
+                            if recovery_step_active:
+                                support_leg = recovery_engine.support_leg
+                            elif single_support.running:
+                                support_leg = single_support.support_leg
+                            elif squat_requested:
+                                support_leg = "double"
+                            else:
+                                support_leg = engine.support_leg
                             recovery_allowed = (
                                 recovery_step_active
                                 or single_support.running
@@ -772,7 +869,9 @@ def run_keyboard(args: Config) -> None:
                     except Exception as exc:
                         print(f"[main] Backend send exception: {exc}")
 
-                    if obstacle_blocked:
+                    if squat_requested:
+                        camera_status = f"SQUAT {round(squat_ratio * 100)}%: {squat_status}"
+                    elif obstacle_blocked:
                         camera_status = f"OBJECT {obstacle_mm} MM - FORWARD BLOCKED"
                     elif person_follow.enabled:
                         camera_status = follow_status

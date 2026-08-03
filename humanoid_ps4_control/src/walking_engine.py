@@ -254,6 +254,58 @@ class SingleSupportTestEngine:
         return pose
 
 
+class AdaptiveSquatEngine:
+    def __init__(
+        self,
+        dt: float,
+        min_depth_mm: float,
+        max_depth_mm: float,
+        depth_rate_mm_s: float,
+        max_pwm_per_frame: float,
+    ) -> None:
+        self.dt = max(0.01, dt)
+        self.min_depth_mm = max(0.0, min_depth_mm)
+        self.max_depth_mm = max(self.min_depth_mm, max_depth_mm)
+        self.depth_rate_mm_s = max(1.0, depth_rate_mm_s)
+        self.max_pwm_per_frame = max(1.0, max_pwm_per_frame)
+        self.depth_mm = 0.0
+        self.prev_pose = dict(STANDING)
+
+    def reset(self, pose: dict[int, int] | None = None) -> None:
+        self.depth_mm = 0.0
+        self.prev_pose = dict(STANDING if pose is None else pose)
+
+    def is_idle(self) -> bool:
+        return self.depth_mm <= 0.1 and self.prev_pose == STANDING
+
+    def update(self, depth_ratio: float) -> dict[int, int]:
+        ratio = max(0.0, min(1.0, depth_ratio))
+        target_depth = 0.0 if ratio <= 0.0 else self.min_depth_mm + ratio * (
+            self.max_depth_mm - self.min_depth_mm
+        )
+        max_delta = self.depth_rate_mm_s * self.dt
+        self.depth_mm += max(-max_delta, min(max_delta, target_depth - self.depth_mm))
+
+        half_hip = ROBOT["half_hip"]
+        foot_l = np.array([0.0, -half_hip, 0.0])
+        foot_r = np.array([0.0, half_hip, 0.0])
+        pose = (
+            dict(STANDING)
+            if self.depth_mm <= 0.1
+            else compute_pose(
+                0.0,
+                0.0,
+                foot_l,
+                foot_r,
+                com_z=ROBOT["com_height"] - self.depth_mm,
+                support_leg="double",
+            )
+        )
+        pose = clamp_pose_rate(self.prev_pose, pose, self.max_pwm_per_frame)
+        self.prev_pose = pose
+        return pose
+
+
 class DynamicWalkingEngine:
     def __init__(
         self,

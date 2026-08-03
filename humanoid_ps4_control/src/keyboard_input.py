@@ -19,6 +19,7 @@ class KeyboardState:
     reset: bool = False
     follow: bool = False
     ignore_person: bool = False
+    squat: bool = False
     menu: bool = False
     quit: bool = False
 
@@ -45,7 +46,7 @@ class KeyboardReader:
         print(
             "[KeyboardReader] W/S walk, A/D turn (head leads), J/K side, V handshake, "
             "X single support, L/M dance, G/B get-up, Y follow, N ignore/stop follow, "
-            "C stop, E/T reset, O/Esc menu."
+            "R adaptive squat, C stop, E/T reset, O/Esc menu."
         )
         return True
 
@@ -93,6 +94,7 @@ class KeyboardReader:
                 reset=bool(keys[pygame.K_e] or keys[pygame.K_t]),
                 follow=bool(keys[pygame.K_y]),
                 ignore_person=bool(keys[pygame.K_n]),
+                squat=bool(keys[pygame.K_r]),
                 menu=bool(keys[pygame.K_o] or keys[pygame.K_ESCAPE]),
             )
             clock.tick(self.poll_rate_hz)
@@ -270,6 +272,20 @@ class LiveCameraPreview:
                     (58, 210, 148),
                 )
                 self.screen.blit(confidence, (x1, max(2, y1 - 24)))
+            for item in person_frame.objects:
+                x1, y1, x2, y2 = item.box
+                self._pygame.draw.rect(
+                    self.screen,
+                    (245, 190, 72),
+                    self._pygame.Rect(x1, y1, x2 - x1, y2 - y1),
+                    2,
+                )
+                label = self.font.render(
+                    f"{item.label.upper()} {item.confidence:.2f}",
+                    True,
+                    (245, 190, 72),
+                )
+                self.screen.blit(label, (x1, max(2, y1 - 24)))
         label = self.font.render(status, True, (238, 245, 248))
         panel = self._pygame.Surface((label.get_width() + 24, label.get_height() + 12), self._pygame.SRCALPHA)
         panel.fill((10, 14, 18, 205))
