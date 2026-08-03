@@ -5,8 +5,6 @@
 namespace {
 constexpr uint8_t BNO_SDA_PIN = 21;
 constexpr uint8_t BNO_SCL_PIN = 22;
-constexpr uint8_t TOF_SDA_PIN = 32;
-constexpr uint8_t TOF_SCL_PIN = 33;
 constexpr uint8_t LEFT_FSR_PIN = 34;
 constexpr uint8_t RIGHT_FSR_PIN = 35;
 constexpr uint8_t BNO055_ADDRESS = 0x28;
@@ -20,7 +18,6 @@ constexpr uint8_t FSR_ADC_SAMPLES = 8;
 
 SparkFun_VL53L5CX tof;
 VL53L5CX_ResultsData tof_data;
-TwoWire tof_wire(1);
 uint32_t last_sample_ms = 0;
 bool bno_ready = false;
 bool tof_ready = false;
@@ -132,10 +129,9 @@ void setup() {
     Serial.println("# ERROR: BNO055 setup failed.");
   }
 
-  tof_wire.begin(TOF_SDA_PIN, TOF_SCL_PIN);
-  tof_wire.setClock(VL53L5CX_I2C_CLOCK);
-  if (i2cDevicePresent(tof_wire, VL53L5CX_ADDRESS)) {
-    tof_ready = tof.begin(VL53L5CX_ADDRESS, tof_wire) && tof.setResolution(8 * 8) &&
+  Wire.setClock(VL53L5CX_I2C_CLOCK);
+  if (i2cDevicePresent(Wire, VL53L5CX_ADDRESS)) {
+    tof_ready = tof.begin(VL53L5CX_ADDRESS, Wire) && tof.setResolution(8 * 8) &&
                 tof.setRangingFrequency(5) && tof.startRanging();
   }
 
