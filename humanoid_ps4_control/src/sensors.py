@@ -396,16 +396,42 @@ class RobotSensorHub:
         assert self._serial_factory is not None
         errors = []
         for candidate in self._port_candidates():
+            serial_port = None
             try:
-                serial_port = self._serial_factory(candidate, self.baudrate, timeout=0.05)
+                serial_port = self._serial_factory(port=None, baudrate=self.baudrate, timeout=0.10)
                 serial_port.dtr = False
                 serial_port.rts = False
+                serial_port.port = candidate
+                serial_port.open()
+                if not self._probe_sensor_stream(serial_port):
+                    raise RuntimeError("no valid Q/F/D sensor packets received")
                 self._active_port = candidate
                 return serial_port
             except Exception as exc:
                 errors.append(f"{candidate}: {exc}")
+                if serial_port is not None:
+                    try:
+                        serial_port.close()
+                    except Exception:
+                        pass
         detail = "; ".join(errors) if errors else "no CP210x ESP32 port found"
         raise RuntimeError(detail)
+
+    @staticmethod
+    def _probe_sensor_stream(serial_port, timeout_s: float = 3.0) -> bool:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            raw = serial_port.readline()
+            if not raw:
+                continue
+            line = raw.decode("ascii", errors="ignore").strip()
+            if (
+                parse_serial_imu_line(line) is not None
+                or parse_serial_feet_line(line) is not None
+                or parse_serial_depth_line(line) is not None
+            ):
+                return True
+        return False
 
     def _port_candidates(self) -> list[str]:
         requested = self.port.strip()
