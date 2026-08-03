@@ -19,11 +19,11 @@ GAIT = {
     "swing_hip_roll_scale": 0.0,
     "ankle_roll_gain": -0.30,
     "swing_ankle_roll_scale": 0.0,
-    "step_x_ratio": 1.72,
+    "step_x_ratio": 1.45,
     "thigh_lift_forward_mm": 0.0,
     "left_swing_x_scale": 1.0,
     "left_step_height_scale": 1.2,
-    "landing_gap_mm": 68.0,
+    "landing_gap_mm": 48.0,
     "right_swing_x_scale": 1.0,
     "right_step_height_scale": 1.0,
     "lift_start_phase": 0.00,
@@ -49,7 +49,7 @@ STANDING = {
     9: 1500,    # Left elbow
     10: 2450,   # Left upper arm down
     11: 1500,   # Left shoulder swing
-    12: 1556,   # Left hip roll/abduction
+    12: 1533,   # Left hip roll/abduction
     13: 1500,   # Left hip pitch
     14: 1500,   # Left knee
     15: 1500,   # Left ankle pitch
@@ -58,7 +58,7 @@ STANDING = {
     18: 1500,   # Right ankle pitch
     19: 1500,   # Right knee
     20: 1500,   # Right hip pitch
-    21: 1444,   # Right hip roll/abduction
+    21: 1467,   # Right hip roll/abduction
     22: 1470,   # Right shoulder swing
     23: 500,    # Right upper arm down
     24: 1500,   # Right elbow
@@ -109,7 +109,7 @@ class Config:
     walk_speed: float = 0.55
     turn_speed: float = 0.25
     side_speed: float = 0.45
-    max_step_len: float = 34.0
+    max_step_len: float = 30.0
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = 30.0
