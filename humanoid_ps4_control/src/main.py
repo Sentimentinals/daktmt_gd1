@@ -109,7 +109,6 @@ def run_keyboard(args: Config) -> None:
 
     poll_hz = int(1000 / args.update_ms)
     reader = KeyboardReader(poll_rate_hz=poll_hz)
-    reader.init()
     package_root = Path(__file__).resolve().parent.parent
     prototxt_path = package_root / args.person_detect_prototxt
     model_path = package_root / args.person_detect_model
@@ -314,7 +313,6 @@ def run_keyboard(args: Config) -> None:
         "B get-up back, R hold squat, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
 
-    camera_preview.start()
     try:
         with backend:
             if args.imu_balance and sensor_hub is not None and args.sensor_use_imu:
@@ -359,6 +357,13 @@ def run_keyboard(args: Config) -> None:
                         f"[main] IMU balance enabled: reference roll={target_roll:.2f}, "
                         f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
                     )
+            if not reader.init():
+                raise RuntimeError("pygame keyboard control is unavailable")
+            camera_ready = camera_preview.start()
+            camera_preview.render(
+                "STANDING" if camera_ready else "CAMERA OFF - KEYBOARD READY",
+                follow_enabled=False,
+            )
             try:
                 for state in reader.poll():
                     if state.quit:

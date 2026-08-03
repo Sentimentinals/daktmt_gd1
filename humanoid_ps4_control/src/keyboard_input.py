@@ -141,16 +141,28 @@ class LiveCameraPreview:
 
     def start(self) -> bool:
         try:
-            import cv2
             import pygame
+        except ImportError:
+            print("[camera] Live preview unavailable: missing pygame.")
+            return False
+
+        if not pygame.get_init():
+            pygame.init()
+        self._pygame = pygame
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        pygame.display.set_caption("Humanoid Live Control")
+        self.font = pygame.font.Font(None, 28)
+
+        try:
+            import cv2
             from libcamera import Transform
             from picamera2 import Picamera2
         except ImportError as exc:
             print(f"[camera] Live preview unavailable: missing {exc.name}.")
+            self.render(f"CAMERA UNAVAILABLE: {exc.name}")
             return False
 
         self._cv2 = cv2
-        self._pygame = pygame
         camera = None
         try:
             camera = Picamera2()
@@ -169,12 +181,10 @@ class LiveCameraPreview:
                 except Exception:
                     pass
             print(f"[camera] Live preview unavailable: {exc}")
+            self.render("CAMERA START FAILED - KEYBOARD READY")
             return False
 
         self.camera = camera
-        self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption("Humanoid Live Control")
-        self.font = pygame.font.Font(None, 28)
         self._stop.clear()
         self._thread = threading.Thread(target=self._capture_loop, name="live-camera", daemon=True)
         self._thread.start()
@@ -246,13 +256,13 @@ class LiveCameraPreview:
             self._person_ignored = True
 
     def render(self, status: str, follow_enabled: bool = False) -> None:
-        if self.screen is None or self._pygame is None or self._cv2 is None:
+        if self.screen is None or self._pygame is None or self.font is None:
             return
         with self._lock:
             frame = self._frame
         if frame is None:
             self.screen.fill((10, 14, 18))
-        else:
+        elif self._cv2 is not None:
             rgb = self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB)
             surface = self._pygame.surfarray.make_surface(rgb.swapaxes(0, 1))
             self.screen.blit(surface, (0, 0))
