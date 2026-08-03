@@ -418,7 +418,7 @@ class RobotSensorHub:
         raise RuntimeError(detail)
 
     @staticmethod
-    def _probe_sensor_stream(serial_port, timeout_s: float = 3.0) -> bool:
+    def _probe_sensor_stream(serial_port, timeout_s: float = 15.0) -> bool:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             raw = serial_port.readline()
