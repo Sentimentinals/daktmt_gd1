@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .sensors import DepthReading
 from .terrain_vision import TerrainKind, TerrainObservation
 
 
@@ -28,12 +29,14 @@ class TerrainModeController:
         stair_tread_mm: float,
         min_confidence: float,
         allow_stairs_down: bool,
+        stair_depth_relief_mm: int = 80,
     ) -> None:
         stair_rise_mm = max(1.0, abs(stair_rise_mm))
         ramp_step_elevation_mm = max(0.5, abs(ramp_step_elevation_mm))
         stair_tread_mm = max(40.0, abs(stair_tread_mm))
         self.min_confidence = min_confidence
         self.allow_stairs_down = allow_stairs_down
+        self.stair_depth_relief_mm = max(20, stair_depth_relief_mm)
         self.profiles = {
             TerrainKind.FLAT: TerrainProfile(
                 "FLAT",
@@ -77,13 +80,23 @@ class TerrainModeController:
             ),
         }
 
-    def select(self, observation: TerrainObservation) -> tuple[TerrainProfile | None, str]:
+    def select(
+        self,
+        observation: TerrainObservation,
+        depth: DepthReading | None = None,
+    ) -> tuple[TerrainProfile | None, str]:
         if not observation.calibrated:
             return None, "CALIBRATING"
         if observation.kind == TerrainKind.UNKNOWN or observation.confidence < self.min_confidence:
             return None, "TERRAIN UNKNOWN"
         if observation.kind == TerrainKind.STAIRS_DOWN and not self.allow_stairs_down:
             return None, "STAIRS DOWN LOCKED"
+        if observation.kind in (TerrainKind.STAIRS_UP, TerrainKind.STAIRS_DOWN):
+            relief = depth.vertical_span_mm if depth is not None else None
+            if relief is None:
+                return None, "WAITING FOR STAIR DEPTH"
+            if relief < self.stair_depth_relief_mm:
+                return None, "STAIR DEPTH UNCONFIRMED"
         profile = self.profiles.get(observation.kind)
         return (profile, profile.label) if profile is not None else (None, "TERRAIN UNKNOWN")
 

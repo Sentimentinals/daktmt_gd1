@@ -7,9 +7,9 @@ from typing import Optional
 from .backends import make_backend
 from .balance import BalanceConfig, IMUBalanceController
 from .config import Config, STANDING
-from .sensors import RobotSensorHub, SensorSnapshot
+from .sensors import DepthObstacleGuard, RobotSensorHub, SensorSnapshot
 from .terrain_control import TerrainModeController
-from .terrain_vision import TerrainObservation, TerrainPerception
+from .terrain_vision import TerrainKind, TerrainObservation, TerrainPerception
 from .walking_engine import DynamicWalkingEngine
 
 
@@ -69,6 +69,8 @@ def _sensor_ready(snapshot: SensorSnapshot, args: Config) -> bool:
     return bool(
         imu is not None
         and imu.balance_ready(args.imu_min_gyro_cal, args.imu_min_accel_cal)
+        and snapshot.depth is not None
+        and (not args.sensor_use_foot_fsr or snapshot.feet is not None)
     )
 
 
@@ -113,6 +115,12 @@ def run_terrain(args: Config) -> None:
         stair_tread_mm=args.terrain_stair_tread_mm,
         min_confidence=args.terrain_min_confidence,
         allow_stairs_down=args.terrain_allow_stairs_down,
+        stair_depth_relief_mm=args.terrain_stair_depth_relief_mm,
+    )
+    obstacle_guard = DepthObstacleGuard(
+        stop_distance_mm=args.tof_obstacle_stop_mm,
+        clear_margin_mm=args.tof_obstacle_clear_margin_mm,
+        stable_frames=args.tof_obstacle_stable_frames,
     )
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
@@ -153,13 +161,20 @@ def run_terrain(args: Config) -> None:
         port=args.sensor_port,
         baudrate=args.sensor_baudrate,
         timeout_s=args.sensor_timeout_s,
+        depth_timeout_s=args.sensor_depth_timeout_s,
         use_imu=True,
         use_hand_fsr=False,
+        use_foot_fsr=args.sensor_use_foot_fsr,
+        use_depth=True,
         imu_roll_sign=args.imu_roll_sign,
         imu_pitch_sign=args.imu_pitch_sign,
         imu_yaw_sign=args.imu_yaw_sign,
         imu_vertical_mount=args.imu_vertical_mount,
         imu_board_face_sign=args.imu_board_face_sign,
+        foot_fsr_invert=args.foot_fsr_invert,
+        foot_fsr_filter_alpha=args.foot_fsr_filter_alpha,
+        foot_fsr_zero_raw=args.foot_fsr_zero_raw,
+        foot_fsr_full_raw=args.foot_fsr_full_raw,
     )
     sensor_hub.open()
 
@@ -228,7 +243,18 @@ def run_terrain(args: Config) -> None:
                 profile = None
                 status = "WAITING FOR CAMERA"
                 if observation is not None:
-                    profile, status = controller.select(observation)
+                    profile, status = controller.select(observation, snapshot.depth)
+                terrain_close_allowed = bool(
+                    observation is not None
+                    and observation.kind
+                    in (TerrainKind.RAMP_UP, TerrainKind.RAMP_DOWN, TerrainKind.STAIRS_UP, TerrainKind.STAIRS_DOWN)
+                )
+                stop_distance = (
+                    args.tof_terrain_emergency_stop_mm
+                    if terrain_close_allowed
+                    else args.tof_obstacle_stop_mm
+                )
+                obstacle_blocked, obstacle_mm = obstacle_guard.update(snapshot.depth, stop_distance)
 
                 toggle = state.handshake
                 if toggle and not previous_toggle:
@@ -261,7 +287,7 @@ def run_terrain(args: Config) -> None:
                 previous_stop = stop_pressed
 
                 if armed and (not camera_ok or not sensors_ok):
-                    fault_reason = "CAMERA LOST" if not camera_ok else "IMU LOST"
+                    fault_reason = "CAMERA LOST" if not camera_ok else "SENSOR STREAM LOST"
                     fault_latched = True
                     armed = False
 
@@ -280,7 +306,9 @@ def run_terrain(args: Config) -> None:
                 else:
                     command = 0.0
                     step_elevation = 0.0
-                    if armed and profile is not None:
+                    if armed and obstacle_blocked:
+                        status = f"OBJECT {obstacle_mm} MM - HOLD"
+                    elif armed and profile is not None:
                         controller.apply(engine, profile)
                         command = profile.command
                         step_elevation = profile.step_elevation_mm
@@ -312,7 +340,8 @@ def run_terrain(args: Config) -> None:
                     confidence = round(observation.confidence * 100)
                     label = font.render(f"{state_label}  {status}", True, (245, 90, 90) if fault_latched else (70, 235, 165))
                     detail = small_font.render(
-                        f"vision {confidence}%  IMU {'OK' if sensors_ok else 'WAIT'}",
+                        f"vision {confidence}%  sensors {'OK' if sensors_ok else 'WAIT'}  "
+                        f"ToF {obstacle_mm if obstacle_mm is not None else '--'} mm",
                         True,
                         (235, 238, 242),
                     )

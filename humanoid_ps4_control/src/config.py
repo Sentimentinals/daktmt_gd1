@@ -190,6 +190,11 @@ class Config:
     terrain_max_step_elevation_mm: float = 18.0
     terrain_allow_stairs_down: bool = True
     terrain_emergency_tilt_deg: float = 12.0
+    terrain_stair_depth_relief_mm: int = 80
+    tof_obstacle_stop_mm: int = 350
+    tof_terrain_emergency_stop_mm: int = 160
+    tof_obstacle_clear_margin_mm: int = 100
+    tof_obstacle_stable_frames: int = 3
 
     # --- Handshake ---
     handshake_offer_s: float = 0.75
@@ -254,9 +259,11 @@ class Config:
     sensor_port: str = "auto"
     sensor_baudrate: int = 115200
     sensor_timeout_s: float = 0.25
+    sensor_depth_timeout_s: float = 0.65
     sensor_use_imu: bool = True
     sensor_use_hand_fsr: bool = False
     sensor_use_foot_fsr: bool = True
+    sensor_use_depth: bool = True
     sensor_debug: bool = False
     hand_fsr_invert: bool = False
     hand_fsr_filter_alpha: float = 0.18

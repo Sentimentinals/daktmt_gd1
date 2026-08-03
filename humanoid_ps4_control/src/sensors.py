@@ -4,6 +4,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass, replace
+from statistics import median
 from typing import Optional
 
 from .imu_bno055 import IMUReading, parse_serial_imu_line
@@ -27,10 +28,83 @@ class FootForceReading:
 
 
 @dataclass(frozen=True)
+class DepthReading:
+    distances_mm: tuple[int, ...]
+    sensor_time_ms: int = 0
+
+    def region_median_mm(
+        self,
+        row_start: int,
+        row_end: int,
+        col_start: int,
+        col_end: int,
+    ) -> Optional[int]:
+        values = [
+            self.distances_mm[row * 8 + col]
+            for row in range(max(0, row_start), min(8, row_end))
+            for col in range(max(0, col_start), min(8, col_end))
+            if 20 <= self.distances_mm[row * 8 + col] <= 4000
+        ]
+        return round(median(values)) if values else None
+
+    @property
+    def center_distance_mm(self) -> Optional[int]:
+        return self.region_median_mm(2, 6, 2, 6)
+
+    @property
+    def obstacle_distance_mm(self) -> Optional[int]:
+        blocks = [
+            self.region_median_mm(row, row + 2, col, col + 2)
+            for row in range(1, 7, 2)
+            for col in range(1, 7, 2)
+        ]
+        valid = [value for value in blocks if value is not None]
+        return min(valid) if valid else None
+
+    @property
+    def vertical_span_mm(self) -> Optional[int]:
+        rows = [self.region_median_mm(row, row + 1, 1, 7) for row in range(8)]
+        valid = [value for value in rows if value is not None]
+        return max(valid) - min(valid) if len(valid) >= 4 else None
+
+
+class DepthObstacleGuard:
+    def __init__(self, stop_distance_mm: int, clear_margin_mm: int, stable_frames: int) -> None:
+        self.stop_distance_mm = max(80, stop_distance_mm)
+        self.clear_margin_mm = max(20, clear_margin_mm)
+        self.stable_frames = max(1, stable_frames)
+        self.blocked = False
+        self._near_frames = 0
+
+    def update(
+        self,
+        depth: DepthReading | None,
+        stop_distance_mm: int | None = None,
+    ) -> tuple[bool, int | None]:
+        distance = depth.obstacle_distance_mm if depth is not None else None
+        if distance is None:
+            self._near_frames = 0
+            return self.blocked, None
+
+        stop_mm = self.stop_distance_mm if stop_distance_mm is None else max(80, stop_distance_mm)
+        if self.blocked:
+            if distance >= stop_mm + self.clear_margin_mm:
+                self.blocked = False
+        elif distance <= stop_mm:
+            self._near_frames += 1
+            if self._near_frames >= self.stable_frames:
+                self.blocked = True
+        else:
+            self._near_frames = 0
+        return self.blocked, distance
+
+
+@dataclass(frozen=True)
 class SensorSnapshot:
     imu: Optional[IMUReading]
     hand_force: Optional[HandForceReading]
     feet: Optional[FootForceReading]
+    depth: Optional[DepthReading]
 
 
 class LowPass:
@@ -111,17 +185,33 @@ def parse_serial_feet_line(
     return FootForceReading(left_force, right_force, left_raw, right_raw, sensor_time_ms)
 
 
+def parse_serial_depth_line(line: str) -> Optional[DepthReading]:
+    fields = [field.strip() for field in line.strip().split(",")]
+    if len(fields) != 66 or fields[0] != "D":
+        return None
+    try:
+        sensor_time_ms = int(fields[1])
+        distances = tuple(int(value) for value in fields[2:])
+    except ValueError:
+        return None
+    if any(value < 0 or value > 4000 for value in distances):
+        return None
+    return DepthReading(distances, sensor_time_ms)
+
+
 class RobotSensorHub:
-    """Single ESP32 USB sensor stream for IMU, hand FSR, and two foot FSRs."""
+    """Single ESP32 USB stream for IMU, FSR, and VL53L5CX depth."""
 
     def __init__(
         self,
         port: str = "/dev/ttyUSB0",
         baudrate: int = 115200,
         timeout_s: float = 0.25,
+        depth_timeout_s: float = 0.65,
         use_imu: bool = True,
         use_hand_fsr: bool = False,
         use_foot_fsr: bool = False,
+        use_depth: bool = False,
         imu_roll_sign: float = 1.0,
         imu_pitch_sign: float = 1.0,
         imu_yaw_sign: float = 1.0,
@@ -139,9 +229,11 @@ class RobotSensorHub:
         self.port = port
         self.baudrate = baudrate
         self.timeout_s = max(0.05, timeout_s)
+        self.depth_timeout_s = max(self.timeout_s, depth_timeout_s)
         self.use_imu = use_imu
         self.use_hand_fsr = use_hand_fsr
         self.use_foot_fsr = use_foot_fsr
+        self.use_depth = use_depth
         self.imu_roll_sign = imu_roll_sign
         self.imu_pitch_sign = imu_pitch_sign
         self.imu_yaw_sign = imu_yaw_sign
@@ -170,6 +262,8 @@ class RobotSensorHub:
         self._hand_force_at = 0.0
         self._feet: Optional[FootForceReading] = None
         self._feet_at = 0.0
+        self._depth: Optional[DepthReading] = None
+        self._depth_at = 0.0
         self._gravity_basis: Optional[
             tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
         ] = None
@@ -214,6 +308,7 @@ class RobotSensorHub:
                     self._imu = None
                     self._hand_force = None
                     self._feet = None
+                    self._depth = None
                     self.hand_filter.reset()
                     self.left_foot_filter.reset()
                     self.right_foot_filter.reset()
@@ -285,6 +380,13 @@ class RobotSensorHub:
                         feet.sensor_time_ms,
                     )
                     self._feet_at = now
+                continue
+
+            depth = parse_serial_depth_line(line) if self.use_depth else None
+            if depth is not None:
+                with self._lock:
+                    self._depth = depth
+                    self._depth_at = now
 
     @property
     def active_port(self) -> Optional[str]:
@@ -340,7 +442,12 @@ class RobotSensorHub:
                 else None
             )
             feet = self._feet if self._feet is not None and now - self._feet_at <= self.timeout_s else None
-        return SensorSnapshot(imu=imu, hand_force=hand_force, feet=feet)
+            depth = (
+                self._depth
+                if self._depth is not None and now - self._depth_at <= self.depth_timeout_s
+                else None
+            )
+        return SensorSnapshot(imu=imu, hand_force=hand_force, feet=feet, depth=depth)
 
     def capture_imu_reference(
         self,

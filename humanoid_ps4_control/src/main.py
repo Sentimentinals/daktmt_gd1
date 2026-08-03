@@ -92,7 +92,7 @@ def run_keyboard(args: Config) -> None:
         angle_error_deg,
         lower_toward_standing,
     )
-    from .sensors import RobotSensorHub
+    from .sensors import DepthObstacleGuard, RobotSensorHub
 
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
 
@@ -127,6 +127,11 @@ def run_keyboard(args: Config) -> None:
         lost_timeout_s=args.person_follow_lost_timeout_s,
         forward_speed=args.person_follow_speed,
         turn_speed=args.person_follow_turn_speed,
+    )
+    obstacle_guard = DepthObstacleGuard(
+        stop_distance_mm=args.tof_obstacle_stop_mm,
+        clear_margin_mm=args.tof_obstacle_clear_margin_mm,
+        stable_frames=args.tof_obstacle_stable_frames,
     )
 
     engine = DynamicWalkingEngine(
@@ -238,6 +243,9 @@ def run_keyboard(args: Config) -> None:
     last_balance_t = time.monotonic()
     balance_has_valid_imu = False
     previous_handshake_status = handshake.status
+    obstacle_blocked = False
+    obstacle_mm = None
+    previous_obstacle_blocked = False
     head_pwm = float(STANDING[25])
     head_turn_sign = 0
     head_turn_lead_until = 0.0
@@ -247,9 +255,11 @@ def run_keyboard(args: Config) -> None:
             port=args.sensor_port,
             baudrate=args.sensor_baudrate,
             timeout_s=args.sensor_timeout_s,
+            depth_timeout_s=args.sensor_depth_timeout_s,
             use_imu=args.sensor_use_imu,
             use_hand_fsr=args.sensor_use_hand_fsr,
             use_foot_fsr=args.sensor_use_foot_fsr,
+            use_depth=args.sensor_use_depth,
             imu_roll_sign=args.imu_roll_sign,
             imu_pitch_sign=args.imu_pitch_sign,
             imu_yaw_sign=args.imu_yaw_sign,
@@ -335,6 +345,13 @@ def run_keyboard(args: Config) -> None:
 
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
+                        obstacle_blocked, obstacle_mm = obstacle_guard.update(sensor_snapshot.depth)
+                        if obstacle_blocked != previous_obstacle_blocked:
+                            print(
+                                f"[main] ToF obstacle {'detected' if obstacle_blocked else 'cleared'}"
+                                f"{f' at {obstacle_mm} mm' if obstacle_mm is not None else ''}."
+                            )
+                            previous_obstacle_blocked = obstacle_blocked
                         feet = sensor_snapshot.feet
                         both_feet_contact = (
                             feet is not None
@@ -404,6 +421,20 @@ def run_keyboard(args: Config) -> None:
                             turn_cmd = 0.0
                             motion_requested = False
                             print(f"[main] Person follow stopped: {follow_status.lower()}.")
+
+                    depth_missing = bool(
+                        args.sensor_feedback
+                        and args.sensor_use_depth
+                        and (sensor_snapshot is None or sensor_snapshot.depth is None)
+                    )
+                    if vy > 0.0 and (obstacle_blocked or depth_missing):
+                        vy = 0.0
+                        motion_requested = turn_cmd != 0.0 or side_cmd != 0.0
+                        follow_status = (
+                            f"OBJECT {obstacle_mm} MM"
+                            if obstacle_blocked and obstacle_mm is not None
+                            else "TOF WAIT"
+                        )
 
                     head_turn_cmd = turn_cmd
                     turn_sign = 1 if turn_cmd > 0.0 else -1 if turn_cmd < 0.0 else 0
@@ -741,7 +772,9 @@ def run_keyboard(args: Config) -> None:
                     except Exception as exc:
                         print(f"[main] Backend send exception: {exc}")
 
-                    if person_follow.enabled:
+                    if obstacle_blocked:
+                        camera_status = f"OBJECT {obstacle_mm} MM - FORWARD BLOCKED"
+                    elif person_follow.enabled:
                         camera_status = follow_status
                     elif getup.running:
                         camera_status = f"GET-UP: {getup.label.upper()}"
