@@ -6,57 +6,6 @@ from .backends import make_backend
 from .config import Config
 
 
-def run_getup(args: Config) -> None:
-    """Run one get-up sequence directly, without keyboard input."""
-    from .getup import GetupEngine
-    from .walking_engine import STANDING
-
-    dt = args.update_ms / 1000.0
-    engine = GetupEngine(dt=dt, mode=args.getup_mode, speed=args.getup_speed)
-    debug_ids = list(range(9, 26))
-
-    print(
-        f"[main] Direct get-up: mode={args.getup_mode}, backend={args.backend}, "
-        f"port={args.port}, update_ms={args.update_ms}, speed={args.getup_speed}"
-    )
-
-    with make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv) as backend:
-        if args.pre_stand_ms > 0:
-            print(f"[main] Sending pre-stand for {args.pre_stand_ms} ms.")
-            backend.send(STANDING, duration_ms=args.pre_stand_ms, force=True)
-            time.sleep(args.pre_stand_ms / 1000.0)
-
-        label = engine.start(current_pose=STANDING, mode=args.getup_mode)
-        print(f"[main] Starting get-up from step {label}.")
-
-        frame = 0
-        last_label = None
-        try:
-            while engine.running:
-                pose = engine.update()
-                backend.send(pose, duration_ms=args.update_ms, force=True)
-
-                if engine.label != last_label:
-                    contacts = ",".join(engine.contacts) if engine.contacts else "-"
-                    print(f"[getup] step={engine.label} contacts={contacts}")
-                    last_label = engine.label
-
-                if args.getup_print_every > 0 and frame % args.getup_print_every == 0:
-                    values = " ".join(f"{sid}:{pose[sid]}" for sid in debug_ids)
-                    print(f"[getup] frame={frame:04d} {values}")
-
-                frame += 1
-                time.sleep(dt)
-        except KeyboardInterrupt:
-            print("\n[main] Ctrl+C received. Returning to STANDING.")
-        finally:
-            print(f"[main] Sending final standing for {args.final_stand_ms} ms.")
-            backend.send(STANDING, duration_ms=args.final_stand_ms, force=True)
-            time.sleep(args.final_stand_ms / 1000.0)
-
-    print("[main] Direct get-up done.")
-
-
 def run_keyboard(args: Config) -> None:
     """
     Real-time walking mode.
@@ -67,7 +16,6 @@ def run_keyboard(args: Config) -> None:
       J/K        : side walk left/right
       L/M        : toggle standing arm dance
       X          : toggle single-leg support test
-      V          : handshake
       G          : run get-up sequence
       B          : run back get-up sequence
       C          : stop and hold standing
@@ -92,7 +40,7 @@ def run_keyboard(args: Config) -> None:
         SingleSupportTestEngine,
         STANDING,
     )
-    from .arm_dance import ArmDanceEngine, HandshakeEngine
+    from .arm_dance import ArmDanceEngine
     from .getup import GetupEngine
     from .balance import (
         BalanceConfig,
@@ -218,25 +166,9 @@ def run_keyboard(args: Config) -> None:
         elbow_pwm=args.dance_elbow_pwm,
         lift_pwm=args.dance_lift_pwm,
         head_pwm=args.dance_head_pwm,
-        head_speed=args.dance_head_speed,
         smooth_tau=args.dance_smooth_tau,
         max_pwm_per_sec=args.dance_max_pwm_per_sec,
         min_step_pwm=args.dance_min_step_pwm,
-    )
-    handshake = HandshakeEngine(
-        dt=args.update_ms / 1000.0,
-        offer_s=args.handshake_offer_s,
-        contact_timeout_s=args.handshake_contact_timeout_s,
-        release_timeout_s=args.handshake_release_timeout_s,
-        frequency_hz=args.handshake_frequency_hz,
-        cycles=args.handshake_cycles,
-        lift_pwm=args.handshake_lift_pwm,
-        shoulder_pwm=args.handshake_shoulder_pwm,
-        elbow_pwm=args.handshake_elbow_pwm,
-        shake_pwm=args.handshake_shake_pwm,
-        contact_threshold=args.hand_fsr_contact_threshold,
-        release_threshold=args.hand_fsr_release_threshold,
-        stable_frames=args.hand_fsr_stable_frames,
     )
     getup = GetupEngine(
         dt=args.update_ms / 1000.0,
@@ -248,7 +180,6 @@ def run_keyboard(args: Config) -> None:
     prev_getup_pressed = False
     prev_getup_back_pressed = False
     prev_single_support_pressed = False
-    prev_handshake_pressed = False
     prev_follow_pressed = False
     prev_ignore_person_pressed = False
     prev_menu_pressed = False
@@ -266,7 +197,6 @@ def run_keyboard(args: Config) -> None:
     foot_contact_frames = 0
     last_balance_t = time.monotonic()
     balance_has_valid_imu = False
-    previous_handshake_status = handshake.status
     obstacle_blocked = False
     obstacle_mm = None
     previous_obstacle_blocked = False
@@ -284,7 +214,6 @@ def run_keyboard(args: Config) -> None:
             timeout_s=args.sensor_timeout_s,
             depth_timeout_s=args.sensor_depth_timeout_s,
             use_imu=args.sensor_use_imu,
-            use_hand_fsr=args.sensor_use_hand_fsr,
             use_foot_fsr=args.sensor_use_foot_fsr,
             use_depth=args.sensor_use_depth,
             imu_roll_sign=args.imu_roll_sign,
@@ -292,10 +221,6 @@ def run_keyboard(args: Config) -> None:
             imu_yaw_sign=args.imu_yaw_sign,
             imu_vertical_mount=args.imu_vertical_mount,
             imu_board_face_sign=args.imu_board_face_sign,
-            hand_fsr_invert=args.hand_fsr_invert,
-            hand_fsr_filter_alpha=args.hand_fsr_filter_alpha,
-            hand_fsr_zero_raw=args.hand_fsr_zero_raw,
-            hand_fsr_full_raw=args.hand_fsr_full_raw,
             foot_fsr_invert=args.foot_fsr_invert,
             foot_fsr_filter_alpha=args.foot_fsr_filter_alpha,
             foot_fsr_zero_raw=args.foot_fsr_zero_raw,
@@ -313,7 +238,7 @@ def run_keyboard(args: Config) -> None:
 
     print(
         "\n[Keyboard Mode - Real-time ZMP] W/S walk, A/D turn (head leads), J/K side, "
-        "X single support, V handshake, L/M dance, G get-up, "
+        "X single support, L/M dance, G get-up, "
         "B get-up back, R hold squat, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
 
@@ -411,13 +336,6 @@ def run_keyboard(args: Config) -> None:
                             and feet.right_force >= args.foot_fsr_contact_threshold
                         )
                         foot_contact_frames = foot_contact_frames + 1 if both_feet_contact else 0
-                        if args.sensor_use_hand_fsr and sensor_snapshot.hand_force is not None:
-                            if args.sensor_debug:
-                                hand = sensor_snapshot.hand_force
-                                print(
-                                    f"[sensor] hand force={hand.force:.3f} "
-                                    f"voltage={hand.voltage:.3f}V raw={hand.raw}"
-                                )
     
                     vy = state.forward * args.walk_speed
                     turn_cmd = state.turn * args.turn_speed
@@ -445,7 +363,6 @@ def run_keyboard(args: Config) -> None:
                         can_follow = (
                             camera_preview.person_ready()
                             and not getup.running
-                            and not handshake.running
                             and not arm_dance.running
                             and not single_support.running
                             and squat_engine.is_idle()
@@ -512,7 +429,6 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
-                        handshake.reset()
                         getup.reset()
                         single_support.stop()
                         recovery_engine.reset()
@@ -538,7 +454,6 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
-                        handshake.reset()
                         single_support.stop()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode=args.getup_mode)
@@ -550,7 +465,6 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
-                        handshake.reset()
                         single_support.stop()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode="back")
@@ -565,40 +479,12 @@ def run_keyboard(args: Config) -> None:
                         and squat_engine.is_idle()
                     ):
                         person_follow.disable()
-                        handshake.reset()
                         enabled = arm_dance.toggle()
                         engine.reset()
                         single_support.stop()
                         standing_hold_active = not enabled
                         print("[main] L/M arm dance ON." if enabled else "[main] L/M arm dance OFF - returning to STANDING.")
                     prev_dance_pressed = dance_pressed
-
-                    handshake_pressed = state.handshake
-                    if (
-                        handshake_pressed
-                        and not prev_handshake_pressed
-                        and not getup.running
-                        and squat_engine.is_idle()
-                    ):
-                        person_follow.disable()
-                        if handshake.running:
-                            handshake.cancel()
-                            print("[main] V handshake canceled - returning to STANDING.")
-                        elif not standing_hold_active or motion_requested or arm_dance.running or single_support.running:
-                            print("[main] Handshake requires the robot to be stationary in STANDING.")
-                        elif sensor_snapshot is None or sensor_snapshot.hand_force is None:
-                            print("[main] Handshake unavailable: hand FSR data is missing.")
-                        elif sensor_snapshot.hand_force.force >= args.hand_fsr_contact_threshold:
-                            print("[main] Handshake unavailable: release the hand FSR first.")
-                        else:
-                            engine.reset()
-                            arm_dance.reset()
-                            single_support.stop()
-                            handshake.start(last_pose)
-                            standing_hold_active = False
-                            previous_handshake_status = handshake.status
-                            print("[main] V handshake started. Waiting for a hand grip.")
-                    prev_handshake_pressed = handshake_pressed
 
                     single_support_pressed = state.single_support
                     if (
@@ -610,7 +496,6 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
-                        handshake.reset()
                         if single_support.running:
                             single_support.stop()
                             standing_hold_active = True
@@ -629,7 +514,6 @@ def run_keyboard(args: Config) -> None:
                         print("[main] E/T pressed. Resetting walking engine and arm dance.")
                         engine.reset()
                         arm_dance.reset()
-                        handshake.reset()
                         getup.reset()
                         single_support.stop()
                         recovery_engine.reset()
@@ -654,9 +538,7 @@ def run_keyboard(args: Config) -> None:
                         turn_cmd = 0.0
                         side_cmd = 0.0
                         motion_requested = False
-                        busy = any(
-                            (getup.running, handshake.running, arm_dance.running, single_support.running)
-                        )
+                        busy = any((getup.running, arm_dance.running, single_support.running))
                         if busy:
                             squat_status = "BUSY"
                         elif foot_contact_frames < args.foot_fsr_stable_frames:
@@ -700,22 +582,6 @@ def run_keyboard(args: Config) -> None:
                             engine.reset()
                             standing_hold_active = True
                             print("[main] Get-up finished. Holding exact STANDING until movement input.")
-                    elif handshake.running:
-                        vy = 0.0
-                        turn_cmd = 0.0
-                        side_cmd = 0.0
-                        motion_requested = False
-                        hand_force = (
-                            sensor_snapshot.hand_force.force
-                            if sensor_snapshot is not None and sensor_snapshot.hand_force is not None
-                            else None
-                        )
-                        pose = handshake.update(hand_force)
-                        if handshake.status != previous_handshake_status:
-                            print(f"[main] Handshake: {handshake.status}.")
-                            previous_handshake_status = handshake.status
-                        if not handshake.running:
-                            standing_hold_active = True
                     elif arm_dance.running:
                         vy = 0.0
                         turn_cmd = 0.0
@@ -786,7 +652,6 @@ def run_keyboard(args: Config) -> None:
                                 or (
                                     standing_hold_active
                                     and not motion_requested
-                                    and not handshake.running
                                     and not arm_dance.running
                                 )
                             )
@@ -876,7 +741,7 @@ def run_keyboard(args: Config) -> None:
                         print(f"[main] Push recovery: {recovery_status}.")
                         previous_recovery_status = recovery_status
 
-                    if not pose_from_getup and not handshake.running and not arm_dance.running:
+                    if not pose_from_getup and not arm_dance.running:
                         head_target = STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
                             1 if head_turn_cmd > 0.0 else -1 if head_turn_cmd < 0.0 else 0
                         )
@@ -900,8 +765,6 @@ def run_keyboard(args: Config) -> None:
                         camera_status = follow_status
                     elif getup.running:
                         camera_status = f"GET-UP: {getup.label.upper()}"
-                    elif handshake.running:
-                        camera_status = f"HANDSHAKE: {handshake.status}"
                     elif arm_dance.running:
                         camera_status = "ARM DANCE"
                     elif recovery is not None and recovery.state is not RecoveryState.STABLE:
@@ -942,10 +805,6 @@ def run_keyboard(args: Config) -> None:
 
 def main() -> None:
     args = Config()
-    if args.getup:
-        run_getup(args)
-        return
-
     from .menu import run_menu
 
     while True:

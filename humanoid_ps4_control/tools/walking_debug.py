@@ -36,7 +36,6 @@ def open_sensors(args: argparse.Namespace) -> tuple[RobotSensorHub, IMUBalanceCo
         baudrate=args.sensor_baudrate,
         timeout_s=settings.sensor_timeout_s,
         use_imu=True,
-        use_hand_fsr=False,
         use_foot_fsr=True,
         imu_roll_sign=settings.imu_roll_sign,
         imu_pitch_sign=settings.imu_pitch_sign,

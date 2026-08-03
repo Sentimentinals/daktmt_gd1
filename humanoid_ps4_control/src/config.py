@@ -97,9 +97,6 @@ PWM_PER_DEG = 2000.0 / 180.0
 
 @dataclass
 class Config:
-    # --- Run Mode ---
-    getup: bool = False
-
     # --- Hardware ---
     backend: str = "serial"
     port: str = "/dev/ttyACM0"
@@ -207,17 +204,6 @@ class Config:
     tof_obstacle_clear_margin_mm: int = 100
     tof_obstacle_stable_frames: int = 3
 
-    # --- Handshake ---
-    handshake_offer_s: float = 0.75
-    handshake_contact_timeout_s: float = 8.0
-    handshake_release_timeout_s: float = 3.0
-    handshake_frequency_hz: float = 2.2
-    handshake_cycles: int = 4
-    handshake_lift_pwm: int = 500
-    handshake_shoulder_pwm: int = 260
-    handshake_elbow_pwm: int = 260
-    handshake_shake_pwm: int = 75
-
     # --- Dance ---
     dance_period: float = 2.4
     dance_transition: float = 0.45
@@ -225,7 +211,6 @@ class Config:
     dance_elbow_pwm: int = 260
     dance_lift_pwm: int = 820
     dance_head_pwm: int = 180
-    dance_head_speed: float = 1.0
     dance_smooth_tau: float = 0.08
     dance_max_pwm_per_sec: float = 2200.0
     dance_min_step_pwm: int = 18
@@ -233,9 +218,6 @@ class Config:
     # --- Getup ---
     getup_mode: str = "back"
     getup_speed: float = 0.7
-    pre_stand_ms: int = 0
-    final_stand_ms: int = 1200
-    getup_print_every: int = 20
 
     # --- Balance ---
     imu_balance: bool = True
@@ -272,17 +254,8 @@ class Config:
     sensor_timeout_s: float = 0.25
     sensor_depth_timeout_s: float = 0.65
     sensor_use_imu: bool = True
-    sensor_use_hand_fsr: bool = False
     sensor_use_foot_fsr: bool = True
     sensor_use_depth: bool = True
-    sensor_debug: bool = False
-    hand_fsr_invert: bool = False
-    hand_fsr_filter_alpha: float = 0.18
-    hand_fsr_zero_raw: int = 0
-    hand_fsr_full_raw: int = 4095
-    hand_fsr_contact_threshold: float = 0.12
-    hand_fsr_release_threshold: float = 0.06
-    hand_fsr_stable_frames: int = 3
     foot_fsr_invert: bool = False
     foot_fsr_filter_alpha: float = 0.18
     foot_fsr_zero_raw: int = 0

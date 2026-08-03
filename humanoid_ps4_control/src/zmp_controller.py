@@ -30,9 +30,6 @@ class ZMPPreviewController:
         preview_steps: int = 24,
         riccati_iters: int = 3000,
     ) -> None:
-        self.dt = dt
-        self.zc = zc
-        self.g = g
         self.preview_steps = preview_steps
         self._zmp_accel_coeff = zc / g
 

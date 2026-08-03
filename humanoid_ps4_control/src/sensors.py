@@ -11,14 +11,6 @@ from .imu_bno055 import IMUReading, parse_serial_imu_line
 
 
 @dataclass(frozen=True)
-class HandForceReading:
-    force: float
-    voltage: float = 0.0
-    raw: Optional[int] = None
-    sensor_time_ms: int = 0
-
-
-@dataclass(frozen=True)
 class FootForceReading:
     left_force: float
     right_force: float
@@ -102,7 +94,6 @@ class DepthObstacleGuard:
 @dataclass(frozen=True)
 class SensorSnapshot:
     imu: Optional[IMUReading]
-    hand_force: Optional[HandForceReading]
     feet: Optional[FootForceReading]
     depth: Optional[DepthReading]
 
@@ -118,44 +109,6 @@ class LowPass:
 
     def reset(self) -> None:
         self.value = None
-
-
-def parse_serial_hand_line(
-    line: str,
-    invert: bool = False,
-    zero_raw: int = 0,
-    full_raw: int = 4095,
-) -> Optional[HandForceReading]:
-    fields = [field.strip() for field in line.strip().split(",")]
-    if not fields or fields[0] != "H":
-        return None
-
-    values = fields[1:]
-    sensor_time_ms = 0
-    if len(values) == 4:
-        try:
-            sensor_time_ms = int(values[0])
-        except ValueError:
-            return None
-        values = values[1:]
-    if len(values) < 1:
-        return None
-
-    try:
-        force = max(0.0, min(1.0, float(values[0])))
-        voltage = float(values[1]) if len(values) >= 2 else force * 3.3
-        raw = int(values[2]) if len(values) >= 3 else None
-    except ValueError:
-        return None
-
-    if raw is not None:
-        span = max(1, full_raw - zero_raw)
-        force = max(0.0, min(1.0, (raw - zero_raw) / span))
-
-    if invert:
-        force = 1.0 - force
-
-    return HandForceReading(force, voltage, raw, sensor_time_ms)
 
 
 def parse_serial_feet_line(
@@ -209,7 +162,6 @@ class RobotSensorHub:
         timeout_s: float = 0.25,
         depth_timeout_s: float = 0.65,
         use_imu: bool = True,
-        use_hand_fsr: bool = False,
         use_foot_fsr: bool = False,
         use_depth: bool = False,
         imu_roll_sign: float = 1.0,
@@ -217,10 +169,6 @@ class RobotSensorHub:
         imu_yaw_sign: float = 1.0,
         imu_vertical_mount: bool = True,
         imu_board_face_sign: float = 1.0,
-        hand_fsr_invert: bool = False,
-        hand_fsr_filter_alpha: float = 0.18,
-        hand_fsr_zero_raw: int = 0,
-        hand_fsr_full_raw: int = 4095,
         foot_fsr_invert: bool = False,
         foot_fsr_filter_alpha: float = 0.18,
         foot_fsr_zero_raw: int = 0,
@@ -231,7 +179,6 @@ class RobotSensorHub:
         self.timeout_s = max(0.05, timeout_s)
         self.depth_timeout_s = max(self.timeout_s, depth_timeout_s)
         self.use_imu = use_imu
-        self.use_hand_fsr = use_hand_fsr
         self.use_foot_fsr = use_foot_fsr
         self.use_depth = use_depth
         self.imu_roll_sign = imu_roll_sign
@@ -239,10 +186,6 @@ class RobotSensorHub:
         self.imu_yaw_sign = imu_yaw_sign
         self.imu_vertical_mount = imu_vertical_mount
         self.imu_board_face_sign = 1.0 if imu_board_face_sign >= 0.0 else -1.0
-        self.hand_fsr_invert = hand_fsr_invert
-        self.hand_fsr_zero_raw = hand_fsr_zero_raw
-        self.hand_fsr_full_raw = max(hand_fsr_zero_raw + 1, hand_fsr_full_raw)
-        self.hand_filter = LowPass(hand_fsr_filter_alpha)
         self.foot_fsr_invert = foot_fsr_invert
         self.foot_fsr_zero_raw = foot_fsr_zero_raw
         self.foot_fsr_full_raw = max(foot_fsr_zero_raw + 1, foot_fsr_full_raw)
@@ -258,8 +201,6 @@ class RobotSensorHub:
         self._lock = threading.Lock()
         self._imu: Optional[IMUReading] = None
         self._imu_at = 0.0
-        self._hand_force: Optional[HandForceReading] = None
-        self._hand_force_at = 0.0
         self._feet: Optional[FootForceReading] = None
         self._feet_at = 0.0
         self._depth: Optional[DepthReading] = None
@@ -311,10 +252,8 @@ class RobotSensorHub:
                 self._active_port = None
                 with self._lock:
                     self._imu = None
-                    self._hand_force = None
                     self._feet = None
                     self._depth = None
-                    self.hand_filter.reset()
                     self.left_foot_filter.reset()
                     self.right_foot_filter.reset()
                 if not self._stop.is_set():
@@ -342,27 +281,6 @@ class RobotSensorHub:
                 with self._lock:
                     self._imu = imu
                     self._imu_at = now
-                continue
-
-            hand_force = (
-                parse_serial_hand_line(
-                    line,
-                    invert=self.hand_fsr_invert,
-                    zero_raw=self.hand_fsr_zero_raw,
-                    full_raw=self.hand_fsr_full_raw,
-                )
-                if self.use_hand_fsr
-                else None
-            )
-            if hand_force is not None:
-                with self._lock:
-                    self._hand_force = HandForceReading(
-                        self.hand_filter.update(hand_force.force),
-                        hand_force.voltage,
-                        hand_force.raw,
-                        hand_force.sensor_time_ms,
-                    )
-                    self._hand_force_at = now
                 continue
 
             feet = (
@@ -466,18 +384,13 @@ class RobotSensorHub:
         now = time.monotonic()
         with self._lock:
             imu = self._imu if self._imu is not None and now - self._imu_at <= self.timeout_s else None
-            hand_force = (
-                self._hand_force
-                if self._hand_force is not None and now - self._hand_force_at <= self.timeout_s
-                else None
-            )
             feet = self._feet if self._feet is not None and now - self._feet_at <= self.timeout_s else None
             depth = (
                 self._depth
                 if self._depth is not None and now - self._depth_at <= self.depth_timeout_s
                 else None
             )
-        return SensorSnapshot(imu=imu, hand_force=hand_force, feet=feet, depth=depth)
+        return SensorSnapshot(imu=imu, feet=feet, depth=depth)
 
     def capture_imu_reference(
         self,

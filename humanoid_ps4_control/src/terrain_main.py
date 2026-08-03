@@ -163,7 +163,6 @@ def run_terrain(args: Config) -> None:
         timeout_s=args.sensor_timeout_s,
         depth_timeout_s=args.sensor_depth_timeout_s,
         use_imu=True,
-        use_hand_fsr=False,
         use_foot_fsr=args.sensor_use_foot_fsr,
         use_depth=True,
         imu_roll_sign=args.imu_roll_sign,
@@ -256,7 +255,7 @@ def run_terrain(args: Config) -> None:
                 )
                 obstacle_blocked, obstacle_mm = obstacle_guard.update(snapshot.depth, stop_distance)
 
-                toggle = state.handshake
+                toggle = state.auto_toggle
                 if toggle and not previous_toggle:
                     if armed:
                         armed = False

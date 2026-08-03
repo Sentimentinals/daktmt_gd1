@@ -65,13 +65,6 @@ class TerrainPerception:
     def calibrated(self) -> bool:
         return self._flat_horizon_ratio is not None
 
-    def reset_state(self) -> None:
-        self._pending = TerrainKind.UNKNOWN
-        self._pending_count = 0
-        self._unknown_count = 0
-        self._stable = TerrainKind.UNKNOWN
-        self._stable_confidence = 0.0
-
     def update(self, frame: np.ndarray, calibrating: bool = False) -> TerrainObservation:
         height, width = frame.shape[:2]
         y0 = round(height * self.roi_top_ratio)

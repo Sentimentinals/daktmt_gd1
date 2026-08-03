@@ -33,7 +33,6 @@ def main() -> int:
         timeout_s=settings.sensor_timeout_s,
         depth_timeout_s=settings.sensor_depth_timeout_s,
         use_imu=use_imu,
-        use_hand_fsr=False,
         use_foot_fsr=use_fsr,
         use_depth=use_depth,
         imu_roll_sign=settings.imu_roll_sign,
