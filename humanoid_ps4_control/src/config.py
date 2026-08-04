@@ -33,7 +33,7 @@ GAIT = {
     "lift_end_phase": 1.0,
     "landing_roll_release_start": 0.42,
     "command_deadzone": 0.02,
-    "arm_swing_pwm": 240,
+    "arm_swing_pwm": 300,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
     "arm_elbow_ratio": 0.0,
