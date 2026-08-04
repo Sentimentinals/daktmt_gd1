@@ -934,6 +934,8 @@ class DynamicWalkingEngine:
         if phase_mode_now == "swing" and support_leg_for_pose == "right":
             # Right leg is stance, Left leg is swing
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
+            swing_hip_open_pwm = round(GAIT["swing_hip_open_deg"] * PWM_PER_DEG)
+            swing_ankle_rear_pwm = round(GAIT["swing_ankle_rear_deg"] * PWM_PER_DEG)
             target_17 = pose[17]
             target_21 = pose[21]
             if side_active:
@@ -949,7 +951,7 @@ class DynamicWalkingEngine:
             swing_forward_x = float(foot_L_now[0] - foot_R_now[0])
             if abs(self.commanded_step_len) > 0.1:
                 swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
-            target_12 = pose[12]
+            target_12 = pose[12] + swing_hip_open_pwm
             if abs(step_elevation_now) > 0.05:
                 target_13 = pose[13]
                 target_14 = pose[14]
@@ -959,6 +961,7 @@ class DynamicWalkingEngine:
                 target_13 = STANDING[13] + thigh_delta
                 target_14 = STANDING[14] + knee_delta
                 target_15 = STANDING[15] + ankle_delta
+            target_15 -= swing_ankle_rear_pwm
             support_roll_delta = pose[17] - STANDING[17]
             if side_active:
                 target_16 = max(500, min(2500, STANDING[16] - side_dir * side_swing_roll))
@@ -978,6 +981,8 @@ class DynamicWalkingEngine:
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
+            swing_hip_open_pwm = round(GAIT["swing_hip_open_deg"] * PWM_PER_DEG)
+            swing_ankle_rear_pwm = round(GAIT["swing_ankle_rear_deg"] * PWM_PER_DEG)
             target_16 = pose[16]
             target_12 = pose[12]
             if side_active:
@@ -1002,12 +1007,13 @@ class DynamicWalkingEngine:
                 target_20 = STANDING[20] - thigh_delta
                 target_19 = STANDING[19] - knee_delta
                 target_18 = STANDING[18] - ankle_delta
+            target_18 += swing_ankle_rear_pwm
             support_roll_delta = pose[16] - STANDING[16]
             if side_active:
                 target_17 = max(500, min(2500, STANDING[17] - side_dir * side_swing_roll))
             else:
                 target_17 = max(500, min(2500, STANDING[17] + support_roll_delta))
-            target_21 = pose[21]
+            target_21 = pose[21] - swing_hip_open_pwm
             if side_active:
                 target_18 = round(STANDING[18] + (pose[18] - STANDING[18]) * side_pitch_gain)
                 target_19 = round(STANDING[19] + (pose[19] - STANDING[19]) * side_pitch_gain)
