@@ -81,12 +81,11 @@ def lift_pitch_deltas(lift_height: float, forward_x: float = 0.0) -> tuple[int, 
 
     raw_thigh_delta = round((lifted["hip_pitch"] - neutral["hip_pitch"]) * PWM_PER_DEG)
     raw_knee_delta = round((lifted["knee"] - neutral["knee"]) * PWM_PER_DEG)
-    raw_ankle_delta = round((lifted["ankle_pitch"] - neutral["ankle_pitch"]) * PWM_PER_DEG)
     thigh_scale = 0.68
     lift_scale = 0.60
     thigh_delta = round(max(-300, min(300, raw_thigh_delta * thigh_scale)))
     knee_delta = round(max(0, min(280, raw_knee_delta * lift_scale)))
-    ankle_delta = round(max(-120, min(120, raw_ankle_delta * thigh_scale)))
+    ankle_delta = max(-180, min(180, knee_delta - thigh_delta))
     return thigh_delta, knee_delta, ankle_delta
 
 
@@ -621,7 +620,9 @@ class DynamicWalkingEngine:
             z = swing_start_z if side_dominant else swing_base_z + self.step_height * lift_height_scale * lift_factor
 
             lift_ready = 1.0 if landing_t > 0.0 else self._smooth01(min(1.0, lift_factor / 0.14))
-            swing_x_travel = 0.0 if side_dominant else (swing_distance + thigh_forward_x * swing_x_scale) * swing_t * lift_ready
+            advance_start = min(self.swing_advance_end_phase - 0.10, self.lift_start_phase + 0.18)
+            swing_x_t = self._phase_progress(alpha, advance_start, self.swing_advance_end_phase)
+            swing_x_travel = 0.0 if side_dominant else (swing_distance + thigh_forward_x * swing_x_scale) * swing_x_t * lift_ready
             arm_phase = self._phase_progress(alpha, self.lift_start_phase, min(0.20, self.swing_advance_end_phase))
             arm_delta = (
                 round(previous_arm_delta[0] + (current_arm_delta[0] - previous_arm_delta[0]) * arm_phase),
@@ -1089,10 +1090,7 @@ class DynamicWalkingEngine:
                     pose[18] = max(500, min(2500, STANDING[18] - ankle_delta))
 
         if leg_active:
-            hip_opening_pwm = round(GAIT["walking_hip_open_deg"] * PWM_PER_DEG)
             forward_lean_pwm = round(GAIT["walking_forward_lean_deg"] * PWM_PER_DEG)
-            pose[12] += hip_opening_pwm
-            pose[21] -= hip_opening_pwm
             pose[13] += forward_lean_pwm
             pose[20] -= forward_lean_pwm
 

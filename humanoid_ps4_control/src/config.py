@@ -16,7 +16,6 @@ ROBOT = {
 GAIT = {
     "zmp_support_ratio": 0.96,
     "hip_abduct_gain": 0.34,
-    "walking_hip_open_deg": 4.0,
     "walking_forward_lean_deg": 2.0,
     "swing_hip_roll_scale": 0.0,
     "ankle_roll_gain": -0.30,
@@ -115,7 +114,7 @@ class Config:
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = 36.0
-    t_step: float = 1.08
+    t_step: float = 1.30
     t_dbl: float = 0.08
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     hip_abduct_gain: float = GAIT["hip_abduct_gain"]
