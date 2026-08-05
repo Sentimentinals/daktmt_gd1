@@ -1095,11 +1095,6 @@ class DynamicWalkingEngine:
                     pose[19] = max(500, min(2500, STANDING[19] - knee_delta))
                     pose[18] = max(500, min(2500, STANDING[18] - ankle_delta))
 
-        if leg_active:
-            forward_lean_pwm = round(GAIT["walking_forward_lean_deg"] * PWM_PER_DEG)
-            pose[13] += forward_lean_pwm
-            pose[20] -= forward_lean_pwm
-
         pose = self._apply_arm_swing(pose, arm_delta_now)
         pose = self.pose_filter.update(pose)
         max_pwm_per_frame = self.max_pwm_per_frame
