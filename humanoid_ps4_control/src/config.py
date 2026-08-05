@@ -23,7 +23,7 @@ GAIT = {
     "left_step_height_scale": 1.2,
     "landing_gap_mm": 58.0,
     "right_swing_x_scale": 1.0,
-    "right_step_height_scale": 1.2,
+    "right_step_height_scale": 1.3,
     "lift_start_phase": 0.00,
     "swing_advance_end_phase": 0.62,
     "lift_end_phase": 1.0,
