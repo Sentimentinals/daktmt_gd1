@@ -893,7 +893,7 @@ class DynamicWalkingEngine:
         if phase_mode_now == "swing" and support_leg_for_pose == "right":
             # Right leg is stance, Left leg is swing
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
-            swing_ankle_rear_pwm = round(GAIT["swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now)
+            swing_ankle_rear_pwm = round(GAIT["left_swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now)
             target_17 = pose[17]
             target_21 = pose[21]
             if side_active:
@@ -924,7 +924,10 @@ class DynamicWalkingEngine:
                 target_16 = max(500, min(2500, STANDING[16] - side_dir * side_swing_roll))
                 target_12 = max(500, min(2500, STANDING[12] - side_dir * side_hip_roll))
             else:
-                target_16 = STANDING[16]
+                target_16 = max(
+                    500,
+                    min(2500, STANDING[16] + round(support_roll_delta * GAIT["swing_ankle_roll_scale"])),
+                )
                 target_12 = max(
                     500,
                     min(2500, STANDING[12] - round(abs(support_roll_delta) * self.hip_abduct_gain)),
@@ -942,7 +945,7 @@ class DynamicWalkingEngine:
         elif phase_mode_now == "swing" and support_leg_for_pose == "left":
             # Left leg is stance, Right leg is swing
             support_blend = self._smooth01(min(1.0, lift_factor_now / 0.35))
-            swing_ankle_rear_pwm = round(GAIT["swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now)
+            swing_ankle_rear_pwm = round(GAIT["right_swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now)
             target_16 = pose[16]
             target_12 = pose[12]
             if side_active:
@@ -977,7 +980,10 @@ class DynamicWalkingEngine:
                 target_17 = max(500, min(2500, STANDING[17] - side_dir * side_swing_roll))
                 target_21 = max(500, min(2500, STANDING[21] - side_dir * side_hip_roll))
             else:
-                target_17 = STANDING[17]
+                target_17 = max(
+                    500,
+                    min(2500, STANDING[17] + round(support_roll_delta * GAIT["swing_ankle_roll_scale"])),
+                )
                 target_21 = max(
                     500,
                     min(2500, STANDING[21] + round(abs(support_roll_delta) * GAIT["right_swing_hip_out_gain"])),
@@ -1037,10 +1043,10 @@ class DynamicWalkingEngine:
                     else:
                         pose[sid] = blend_pwm(self.prev_pose[sid], next_support_pose[sid], land_blend)
             if not side_active and not terrain_landing:
-                swing_ankle_rear_pwm = round(
-                    GAIT["swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now
-                )
                 if swing_leg_now == "left":
+                    swing_ankle_rear_pwm = round(
+                        GAIT["left_swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now
+                    )
                     swing_forward_x = float(foot_L_now[0] - foot_R_now[0])
                     if abs(self.commanded_step_len) > 0.1:
                         swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
@@ -1052,6 +1058,9 @@ class DynamicWalkingEngine:
                         min(2500, STANDING[15] + ankle_delta - swing_ankle_rear_pwm),
                     )
                 else:
+                    swing_ankle_rear_pwm = round(
+                        GAIT["right_swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now
+                    )
                     swing_forward_x = float(foot_R_now[0] - foot_L_now[0])
                     if abs(self.commanded_step_len) > 0.1:
                         swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
