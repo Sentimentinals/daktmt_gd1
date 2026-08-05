@@ -960,7 +960,11 @@ class DynamicWalkingEngine:
                 target_19 = pose[19]
                 target_18 = pose[18]
             else:
-                thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(swing_lift, swing_forward_x)
+                thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(
+                    swing_lift,
+                    swing_forward_x,
+                    self.right_step_height_scale,
+                )
                 target_20 = STANDING[20] - thigh_delta
                 target_19 = STANDING[19] - knee_delta
                 target_18 = STANDING[18] - ankle_delta
@@ -1033,6 +1037,9 @@ class DynamicWalkingEngine:
                     else:
                         pose[sid] = blend_pwm(self.prev_pose[sid], next_support_pose[sid], land_blend)
             if not side_active and not terrain_landing:
+                swing_ankle_rear_pwm = round(
+                    GAIT["swing_ankle_rear_deg"] * PWM_PER_DEG * lift_factor_now
+                )
                 if swing_leg_now == "left":
                     swing_forward_x = float(foot_L_now[0] - foot_R_now[0])
                     if abs(self.commanded_step_len) > 0.1:
@@ -1040,15 +1047,25 @@ class DynamicWalkingEngine:
                     thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(lift_factor_now, swing_forward_x, self.left_step_height_scale)
                     pose[13] = max(500, min(2500, STANDING[13] + landing_forward_lean + thigh_delta))
                     pose[14] = max(500, min(2500, STANDING[14] + knee_delta))
-                    pose[15] = max(500, min(2500, STANDING[15] + ankle_delta))
+                    pose[15] = max(
+                        500,
+                        min(2500, STANDING[15] + ankle_delta - swing_ankle_rear_pwm),
+                    )
                 else:
                     swing_forward_x = float(foot_R_now[0] - foot_L_now[0])
                     if abs(self.commanded_step_len) > 0.1:
                         swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
-                    thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(lift_factor_now, swing_forward_x)
+                    thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(
+                        lift_factor_now,
+                        swing_forward_x,
+                        self.right_step_height_scale,
+                    )
                     pose[20] = max(500, min(2500, STANDING[20] - landing_forward_lean - thigh_delta))
                     pose[19] = max(500, min(2500, STANDING[19] - knee_delta))
-                    pose[18] = max(500, min(2500, STANDING[18] - ankle_delta))
+                    pose[18] = max(
+                        500,
+                        min(2500, STANDING[18] - ankle_delta + swing_ankle_rear_pwm),
+                    )
 
         pose = self._apply_arm_swing(pose, arm_delta_now)
         pose = self.pose_filter.update(pose)
