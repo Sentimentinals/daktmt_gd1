@@ -116,23 +116,33 @@ def compute_pose(
 
     hip_gain = GAIT["hip_abduct_gain"] if hip_abduct_gain is None else hip_abduct_gain
     ankle_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
-    ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
-
-    if support_leg == "right":
-        right_hip_abduct = -abs(ik_R["hip_abduct"]) * hip_gain
-        left_hip_abduct = 0.0
-        right_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
-        left_ankle_roll = 0.0
-    elif support_leg == "left":
+    if phase_mode == "shift" and support_leg in ("left", "right"):
+        support_y = hw * (GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio)
+        signed_support_y = support_y if support_leg == "right" else -support_y
+        shift_ankle_roll = math.degrees(math.atan2(signed_support_y, roll_height)) * ankle_gain
+        if abs(shift_ankle_roll) > 0.01:
+            shift_ankle_roll += math.copysign(2.0, shift_ankle_roll)
         right_hip_abduct = 0.0
-        left_hip_abduct = -abs(ik_L["hip_abduct"]) * hip_gain
-        right_ankle_roll = 0.0
-        left_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
+        left_hip_abduct = 0.0
+        right_ankle_roll = shift_ankle_roll if support_leg == "right" else 0.0
+        left_ankle_roll = -shift_ankle_roll if support_leg == "left" else 0.0
     else:
-        right_hip_abduct = ik_R["hip_abduct"] * hip_gain * 0.25
-        left_hip_abduct = ik_L["hip_abduct"] * hip_gain * 0.25
-        right_ankle_roll = ankle_roll * 0.5
-        left_ankle_roll = ankle_roll * 0.5
+        ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
+        if support_leg == "right":
+            right_hip_abduct = -abs(ik_R["hip_abduct"]) * hip_gain
+            left_hip_abduct = 0.0
+            right_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
+            left_ankle_roll = 0.0
+        elif support_leg == "left":
+            right_hip_abduct = 0.0
+            left_hip_abduct = -abs(ik_L["hip_abduct"]) * hip_gain
+            right_ankle_roll = 0.0
+            left_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
+        else:
+            right_hip_abduct = ik_R["hip_abduct"] * hip_gain * 0.25
+            left_hip_abduct = ik_L["hip_abduct"] * hip_gain * 0.25
+            right_ankle_roll = ankle_roll * 0.5
+            left_ankle_roll = ankle_roll * 0.5
 
     pose = dict(STANDING)
     pose[17] = angle_to_pwm(17, STAND_ANG["hip_roll"], right_ankle_roll, STANDING[17])
@@ -146,19 +156,6 @@ def compute_pose(
     pose[14] = angle_to_pwm(14, STAND_ANG["L_knee"], ik_L["knee"], STANDING[14])
     pose[15] = angle_to_pwm(15, STAND_ANG["L_ankle"], ik_L["ankle_pitch"], STANDING[15])
     pose[16] = angle_to_pwm(16, STAND_ANG["hip_roll"], left_ankle_roll, STANDING[16])
-    if phase_mode == "shift":
-        support_y = hw * (GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio)
-        signed_support_y = support_y if support_leg == "right" else -support_y
-        raw_roll = math.degrees(math.atan2(signed_support_y, roll_height))
-        shift_ankle_roll = raw_roll * ankle_gain
-        if abs(shift_ankle_roll) > 0.01:
-            shift_ankle_roll += math.copysign(2.0, shift_ankle_roll)
-        if support_leg == "right":
-            pose[17] = angle_to_pwm(17, STAND_ANG["hip_roll"], shift_ankle_roll, STANDING[17])
-            pose[21] = STANDING[21]
-        elif support_leg == "left":
-            pose[16] = angle_to_pwm(16, STAND_ANG["hip_roll"], -shift_ankle_roll, STANDING[16])
-            pose[12] = STANDING[12]
     return pose
 
 
