@@ -16,11 +16,12 @@ ROBOT = {
 GAIT = {
     "zmp_support_ratio": 0.96,
     "hip_abduct_gain": 0.34,
+    "right_swing_hip_out_gain": 0.50,
     "swing_ankle_rear_deg": 8.0,
     "ankle_roll_gain": -0.50,
     "step_x_ratio": 1.60,
     "left_swing_x_scale": 1.0,
-    "left_step_height_scale": 1.2,
+    "left_step_height_scale": 1.3,
     "landing_gap_mm": 58.0,
     "right_swing_x_scale": 1.0,
     "right_step_height_scale": 1.3,

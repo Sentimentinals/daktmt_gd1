@@ -980,7 +980,7 @@ class DynamicWalkingEngine:
                 target_17 = STANDING[17]
                 target_21 = max(
                     500,
-                    min(2500, STANDING[21] + round(abs(support_roll_delta) * self.hip_abduct_gain)),
+                    min(2500, STANDING[21] + round(abs(support_roll_delta) * GAIT["right_swing_hip_out_gain"])),
                 )
             if side_active:
                 target_18 = round(STANDING[18] + (pose[18] - STANDING[18]) * side_pitch_gain)
