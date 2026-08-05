@@ -924,10 +924,7 @@ class DynamicWalkingEngine:
                 target_16 = max(500, min(2500, STANDING[16] - side_dir * side_swing_roll))
                 target_12 = max(500, min(2500, STANDING[12] - side_dir * side_hip_roll))
             else:
-                target_16 = max(
-                    500,
-                    min(2500, STANDING[16] + round(support_roll_delta * GAIT["swing_ankle_roll_scale"])),
-                )
+                target_16 = STANDING[16]
                 target_12 = max(
                     500,
                     min(2500, STANDING[12] - round(abs(support_roll_delta) * self.hip_abduct_gain)),
@@ -980,10 +977,7 @@ class DynamicWalkingEngine:
                 target_17 = max(500, min(2500, STANDING[17] - side_dir * side_swing_roll))
                 target_21 = max(500, min(2500, STANDING[21] - side_dir * side_hip_roll))
             else:
-                target_17 = max(
-                    500,
-                    min(2500, STANDING[17] + round(support_roll_delta * GAIT["swing_ankle_roll_scale"])),
-                )
+                target_17 = STANDING[17]
                 target_21 = max(
                     500,
                     min(2500, STANDING[21] + round(abs(support_roll_delta) * GAIT["right_swing_hip_out_gain"])),

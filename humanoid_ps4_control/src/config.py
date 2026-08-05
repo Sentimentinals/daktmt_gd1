@@ -20,7 +20,6 @@ GAIT = {
     "left_swing_ankle_rear_deg": 0.0,
     "right_swing_ankle_rear_deg": 8.0,
     "ankle_roll_gain": -0.50,
-    "swing_ankle_roll_scale": 0.25,
     "step_x_ratio": 1.60,
     "left_swing_x_scale": 1.0,
     "left_step_height_scale": 1.3,
