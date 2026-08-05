@@ -909,7 +909,6 @@ class DynamicWalkingEngine:
             swing_forward_x = float(foot_L_now[0] - foot_R_now[0])
             if abs(self.commanded_step_len) > 0.1:
                 swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
-            target_12 = pose[12]
             if abs(step_elevation_now) > 0.05:
                 target_13 = pose[13]
                 target_14 = pose[14]
@@ -923,13 +922,17 @@ class DynamicWalkingEngine:
             support_roll_delta = pose[17] - STANDING[17]
             if side_active:
                 target_16 = max(500, min(2500, STANDING[16] - side_dir * side_swing_roll))
+                target_12 = max(500, min(2500, STANDING[12] - side_dir * side_hip_roll))
             else:
-                target_16 = max(500, min(2500, STANDING[16] + support_roll_delta))
+                target_16 = STANDING[16]
+                target_12 = max(
+                    500,
+                    min(2500, STANDING[12] - round(abs(support_roll_delta) * self.hip_abduct_gain)),
+                )
             if side_active:
                 target_13 = round(STANDING[13] + (pose[13] - STANDING[13]) * side_pitch_gain)
                 target_14 = round(STANDING[14] + (pose[14] - STANDING[14]) * side_pitch_gain)
                 target_15 = round(STANDING[15] + (pose[15] - STANDING[15]) * side_pitch_gain)
-                target_12 = max(500, min(2500, STANDING[12] - side_dir * side_hip_roll))
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[12] = round(self.prev_pose.get(12, pose[12]) + (target_12 - self.prev_pose.get(12, pose[12])) * swing_blend)
             pose[13] = target_13
@@ -972,14 +975,17 @@ class DynamicWalkingEngine:
             support_roll_delta = pose[16] - STANDING[16]
             if side_active:
                 target_17 = max(500, min(2500, STANDING[17] - side_dir * side_swing_roll))
+                target_21 = max(500, min(2500, STANDING[21] - side_dir * side_hip_roll))
             else:
-                target_17 = max(500, min(2500, STANDING[17] + support_roll_delta))
-            target_21 = pose[21]
+                target_17 = STANDING[17]
+                target_21 = max(
+                    500,
+                    min(2500, STANDING[21] + round(abs(support_roll_delta) * self.hip_abduct_gain)),
+                )
             if side_active:
                 target_18 = round(STANDING[18] + (pose[18] - STANDING[18]) * side_pitch_gain)
                 target_19 = round(STANDING[19] + (pose[19] - STANDING[19]) * side_pitch_gain)
                 target_20 = round(STANDING[20] + (pose[20] - STANDING[20]) * side_pitch_gain)
-                target_21 = max(500, min(2500, STANDING[21] - side_dir * side_hip_roll))
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[17] = round(self.prev_pose.get(17, pose[17]) + (target_17 - self.prev_pose.get(17, pose[17])) * swing_blend)
             pose[20] = target_20
@@ -1004,14 +1010,8 @@ class DynamicWalkingEngine:
                 ankle_roll_gain=self.ankle_roll_gain,
             )
 
-            stride_span = abs(float(foot_L_now[0] - foot_R_now[0]))
-            stride_scale = self._smooth01(min(1.0, stride_span / max(1.0, self.landing_gap_mm)))
-            landing_forward_lean = round(min(10.0, stride_scale * 10.0))
             terrain_landing = abs(step_elevation_now) > 0.05
-            if terrain_landing:
-                landing_forward_lean = 0
             if side_active:
-                landing_forward_lean = 0
                 for sid in (13, 14, 15, 18, 19, 20):
                     next_support_pose[sid] = STANDING[sid]
                 next_support_pose[21] = STANDING[21]
@@ -1020,13 +1020,13 @@ class DynamicWalkingEngine:
                 next_support_pose[16] = STANDING[16] - side_dir * side_support_roll if swing_leg_now == "left" else STANDING[16]
             if swing_leg_now == "left":
                 if not terrain_landing:
-                    next_support_pose[13] = max(500, min(2500, STANDING[13] + landing_forward_lean))
+                    next_support_pose[13] = STANDING[13]
                     next_support_pose[14] = STANDING[14]
                     next_support_pose[15] = STANDING[15]
                 old_support_pitch = () if terrain_landing else (18, 19, 20)
             else:
                 if not terrain_landing:
-                    next_support_pose[20] = max(500, min(2500, STANDING[20] - landing_forward_lean))
+                    next_support_pose[20] = STANDING[20]
                     next_support_pose[19] = STANDING[19]
                     next_support_pose[18] = STANDING[18]
                 old_support_pitch = () if terrain_landing else (13, 14, 15)
@@ -1045,7 +1045,7 @@ class DynamicWalkingEngine:
                     if abs(self.commanded_step_len) > 0.1:
                         swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
                     thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(lift_factor_now, swing_forward_x, self.left_step_height_scale)
-                    pose[13] = max(500, min(2500, STANDING[13] + landing_forward_lean + thigh_delta))
+                    pose[13] = max(500, min(2500, STANDING[13] + thigh_delta))
                     pose[14] = max(500, min(2500, STANDING[14] + knee_delta))
                     pose[15] = max(
                         500,
@@ -1060,7 +1060,7 @@ class DynamicWalkingEngine:
                         swing_forward_x,
                         self.right_step_height_scale,
                     )
-                    pose[20] = max(500, min(2500, STANDING[20] - landing_forward_lean - thigh_delta))
+                    pose[20] = max(500, min(2500, STANDING[20] - thigh_delta))
                     pose[19] = max(500, min(2500, STANDING[19] - knee_delta))
                     pose[18] = max(
                         500,
