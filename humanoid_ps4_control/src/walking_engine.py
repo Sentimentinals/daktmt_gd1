@@ -99,9 +99,7 @@ def compute_pose(
     phase_mode: str = "full",
     zmp_support_ratio: float | None = None,
     hip_abduct_gain: float | None = None,
-    swing_hip_roll_scale: float | None = None,
     ankle_roll_gain: float | None = None,
-    swing_ankle_roll_scale: float | None = None,
 ) -> dict[int, int]:
     """Convert CoM/foot targets into a full servo pulse pose."""
     body_z = ROBOT["com_height"] if com_z is None else com_z
@@ -117,20 +115,18 @@ def compute_pose(
     ik_L = leg_ik(hip_L, tuple(foot_L), L1, L2)
 
     hip_gain = GAIT["hip_abduct_gain"] if hip_abduct_gain is None else hip_abduct_gain
-    swing_hip_scale = GAIT["swing_hip_roll_scale"] if swing_hip_roll_scale is None else swing_hip_roll_scale
     ankle_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
-    swing_roll_scale = GAIT["swing_ankle_roll_scale"] if swing_ankle_roll_scale is None else swing_ankle_roll_scale
     ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
 
     if support_leg == "right":
         right_hip_abduct = -abs(ik_R["hip_abduct"]) * hip_gain
-        left_hip_abduct = ik_L["hip_abduct"] * hip_gain * swing_hip_scale
+        left_hip_abduct = 0.0
         right_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
-        left_ankle_roll = ankle_roll * swing_roll_scale
+        left_ankle_roll = 0.0
     elif support_leg == "left":
-        right_hip_abduct = ik_R["hip_abduct"] * hip_gain * swing_hip_scale
+        right_hip_abduct = 0.0
         left_hip_abduct = -abs(ik_L["hip_abduct"]) * hip_gain
-        right_ankle_roll = ankle_roll * swing_roll_scale
+        right_ankle_roll = 0.0
         left_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
     else:
         right_hip_abduct = ik_R["hip_abduct"] * hip_gain * 0.25
@@ -317,11 +313,8 @@ class DynamicWalkingEngine:
         step_height: float | None = None,
         zmp_support_ratio: float | None = None,
         hip_abduct_gain: float | None = None,
-        swing_hip_roll_scale: float | None = None,
         ankle_roll_gain: float | None = None,
-        swing_ankle_roll_scale: float | None = None,
         step_x_ratio: float | None = None,
-        thigh_lift_forward_mm: float | None = None,
         left_swing_x_scale: float | None = None,
         left_step_height_scale: float | None = None,
         landing_gap_mm: float | None = None,
@@ -336,8 +329,6 @@ class DynamicWalkingEngine:
         arm_swing_pwm: int | None = None,
         arm_right_dir: int | None = None,
         arm_left_dir: int | None = None,
-        arm_elbow_ratio: float | None = None,
-        arm_lift_ratio: float | None = None,
         arm_smooth_tau: float | None = None,
         arm_min_pwm: int | None = None,
         arm_quantum_pwm: int | None = None,
@@ -357,15 +348,8 @@ class DynamicWalkingEngine:
         self.step_height = ROBOT["step_height"] if step_height is None else step_height
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.hip_abduct_gain = GAIT["hip_abduct_gain"] if hip_abduct_gain is None else hip_abduct_gain
-        self.swing_hip_roll_scale = (
-            GAIT["swing_hip_roll_scale"] if swing_hip_roll_scale is None else swing_hip_roll_scale
-        )
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
-        self.swing_ankle_roll_scale = GAIT["swing_ankle_roll_scale"] if swing_ankle_roll_scale is None else swing_ankle_roll_scale
         self.step_x_ratio = GAIT["step_x_ratio"] if step_x_ratio is None else step_x_ratio
-        self.thigh_lift_forward_mm = (
-            GAIT["thigh_lift_forward_mm"] if thigh_lift_forward_mm is None else thigh_lift_forward_mm
-        )
         self.left_swing_x_scale = GAIT["left_swing_x_scale"] if left_swing_x_scale is None else left_swing_x_scale
         self.left_step_height_scale = (
             GAIT["left_step_height_scale"] if left_step_height_scale is None else left_step_height_scale
@@ -396,8 +380,6 @@ class DynamicWalkingEngine:
         self.arm_swing_pwm = int(GAIT["arm_swing_pwm"] if arm_swing_pwm is None else arm_swing_pwm)
         self.arm_right_dir = int(GAIT["arm_right_dir"] if arm_right_dir is None else arm_right_dir)
         self.arm_left_dir = int(GAIT["arm_left_dir"] if arm_left_dir is None else arm_left_dir)
-        self.arm_elbow_ratio = GAIT["arm_elbow_ratio"] if arm_elbow_ratio is None else arm_elbow_ratio
-        self.arm_lift_ratio = GAIT["arm_lift_ratio"] if arm_lift_ratio is None else arm_lift_ratio
         self.arm_smooth_tau = GAIT["arm_smooth_tau"] if arm_smooth_tau is None else arm_smooth_tau
         self.arm_min_pwm = int(GAIT["arm_min_pwm"] if arm_min_pwm is None else arm_min_pwm)
         self.arm_quantum_pwm = max(1, int(GAIT["arm_quantum_pwm"] if arm_quantum_pwm is None else arm_quantum_pwm))
@@ -580,7 +562,6 @@ class DynamicWalkingEngine:
         # Positive turn command means turn left: left step shorter, right step longer.
         sagittal_cmd = 0.0 if side_dominant else step_len + (-turn_len if swing_is_left else turn_len)
         effective_step_len = sagittal_cmd * self.step_x_ratio
-        thigh_forward_x = self._thigh_forward_bias(sagittal_cmd)
 
         current_arm_delta = self._side_arm_offsets() if side_dominant else self._arm_offsets(swing_is_left)
         previous_arm_delta = self.arm_queue[-1] if self.arm_queue else self.last_arm_delta
@@ -614,7 +595,6 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(zmp_y)
             self.zmp_z_queue.append(support_z + (swing_target_z - support_z) * release_t)
 
-            swing_x_scale = self.left_swing_x_scale if swing_is_left else self.right_swing_x_scale
             lift_height_scale = self.left_step_height_scale if swing_is_left else self.right_step_height_scale
             swing_base_z = swing_start_z + (swing_target_z - swing_start_z) * swing_t
             z = swing_start_z if side_dominant else swing_base_z + self.step_height * lift_height_scale * lift_factor
@@ -622,7 +602,7 @@ class DynamicWalkingEngine:
             lift_ready = 1.0 if landing_t > 0.0 else self._smooth01(min(1.0, lift_factor / 0.14))
             advance_start = min(self.swing_advance_end_phase - 0.10, self.lift_start_phase + 0.18)
             swing_x_t = self._phase_progress(alpha, advance_start, self.swing_advance_end_phase)
-            swing_x_travel = 0.0 if side_dominant else (swing_distance + thigh_forward_x * swing_x_scale) * swing_x_t * lift_ready
+            swing_x_travel = 0.0 if side_dominant else swing_distance * swing_x_t * lift_ready
             arm_phase = self._phase_progress(alpha, self.lift_start_phase, min(0.20, self.swing_advance_end_phase))
             arm_delta = (
                 round(previous_arm_delta[0] + (current_arm_delta[0] - previous_arm_delta[0]) * arm_phase),
@@ -649,14 +629,6 @@ class DynamicWalkingEngine:
             self.phase_mode_queue.append(phase_mode)
             self.side_len_queue.append(side_step_len)
             self.step_elevation_queue.append(0.0 if side_dominant else step_elevation)
-
-    def _thigh_forward_bias(self, sagittal_cmd: float) -> float:
-        if abs(sagittal_cmd) < 0.1 or abs(self.thigh_lift_forward_mm) < 0.1:
-            return 0.0
-
-        full_cmd = max(1.0, self.max_step_len * 0.18)
-        scale = min(1.0, max(0.80, abs(sagittal_cmd) / full_cmd))
-        return math.copysign(abs(self.thigh_lift_forward_mm) * scale, sagittal_cmd)
 
     def _landing_reach(self, planned_reach: float, sagittal_cmd: float) -> float:
         if abs(sagittal_cmd) < 0.1:
@@ -736,17 +708,8 @@ class DynamicWalkingEngine:
         self.last_arm_delta = (right_pwm_delta, left_pwm_delta)
         self.last_arm_role = self._arm_role(right_delta, left_delta)
 
-        right_elbow = abs(right_delta) * self.arm_elbow_ratio
-        left_elbow = abs(left_delta) * self.arm_elbow_ratio
-        right_lift = abs(right_delta) * self.arm_lift_ratio
-        left_lift = abs(left_delta) * self.arm_lift_ratio
-
-        out[24] = max(500, min(2500, round(STANDING[24] + right_elbow)))
-        out[23] = max(500, min(2500, round(STANDING[23] + right_lift)))
         out[22] = max(500, min(2500, STANDING[22] + right_pwm_delta))
         out[11] = max(500, min(2500, STANDING[11] + left_pwm_delta))
-        out[10] = max(500, min(2500, round(STANDING[10] - left_lift)))
-        out[9] = max(500, min(2500, round(STANDING[9] - left_elbow)))
         return out
 
     @staticmethod
@@ -906,8 +869,6 @@ class DynamicWalkingEngine:
         side_hip_roll = round(175.0 * max(0.82, side_strength) * side_swing_scale) if side_active else 0
         side_pitch_gain = 0.0 if side_active else 1.0
         pose_hip_abduct_gain = self.hip_abduct_gain * (1.0 + 0.35 * side_strength)
-        pose_swing_hip_roll_scale = 1.0 + 0.75 * side_strength if side_active else self.swing_hip_roll_scale
-        pose_swing_ankle_roll_scale = 0.0 if side_active else self.swing_ankle_roll_scale
         if phase_mode_now == "idle":
             pose = {
                 sid: blend_pwm(self.prev_pose.get(sid, STANDING[sid]), STANDING[sid], 0.16)
@@ -925,9 +886,7 @@ class DynamicWalkingEngine:
                 phase_mode=compute_phase_mode,
                 zmp_support_ratio=self.zmp_support_ratio,
                 hip_abduct_gain=pose_hip_abduct_gain,
-                swing_hip_roll_scale=pose_swing_hip_roll_scale,
                 ankle_roll_gain=self.ankle_roll_gain,
-                swing_ankle_roll_scale=pose_swing_ankle_roll_scale,
             )
         else:
             pose = dict(STANDING)
@@ -1038,9 +997,7 @@ class DynamicWalkingEngine:
                 phase_mode="shift",
                 zmp_support_ratio=self.zmp_support_ratio,
                 hip_abduct_gain=pose_hip_abduct_gain,
-                swing_hip_roll_scale=pose_swing_hip_roll_scale,
                 ankle_roll_gain=self.ankle_roll_gain,
-                swing_ankle_roll_scale=pose_swing_ankle_roll_scale,
             )
 
             stride_span = abs(float(foot_L_now[0] - foot_R_now[0]))

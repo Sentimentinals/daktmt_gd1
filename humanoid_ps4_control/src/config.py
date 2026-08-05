@@ -17,11 +17,8 @@ GAIT = {
     "zmp_support_ratio": 0.96,
     "hip_abduct_gain": 0.34,
     "swing_ankle_rear_deg": 8.0,
-    "swing_hip_roll_scale": 0.0,
     "ankle_roll_gain": -0.30,
-    "swing_ankle_roll_scale": 0.0,
     "step_x_ratio": 1.60,
-    "thigh_lift_forward_mm": 0.0,
     "left_swing_x_scale": 1.0,
     "left_step_height_scale": 1.2,
     "landing_gap_mm": 58.0,
@@ -35,8 +32,6 @@ GAIT = {
     "arm_swing_pwm": 300,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
-    "arm_elbow_ratio": 0.0,
-    "arm_lift_ratio": 0.0,
     "arm_smooth_tau": 0.08,
     "arm_min_pwm": 30,
     "arm_quantum_pwm": 10,
@@ -120,7 +115,6 @@ class Config:
     hip_abduct_gain: float = GAIT["hip_abduct_gain"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
     step_x_ratio: float = GAIT["step_x_ratio"]
-    thigh_lift_forward_mm: float = GAIT["thigh_lift_forward_mm"]
     left_swing_x_scale: float = GAIT["left_swing_x_scale"]
     left_step_height_scale: float = GAIT["left_step_height_scale"]
     right_swing_x_scale: float = GAIT["right_swing_x_scale"]
@@ -132,8 +126,6 @@ class Config:
     landing_roll_release_start: float = GAIT["landing_roll_release_start"]
     command_rate_limit: float = 24.0
     trajectory_smoothing: float = 1.0
-    swing_hip_roll_scale: float = GAIT["swing_hip_roll_scale"]
-    swing_ankle_roll_scale: float = GAIT["swing_ankle_roll_scale"]
     single_support_lift_height: float = 82.0
     single_support_arm_pwm: int = 180
     single_support_ramp_s: float = 0.8
@@ -142,8 +134,6 @@ class Config:
     arm_swing_pwm: int = GAIT["arm_swing_pwm"]
     arm_right_dir: int = GAIT["arm_right_dir"]
     arm_left_dir: int = GAIT["arm_left_dir"]
-    arm_elbow_ratio: float = GAIT["arm_elbow_ratio"]
-    arm_lift_ratio: float = GAIT["arm_lift_ratio"]
     arm_smooth_tau: float = GAIT["arm_smooth_tau"]
     arm_min_pwm: int = GAIT["arm_min_pwm"]
     arm_quantum_pwm: int = GAIT["arm_quantum_pwm"]

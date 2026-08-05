@@ -125,8 +125,6 @@ def run_keyboard(args: Config) -> None:
         arm_swing_pwm=args.arm_swing_pwm,
         arm_right_dir=args.arm_right_dir,
         arm_left_dir=args.arm_left_dir,
-        arm_elbow_ratio=args.arm_elbow_ratio,
-        arm_lift_ratio=args.arm_lift_ratio,
         arm_smooth_tau=args.arm_smooth_tau,
         arm_min_pwm=args.arm_min_pwm,
         arm_quantum_pwm=args.arm_quantum_pwm,
