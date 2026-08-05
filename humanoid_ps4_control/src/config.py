@@ -114,7 +114,7 @@ class Config:
     max_step_len: float = 34.0
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
-    step_height: float = 36.0
+    step_height: float = 42.0
     t_step: float = 1.30
     t_dbl: float = 0.08
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
