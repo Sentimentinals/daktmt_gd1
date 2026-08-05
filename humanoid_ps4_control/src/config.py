@@ -17,7 +17,7 @@ GAIT = {
     "zmp_support_ratio": 0.96,
     "hip_abduct_gain": 0.34,
     "support_hip_open_deg": 3.0,
-    "swing_ankle_rear_deg": 4.0,
+    "swing_ankle_rear_deg": 8.0,
     "walking_forward_lean_deg": 2.0,
     "swing_hip_roll_scale": 0.0,
     "ankle_roll_gain": -0.30,
