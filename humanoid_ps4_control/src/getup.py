@@ -112,7 +112,7 @@ def _scaled(duration_s: float, speed: float) -> float:
 
 def _leg_angles(
     *,
-    r_ankle_roll: float = 0.0,
+    r_ankle_roll: float = STAND_ANG["hip_roll"],
     r_ankle_pitch: float = STAND_ANG["R_ankle"],
     r_knee: float = STAND_ANG["R_knee"],
     r_hip_pitch: float = STAND_ANG["R_hip_pitch"],
@@ -121,7 +121,7 @@ def _leg_angles(
     l_hip_pitch: float = STAND_ANG["L_hip_pitch"],
     l_knee: float = STAND_ANG["L_knee"],
     l_ankle_pitch: float = STAND_ANG["L_ankle"],
-    l_ankle_roll: float = 0.0,
+    l_ankle_roll: float = STAND_ANG["hip_roll"],
 ) -> dict[str, float]:
     return {
         "R_ankle_roll": r_ankle_roll,
@@ -142,8 +142,8 @@ def _symmetric_leg_angles(
     ankle_pitch: float,
     knee: float,
     hip_pitch: float,
-    ankle_roll: float = 0.0,
-    hip_roll: float = 0.0,
+    ankle_roll: float = STAND_ANG["hip_roll"],
+    hip_roll: float = STAND_ANG["R_hip_abduct"],
 ) -> dict[str, float]:
     return _leg_angles(
         r_ankle_roll=ankle_roll,

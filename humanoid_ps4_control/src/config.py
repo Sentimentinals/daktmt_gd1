@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+PWM_PER_DEG = 2000.0 / 180.0
+STANCE_HIP_OUT_DEG = 4.0
+STANCE_ANKLE_COMP_DEG = 4.0
+
+
 # --- Physical Robot Dimensions & Properties ---
 ROBOT = {
     "com_height": 147.4,
@@ -16,7 +21,6 @@ ROBOT = {
 GAIT = {
     "zmp_support_ratio": 0.96,
     "hip_abduct_gain": 0.34,
-    "right_swing_hip_out_gain": 0.50,
     "left_swing_ankle_rear_deg": 0.0,
     "right_swing_ankle_rear_deg": 8.0,
     "ankle_roll_gain": -0.50,
@@ -47,16 +51,16 @@ STANDING = {
     9: 1500,    # Left elbow
     10: 2450,   # Left upper arm down
     11: 1500,   # Left shoulder swing
-    12: 1500,   # Left hip roll/abduction
+    12: round(1500 - STANCE_HIP_OUT_DEG * PWM_PER_DEG),  # Left hip roll/abduction
     13: 1500,   # Left hip pitch
     14: 1500,   # Left knee
     15: 1500,   # Left ankle pitch
-    16: 1500,   # Left ankle roll / foot
-    17: 1500,   # Right ankle roll / foot
+    16: round(1500 + STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Left ankle roll / foot
+    17: round(1500 - STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Right ankle roll / foot
     18: 1500,   # Right ankle pitch
     19: 1500,   # Right knee
     20: 1500,   # Right hip pitch
-    21: 1500,   # Right hip roll/abduction
+    21: round(1500 + STANCE_HIP_OUT_DEG * PWM_PER_DEG),  # Right hip roll/abduction
     22: 1470,   # Right shoulder swing
     23: 500,    # Right upper arm down
     24: 1500,   # Right elbow
@@ -65,15 +69,15 @@ STANDING = {
 
 # --- Calibrated standing joint angles ---
 STAND_ANG = {
-    "hip_roll": 0.0,
+    "hip_roll": STANCE_ANKLE_COMP_DEG,
     "R_hip_pitch": 18.0,
     "R_knee": 36.0,
     "R_ankle": 18.0,
-    "R_hip_abduct": 0.0,
+    "R_hip_abduct": -STANCE_HIP_OUT_DEG,
     "L_hip_pitch": 18.0,
     "L_knee": 36.0,
     "L_ankle": 18.0,
-    "L_hip_abduct": 0.0,
+    "L_hip_abduct": -STANCE_HIP_OUT_DEG,
 }
 
 # --- Direction configuration per servo ---
@@ -89,9 +93,6 @@ DIR = {
     20: -1,
     21: -1,
 }
-
-PWM_PER_DEG = 2000.0 / 180.0
-
 
 @dataclass
 class Config:

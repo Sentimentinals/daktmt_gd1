@@ -122,27 +122,31 @@ def compute_pose(
         shift_ankle_roll = math.degrees(math.atan2(signed_support_y, roll_height)) * ankle_gain
         if abs(shift_ankle_roll) > 0.01:
             shift_ankle_roll += math.copysign(2.0, shift_ankle_roll)
-        right_hip_abduct = 0.0
-        left_hip_abduct = 0.0
-        right_ankle_roll = shift_ankle_roll if support_leg == "right" else 0.0
-        left_ankle_roll = -shift_ankle_roll if support_leg == "left" else 0.0
+        right_hip_abduct = STAND_ANG["R_hip_abduct"]
+        left_hip_abduct = STAND_ANG["L_hip_abduct"]
+        right_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "right" else 0.0)
+        left_ankle_roll = STAND_ANG["hip_roll"] + (-shift_ankle_roll if support_leg == "left" else 0.0)
     else:
         ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
         if support_leg == "right":
-            right_hip_abduct = -abs(ik_R["hip_abduct"]) * hip_gain
-            left_hip_abduct = 0.0
-            right_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
-            left_ankle_roll = 0.0
+            right_hip_abduct = STAND_ANG["R_hip_abduct"] - abs(ik_R["hip_abduct"]) * hip_gain
+            left_hip_abduct = STAND_ANG["L_hip_abduct"]
+            right_ankle_roll = STAND_ANG["hip_roll"] + (
+                ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
+            )
+            left_ankle_roll = STAND_ANG["hip_roll"]
         elif support_leg == "left":
-            right_hip_abduct = 0.0
-            left_hip_abduct = -abs(ik_L["hip_abduct"]) * hip_gain
-            right_ankle_roll = 0.0
-            left_ankle_roll = ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
+            right_hip_abduct = STAND_ANG["R_hip_abduct"]
+            left_hip_abduct = STAND_ANG["L_hip_abduct"] - abs(ik_L["hip_abduct"]) * hip_gain
+            right_ankle_roll = STAND_ANG["hip_roll"]
+            left_ankle_roll = STAND_ANG["hip_roll"] + (
+                ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
+            )
         else:
-            right_hip_abduct = ik_R["hip_abduct"] * hip_gain * 0.25
-            left_hip_abduct = ik_L["hip_abduct"] * hip_gain * 0.25
-            right_ankle_roll = ankle_roll * 0.5
-            left_ankle_roll = ankle_roll * 0.5
+            right_hip_abduct = STAND_ANG["R_hip_abduct"] + ik_R["hip_abduct"] * hip_gain * 0.25
+            left_hip_abduct = STAND_ANG["L_hip_abduct"] + ik_L["hip_abduct"] * hip_gain * 0.25
+            right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
+            left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
 
     pose = dict(STANDING)
     pose[17] = angle_to_pwm(17, STAND_ANG["hip_roll"], right_ankle_roll, STANDING[17])
@@ -916,16 +920,12 @@ class DynamicWalkingEngine:
                 target_14 = STANDING[14] + knee_delta
                 target_15 = STANDING[15] + ankle_delta
             target_15 -= swing_ankle_rear_pwm
-            support_roll_delta = pose[17] - STANDING[17]
             if side_active:
                 target_16 = max(500, min(2500, STANDING[16] - side_dir * side_swing_roll))
                 target_12 = max(500, min(2500, STANDING[12] - side_dir * side_hip_roll))
             else:
                 target_16 = STANDING[16]
-                target_12 = max(
-                    500,
-                    min(2500, STANDING[12] - round(abs(support_roll_delta) * self.hip_abduct_gain)),
-                )
+                target_12 = STANDING[12]
             if side_active:
                 target_13 = round(STANDING[13] + (pose[13] - STANDING[13]) * side_pitch_gain)
                 target_14 = round(STANDING[14] + (pose[14] - STANDING[14]) * side_pitch_gain)
@@ -969,16 +969,12 @@ class DynamicWalkingEngine:
                 target_19 = STANDING[19] - knee_delta
                 target_18 = STANDING[18] - ankle_delta
             target_18 += swing_ankle_rear_pwm
-            support_roll_delta = pose[16] - STANDING[16]
             if side_active:
                 target_17 = max(500, min(2500, STANDING[17] - side_dir * side_swing_roll))
                 target_21 = max(500, min(2500, STANDING[21] - side_dir * side_hip_roll))
             else:
                 target_17 = STANDING[17]
-                target_21 = max(
-                    500,
-                    min(2500, STANDING[21] + round(abs(support_roll_delta) * GAIT["right_swing_hip_out_gain"])),
-                )
+                target_21 = STANDING[21]
             if side_active:
                 target_18 = round(STANDING[18] + (pose[18] - STANDING[18]) * side_pitch_gain)
                 target_19 = round(STANDING[19] + (pose[19] - STANDING[19]) * side_pitch_gain)
