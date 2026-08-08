@@ -55,8 +55,8 @@ STANDING = {
     13: 1500,   # Left hip pitch
     14: 1500,   # Left knee
     15: 1500,   # Left ankle pitch
-    16: round(1500 - STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Left ankle roll / foot
-    17: round(1500 + STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Right ankle roll / foot
+    16: round(1500 + STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Left ankle roll / foot
+    17: round(1500 - STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Right ankle roll / foot
     18: 1500,   # Right ankle pitch
     19: 1500,   # Right knee
     20: 1500,   # Right hip pitch
@@ -69,7 +69,7 @@ STANDING = {
 
 # --- Calibrated standing joint angles ---
 STAND_ANG = {
-    "hip_roll": -STANCE_ANKLE_COMP_DEG,
+    "hip_roll": STANCE_ANKLE_COMP_DEG,
     "R_hip_pitch": 18.0,
     "R_knee": 36.0,
     "R_ankle": 18.0,
