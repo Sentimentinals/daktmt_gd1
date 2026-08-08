@@ -55,9 +55,9 @@ def lift_pitch_deltas(lift_height: float, forward_x: float = 0.0) -> tuple[int, 
     raw_knee_delta = round((lifted["knee"] - neutral["knee"]) * PWM_PER_DEG)
     thigh_scale = 0.68
     lift_scale = 0.60
-    thigh_delta = round(max(-300, min(300, raw_thigh_delta * thigh_scale)))
-    knee_delta = round(max(0, min(280, raw_knee_delta * lift_scale)))
-    ankle_delta = max(-180, min(180, knee_delta - thigh_delta))
+    thigh_delta = round(raw_thigh_delta * thigh_scale)
+    knee_delta = round(raw_knee_delta * lift_scale)
+    ankle_delta = knee_delta - thigh_delta
     return thigh_delta, knee_delta, ankle_delta
 
 

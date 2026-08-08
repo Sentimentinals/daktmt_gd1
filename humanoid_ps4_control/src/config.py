@@ -14,14 +14,14 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-    "step_height": 42.0,
+    "step_height": 84.0,
 }
 
 # --- Default Gait Parameters ---
 GAIT = {
     "zmp_support_ratio": 0.96,
     "left_swing_ankle_rear_deg": 0.0,
-    "right_swing_ankle_rear_deg": 8.0,
+    "right_swing_ankle_rear_deg": 0.0,
     "ankle_roll_gain": -0.50,
     "step_x_ratio": 1.60,
     "left_swing_x_scale": 1.0,
