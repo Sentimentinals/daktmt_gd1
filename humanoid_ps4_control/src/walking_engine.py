@@ -36,34 +36,6 @@ def clamp_pose_rate(prev: dict[int, int], curr: dict[int, int], max_pwm_per_fram
     return out
 
 
-class CubicBSplinePoseFilter:
-    """Causal cubic B-spline sampling with one control-frame delay."""
-
-    def __init__(self, initial_pose: dict[int, int], strength: float = 1.0) -> None:
-        self.strength = max(0.0, min(1.0, strength))
-        self.reset(initial_pose)
-
-    def reset(self, pose: dict[int, int]) -> None:
-        start = dict(pose)
-        self._controls: Deque[dict[int, int]] = deque((dict(start), dict(start)), maxlen=3)
-
-    def update(self, target: dict[int, int]) -> dict[int, int]:
-        current = dict(target)
-        self._controls.append(current)
-        if self.strength <= 0.0:
-            return current
-
-        previous, center, future = self._controls
-        out = dict(current)
-        for sid, value in current.items():
-            if sid not in previous or sid not in center or sid not in future:
-                continue
-            # Uniform cubic B-spline evaluated at a knot: (P0 + 4*P1 + P2) / 6.
-            spline_value = (previous[sid] + 4.0 * center[sid] + future[sid]) / 6.0
-            out[sid] = round(value + self.strength * (spline_value - value))
-        return out
-
-
 def blend_pwm(start: int, end: int, t: float) -> int:
     t = max(0.0, min(1.0, t))
     return round(start + (end - start) * t)
@@ -98,7 +70,6 @@ def compute_pose(
     support_leg: str = "double",
     phase_mode: str = "full",
     zmp_support_ratio: float | None = None,
-    hip_abduct_gain: float | None = None,
     ankle_roll_gain: float | None = None,
 ) -> dict[int, int]:
     """Convert CoM/foot targets into a full servo pulse pose."""
@@ -114,37 +85,30 @@ def compute_pose(
     ik_R = leg_ik(hip_R, tuple(foot_R), L1, L2)
     ik_L = leg_ik(hip_L, tuple(foot_L), L1, L2)
 
-    hip_gain = GAIT["hip_abduct_gain"] if hip_abduct_gain is None else hip_abduct_gain
     ankle_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
+    right_hip_abduct = STAND_ANG["R_hip_abduct"]
+    left_hip_abduct = STAND_ANG["L_hip_abduct"]
     if phase_mode == "shift" and support_leg in ("left", "right"):
         support_y = hw * (GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio)
         signed_support_y = support_y if support_leg == "right" else -support_y
         shift_ankle_roll = math.degrees(math.atan2(signed_support_y, roll_height)) * ankle_gain
         if abs(shift_ankle_roll) > 0.01:
             shift_ankle_roll += math.copysign(2.0, shift_ankle_roll)
-        right_hip_abduct = STAND_ANG["R_hip_abduct"]
-        left_hip_abduct = STAND_ANG["L_hip_abduct"]
         right_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "right" else 0.0)
         left_ankle_roll = STAND_ANG["hip_roll"] + (-shift_ankle_roll if support_leg == "left" else 0.0)
     else:
         ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
         if support_leg == "right":
-            right_hip_abduct = STAND_ANG["R_hip_abduct"] + abs(ik_R["hip_abduct"]) * hip_gain
-            left_hip_abduct = STAND_ANG["L_hip_abduct"]
             right_ankle_roll = STAND_ANG["hip_roll"] + (
                 ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
             )
             left_ankle_roll = STAND_ANG["hip_roll"]
         elif support_leg == "left":
-            right_hip_abduct = STAND_ANG["R_hip_abduct"]
-            left_hip_abduct = STAND_ANG["L_hip_abduct"] + abs(ik_L["hip_abduct"]) * hip_gain
             right_ankle_roll = STAND_ANG["hip_roll"]
             left_ankle_roll = STAND_ANG["hip_roll"] + (
                 ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
             )
         else:
-            right_hip_abduct = STAND_ANG["R_hip_abduct"] + ik_R["hip_abduct"] * hip_gain * 0.25
-            left_hip_abduct = STAND_ANG["L_hip_abduct"] + ik_L["hip_abduct"] * hip_gain * 0.25
             right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
             left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
 
@@ -170,7 +134,6 @@ class SingleSupportTestEngine:
         support_leg: str = "right",
         lift_height: float = 28.0,
         zmp_support_ratio: float | None = None,
-        hip_abduct_gain: float | None = None,
         ankle_roll_gain: float | None = None,
         arm_pwm: int = 180,
         ramp_s: float = 0.8,
@@ -179,7 +142,6 @@ class SingleSupportTestEngine:
         self.support_leg = support_leg
         self.lift_height = lift_height
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
-        self.hip_abduct_gain = GAIT["hip_abduct_gain"] if hip_abduct_gain is None else hip_abduct_gain
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
         self.arm_pwm = arm_pwm
         self.ramp_s = max(dt, ramp_s)
@@ -225,7 +187,6 @@ class SingleSupportTestEngine:
             support_leg=self.support_leg,
             phase_mode="shift",
             zmp_support_ratio=self.zmp_support_ratio,
-            hip_abduct_gain=self.hip_abduct_gain,
             ankle_roll_gain=self.ankle_roll_gain,
         )
         lift_shape_height = min(self.lift_height * blend, ROBOT["step_height"])
@@ -313,7 +274,6 @@ class DynamicWalkingEngine:
         max_side_step_len: float | None = None,
         step_height: float | None = None,
         zmp_support_ratio: float | None = None,
-        hip_abduct_gain: float | None = None,
         ankle_roll_gain: float | None = None,
         step_x_ratio: float | None = None,
         left_swing_x_scale: float | None = None,
@@ -334,7 +294,6 @@ class DynamicWalkingEngine:
         arm_min_pwm: int | None = None,
         arm_quantum_pwm: int | None = None,
         max_step_elevation: float = 18.0,
-        trajectory_smoothing: float = 1.0,
     ) -> None:
         self.dt = dt
         self.t_step = t_step
@@ -348,7 +307,6 @@ class DynamicWalkingEngine:
         self.hw = ROBOT["half_hip"]
         self.step_height = ROBOT["step_height"] if step_height is None else step_height
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
-        self.hip_abduct_gain = GAIT["hip_abduct_gain"] if hip_abduct_gain is None else hip_abduct_gain
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
         self.step_x_ratio = GAIT["step_x_ratio"] if step_x_ratio is None else step_x_ratio
         self.left_swing_x_scale = GAIT["left_swing_x_scale"] if left_swing_x_scale is None else left_swing_x_scale
@@ -395,7 +353,6 @@ class DynamicWalkingEngine:
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
         self.command_rate_limit = abs(command_rate_limit)
         self.max_step_elevation = max(0.0, abs(max_step_elevation))
-        self.trajectory_smoothing = max(0.0, min(1.0, trajectory_smoothing))
         self.stop_extra_steps = max(0, int(GAIT["stop_extra_steps"]))
 
         self.reset()
@@ -436,7 +393,6 @@ class DynamicWalkingEngine:
         self._last_motion_target = (0.0, 0.0, 0.0)
         self._stop_steps_remaining = 0
         self._stop_decelerating = False
-        self.pose_filter = CubicBSplinePoseFilter(STANDING, self.trajectory_smoothing)
 
         for _ in range(self.n_d):
             self.zmp_y_queue.append(0.0)
@@ -862,8 +818,6 @@ class DynamicWalkingEngine:
         side_support_roll = round(26.0 * side_strength)
         side_swing_roll = round(max(side_support_roll * 2.15, 155.0 * max(0.82, side_strength)) * side_swing_scale)
         side_hip_roll = round(175.0 * max(0.82, side_strength) * side_swing_scale) if side_active else 0
-        side_pitch_gain = 0.0 if side_active else 1.0
-        pose_hip_abduct_gain = self.hip_abduct_gain * (1.0 + 0.35 * side_strength)
         if phase_mode_now == "idle":
             pose = {
                 sid: STANDING[sid]
@@ -882,7 +836,6 @@ class DynamicWalkingEngine:
                 support_leg=support_leg_for_pose,
                 phase_mode=compute_phase_mode,
                 zmp_support_ratio=self.zmp_support_ratio,
-                hip_abduct_gain=pose_hip_abduct_gain,
                 ankle_roll_gain=self.ankle_roll_gain,
             )
         else:
@@ -923,9 +876,9 @@ class DynamicWalkingEngine:
                 target_16 = STANDING[16]
                 target_12 = STANDING[12]
             if side_active:
-                target_13 = round(STANDING[13] + (pose[13] - STANDING[13]) * side_pitch_gain)
-                target_14 = round(STANDING[14] + (pose[14] - STANDING[14]) * side_pitch_gain)
-                target_15 = round(STANDING[15] + (pose[15] - STANDING[15]) * side_pitch_gain)
+                target_13 = STANDING[13]
+                target_14 = STANDING[14]
+                target_15 = STANDING[15]
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[12] = round(self.prev_pose.get(12, pose[12]) + (target_12 - self.prev_pose.get(12, pose[12])) * swing_blend)
             pose[13] = target_13
@@ -972,9 +925,9 @@ class DynamicWalkingEngine:
                 target_17 = STANDING[17]
                 target_21 = STANDING[21]
             if side_active:
-                target_18 = round(STANDING[18] + (pose[18] - STANDING[18]) * side_pitch_gain)
-                target_19 = round(STANDING[19] + (pose[19] - STANDING[19]) * side_pitch_gain)
-                target_20 = round(STANDING[20] + (pose[20] - STANDING[20]) * side_pitch_gain)
+                target_18 = STANDING[18]
+                target_19 = STANDING[19]
+                target_20 = STANDING[20]
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[17] = round(self.prev_pose.get(17, pose[17]) + (target_17 - self.prev_pose.get(17, pose[17])) * swing_blend)
             pose[20] = target_20
@@ -995,7 +948,6 @@ class DynamicWalkingEngine:
                 support_leg=swing_leg_now,
                 phase_mode="shift",
                 zmp_support_ratio=self.zmp_support_ratio,
-                hip_abduct_gain=pose_hip_abduct_gain,
                 ankle_roll_gain=self.ankle_roll_gain,
             )
 
@@ -1060,7 +1012,6 @@ class DynamicWalkingEngine:
                     )
 
         pose = self._apply_arm_swing(pose, arm_delta_now)
-        pose = self.pose_filter.update(pose)
         max_pwm_per_frame = self.max_pwm_per_frame
         if not input_active and phase_mode_now in ("land", "idle"):
             max_pwm_per_frame = min(max_pwm_per_frame, 70.0)

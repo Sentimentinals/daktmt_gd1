@@ -84,7 +84,6 @@ def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
         max_side_step_len=settings.max_side_step_len,
         step_height=settings.step_height,
         zmp_support_ratio=settings.zmp_support_ratio,
-        hip_abduct_gain=settings.hip_abduct_gain,
         ankle_roll_gain=settings.ankle_roll_gain,
         step_x_ratio=settings.step_x_ratio,
         left_swing_x_scale=settings.left_swing_x_scale,
@@ -103,7 +102,6 @@ def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
         arm_smooth_tau=settings.arm_smooth_tau,
         arm_min_pwm=settings.arm_min_pwm,
         arm_quantum_pwm=settings.arm_quantum_pwm,
-        trajectory_smoothing=settings.trajectory_smoothing,
     )
 
 
@@ -113,7 +111,6 @@ def make_one_foot_engine() -> SingleSupportTestEngine:
         dt=0.04,
         lift_height=settings.one_foot_lift_height,
         zmp_support_ratio=settings.zmp_support_ratio,
-        hip_abduct_gain=settings.hip_abduct_gain,
         ankle_roll_gain=settings.ankle_roll_gain,
         arm_pwm=0,
         ramp_s=settings.one_foot_ramp_s,
@@ -130,7 +127,6 @@ def make_recovery_engine() -> DynamicWalkingEngine:
         max_side_step_len=settings.max_side_step_len,
         step_height=settings.push_recovery_step_height_mm,
         command_rate_limit=1000.0,
-        trajectory_smoothing=settings.trajectory_smoothing,
     )
     engine.stop_extra_steps = 0
     return engine

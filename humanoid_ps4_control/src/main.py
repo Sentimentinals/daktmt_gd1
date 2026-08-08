@@ -108,7 +108,6 @@ def run_keyboard(args: Config) -> None:
         max_side_step_len=args.max_side_step_len,
         step_height=args.step_height,
         zmp_support_ratio=args.zmp_support_ratio,
-        hip_abduct_gain=args.hip_abduct_gain,
         ankle_roll_gain=args.ankle_roll_gain,
         step_x_ratio=args.step_x_ratio,
         left_swing_x_scale=args.left_swing_x_scale,
@@ -121,7 +120,6 @@ def run_keyboard(args: Config) -> None:
         lift_end_phase=args.lift_end_phase,
         landing_roll_release_start=args.landing_roll_release_start,
         command_rate_limit=args.command_rate_limit,
-        trajectory_smoothing=args.trajectory_smoothing,
         arm_swing_pwm=args.arm_swing_pwm,
         arm_right_dir=args.arm_right_dir,
         arm_left_dir=args.arm_left_dir,
@@ -133,7 +131,6 @@ def run_keyboard(args: Config) -> None:
         dt=args.update_ms / 1000.0,
         lift_height=args.single_support_lift_height,
         zmp_support_ratio=args.zmp_support_ratio,
-        hip_abduct_gain=args.hip_abduct_gain,
         ankle_roll_gain=args.ankle_roll_gain,
         arm_pwm=args.single_support_arm_pwm,
         ramp_s=args.single_support_ramp_s,
@@ -153,7 +150,6 @@ def run_keyboard(args: Config) -> None:
         max_side_step_len=args.max_side_step_len,
         step_height=args.push_recovery_step_height_mm,
         command_rate_limit=1000.0,
-        trajectory_smoothing=args.trajectory_smoothing,
     )
     recovery_engine.stop_extra_steps = 0
     arm_dance = ArmDanceEngine(

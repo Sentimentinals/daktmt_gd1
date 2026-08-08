@@ -20,7 +20,6 @@ ROBOT = {
 # --- Default Gait Parameters ---
 GAIT = {
     "zmp_support_ratio": 0.96,
-    "hip_abduct_gain": 0.34,
     "left_swing_ankle_rear_deg": 0.0,
     "right_swing_ankle_rear_deg": 8.0,
     "ankle_roll_gain": -0.50,
@@ -115,7 +114,6 @@ class Config:
     t_step: float = 1.30
     t_dbl: float = 0.08
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
-    hip_abduct_gain: float = GAIT["hip_abduct_gain"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
     step_x_ratio: float = GAIT["step_x_ratio"]
     left_swing_x_scale: float = GAIT["left_swing_x_scale"]
@@ -128,7 +126,6 @@ class Config:
     lift_end_phase: float = GAIT["lift_end_phase"]
     landing_roll_release_start: float = GAIT["landing_roll_release_start"]
     command_rate_limit: float = 24.0
-    trajectory_smoothing: float = 1.0
     single_support_lift_height: float = 82.0
     single_support_arm_pwm: int = 180
     single_support_ramp_s: float = 0.8
