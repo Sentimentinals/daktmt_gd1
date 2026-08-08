@@ -242,6 +242,8 @@ def run_keyboard(args: Config) -> None:
 
     try:
         with backend:
+            backend.send(STANDING, duration_ms=1200, force=True)
+            time.sleep(1.2)
             initial_imu = sensor_hub.read().imu if sensor_hub is not None else None
             sensor_start_deadline = time.monotonic() + 0.5
             while (
@@ -252,8 +254,6 @@ def run_keyboard(args: Config) -> None:
                 time.sleep(0.02)
                 initial_imu = sensor_hub.read().imu
             if args.imu_balance and initial_imu is not None:
-                backend.send(STANDING, duration_ms=1000, force=True)
-                time.sleep(1.0)
                 print("[main] Keep the robot upright and still while IMU reference is captured.")
                 imu_reference = sensor_hub.capture_imu_reference(
                     sample_seconds=args.imu_reference_seconds,

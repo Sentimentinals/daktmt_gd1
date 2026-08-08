@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 PWM_PER_DEG = 2000.0 / 180.0
 STANCE_HIP_OUT_DEG = 4.0
-STANCE_ANKLE_COMP_DEG = 4.0
+STANCE_ANKLE_COMP_DEG = 0.0
 
 
 # --- Physical Robot Dimensions & Properties ---
