@@ -462,13 +462,7 @@ class DynamicWalkingEngine:
         ):
             return False
 
-        neutral_l = np.array([0.0, -self.hw, 0.0])
-        neutral_r = np.array([0.0, self.hw, 0.0])
         if any(abs(zmp_y) > tolerance for zmp_y in self.zmp_y_queue):
-            return False
-        if any(np.linalg.norm(foot - neutral_l) > tolerance for foot in self.foot_L_queue):
-            return False
-        if any(np.linalg.norm(foot - neutral_r) > tolerance for foot in self.foot_R_queue):
             return False
         if any(delta != (0, 0) for delta in self.arm_queue):
             return False
@@ -872,7 +866,9 @@ class DynamicWalkingEngine:
         pose_hip_abduct_gain = self.hip_abduct_gain * (1.0 + 0.35 * side_strength)
         if phase_mode_now == "idle":
             pose = {
-                sid: blend_pwm(self.prev_pose.get(sid, STANDING[sid]), STANDING[sid], 0.16)
+                sid: STANDING[sid]
+                if abs(self.prev_pose.get(sid, STANDING[sid]) - STANDING[sid]) <= 3
+                else blend_pwm(self.prev_pose.get(sid, STANDING[sid]), STANDING[sid], 0.16)
                 for sid in STANDING
             }
         elif leg_active:
