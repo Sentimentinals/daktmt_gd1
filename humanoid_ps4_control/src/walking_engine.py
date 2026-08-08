@@ -129,7 +129,7 @@ def compute_pose(
     else:
         ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
         if support_leg == "right":
-            right_hip_abduct = STAND_ANG["R_hip_abduct"] - abs(ik_R["hip_abduct"]) * hip_gain
+            right_hip_abduct = STAND_ANG["R_hip_abduct"] + abs(ik_R["hip_abduct"]) * hip_gain
             left_hip_abduct = STAND_ANG["L_hip_abduct"]
             right_ankle_roll = STAND_ANG["hip_roll"] + (
                 ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
@@ -137,7 +137,7 @@ def compute_pose(
             left_ankle_roll = STAND_ANG["hip_roll"]
         elif support_leg == "left":
             right_hip_abduct = STAND_ANG["R_hip_abduct"]
-            left_hip_abduct = STAND_ANG["L_hip_abduct"] - abs(ik_L["hip_abduct"]) * hip_gain
+            left_hip_abduct = STAND_ANG["L_hip_abduct"] + abs(ik_L["hip_abduct"]) * hip_gain
             right_ankle_roll = STAND_ANG["hip_roll"]
             left_ankle_roll = STAND_ANG["hip_roll"] + (
                 ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
