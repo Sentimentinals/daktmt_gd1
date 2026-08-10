@@ -289,8 +289,10 @@ class IMUBalanceController:
 
         if abs(roll_error) < cfg.roll_deadband_deg:
             roll_error = 0.0
+            self.roll_pid.reset()
         if abs(pitch_error) < cfg.pitch_deadband_deg:
             pitch_error = 0.0
+            self.pitch_pid.reset()
 
         roll_corr = self.roll_pid.update(roll_error, dt)
         pitch_corr = self.pitch_pid.update(pitch_error, dt)

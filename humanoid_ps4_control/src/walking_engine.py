@@ -326,6 +326,7 @@ class DynamicWalkingEngine:
         self.right_step_height_scale = (
             GAIT["right_step_height_scale"] if right_step_height_scale is None else right_step_height_scale
         )
+        self.side_lift_scale = 0.45
         self.lift_start_phase = GAIT["lift_start_phase"] if lift_start_phase is None else lift_start_phase
         self.swing_advance_end_phase = (
             GAIT["swing_advance_end_phase"] if swing_advance_end_phase is None else swing_advance_end_phase
@@ -554,9 +555,13 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(zmp_y)
             self.zmp_z_queue.append(support_z + (swing_target_z - support_z) * release_t)
 
-            lift_height_scale = self.left_step_height_scale if swing_is_left else self.right_step_height_scale
+            lift_height_scale = (
+                self.side_lift_scale
+                if side_dominant
+                else self.left_step_height_scale if swing_is_left else self.right_step_height_scale
+            )
             swing_base_z = swing_start_z + (swing_target_z - swing_start_z) * swing_t
-            z = swing_start_z if side_dominant else swing_base_z + self.step_height * lift_height_scale * lift_factor
+            z = swing_base_z + self.step_height * lift_height_scale * lift_factor
 
             lift_ready = 1.0 if landing_t > 0.0 else self._smooth01(min(1.0, lift_factor / 0.14))
             advance_start = min(self.swing_advance_end_phase - 0.10, self.lift_start_phase + 0.18)
@@ -871,7 +876,8 @@ class DynamicWalkingEngine:
                 target_14 = pose[14]
                 target_15 = pose[15]
             else:
-                thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(swing_lift, swing_forward_x, self.left_step_height_scale)
+                lift_scale = self.side_lift_scale if side_active else self.left_step_height_scale
+                thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(swing_lift, swing_forward_x, lift_scale)
                 target_13 = STANDING[13] + thigh_delta
                 target_14 = STANDING[14] + knee_delta
                 target_15 = STANDING[15] + ankle_delta
@@ -881,10 +887,6 @@ class DynamicWalkingEngine:
             else:
                 target_16 = STANDING[16]
                 target_12 = STANDING[12]
-            if side_active:
-                target_13 = STANDING[13]
-                target_14 = STANDING[14]
-                target_15 = STANDING[15]
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[12] = round(self.prev_pose.get(12, pose[12]) + (target_12 - self.prev_pose.get(12, pose[12])) * swing_blend)
             pose[13] = target_13
@@ -912,10 +914,11 @@ class DynamicWalkingEngine:
                 target_19 = pose[19]
                 target_18 = pose[18]
             else:
+                lift_scale = self.side_lift_scale if side_active else self.right_step_height_scale
                 thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(
                     swing_lift,
                     swing_forward_x,
-                    self.right_step_height_scale,
+                    lift_scale,
                 )
                 target_20 = STANDING[20] - thigh_delta
                 target_19 = STANDING[19] - knee_delta
@@ -926,10 +929,6 @@ class DynamicWalkingEngine:
             else:
                 target_17 = STANDING[17]
                 target_21 = STANDING[21]
-            if side_active:
-                target_18 = STANDING[18]
-                target_19 = STANDING[19]
-                target_20 = STANDING[20]
             swing_blend = self._smooth01(min(1.0, swing_lift / 0.45))
             pose[17] = round(self.prev_pose.get(17, pose[17]) + (target_17 - self.prev_pose.get(17, pose[17])) * swing_blend)
             pose[20] = target_20
