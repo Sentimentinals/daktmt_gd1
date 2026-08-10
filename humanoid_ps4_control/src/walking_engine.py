@@ -356,7 +356,7 @@ class DynamicWalkingEngine:
         self.zmp_ctrl = ZMPPreviewController(dt=dt, zc=self.zc, preview_steps=self.preview_steps)
         self.zmp_ctrl_x = ZMPPreviewController(dt=dt, zc=self.zc, preview_steps=self.preview_steps)
 
-        self.max_pwm_per_frame = 800.0 * dt
+        self.max_pwm_per_frame = 1000.0 * dt
         self.max_step_len = max_step_len
         self.max_turn_step_len = GAIT["max_turn_step_len"] if max_turn_step_len is None else max_turn_step_len
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
@@ -991,7 +991,7 @@ class DynamicWalkingEngine:
         swing_pitch_pose = None
         if phase_mode_now in ("swing", "land") and swing_leg_now in ("left", "right"):
             swing_pitch_ids = (13, 14, 15) if swing_leg_now == "left" else (18, 19, 20)
-            swing_pitch_rate = max(max_pwm_per_frame, 1200.0 * self.dt)
+            swing_pitch_rate = max(max_pwm_per_frame, 1600.0 * self.dt)
             if phase_mode_now == "land":
                 landing_rate = 2000.0 if swing_leg_now == "left" else 1400.0
                 swing_pitch_rate = max(swing_pitch_rate, landing_rate * self.dt)
