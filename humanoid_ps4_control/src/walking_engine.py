@@ -25,21 +25,23 @@ def angle_to_pwm(sid: int, base_ang: float, new_ang: float, base_pwm: int) -> in
     return max(500, min(2500, round(base_pwm + delta)))
 
 
-def clamp_pose_rate(
-    prev: dict[int, int],
-    curr: dict[int, int],
-    max_pwm_per_frame: float,
-    servo_limits: dict[int, float] | None = None,
-) -> dict[int, int]:
+def clamp_pose_rate(prev: dict[int, int], curr: dict[int, int], max_pwm_per_frame: float) -> dict[int, int]:
     """Limit leg servo pulse changes per frame to reduce shock load."""
     out = dict(curr)
     for sid in DIR:
         if sid in prev and sid in curr:
-            limit = servo_limits.get(sid, max_pwm_per_frame) if servo_limits else max_pwm_per_frame
             delta = curr[sid] - prev[sid]
-            if abs(delta) > limit:
-                out[sid] = prev[sid] + int(math.copysign(limit, delta))
+            if abs(delta) > max_pwm_per_frame:
+                out[sid] = prev[sid] + int(math.copysign(max_pwm_per_frame, delta))
     return out
+
+
+def clamp_pose_group(
+    prev: dict[int, int], curr: dict[int, int], servo_ids: tuple[int, ...], max_pwm_per_frame: float
+) -> dict[int, int]:
+    max_delta = max(abs(curr[sid] - prev[sid]) for sid in servo_ids)
+    scale = min(1.0, max_pwm_per_frame / max_delta) if max_delta else 1.0
+    return {sid: round(prev[sid] + (curr[sid] - prev[sid]) * scale) for sid in servo_ids}
 
 
 def blend_pwm(start: int, end: int, t: float) -> int:
@@ -979,37 +981,19 @@ class DynamicWalkingEngine:
                         pose[sid] = self.prev_pose[sid]
                     else:
                         pose[sid] = blend_pwm(self.prev_pose[sid], next_support_pose[sid], land_blend)
-            if not side_active and not terrain_landing:
-                if swing_leg_now == "left":
-                    swing_forward_x = float(foot_L_now[0] - foot_R_now[0])
-                    if abs(self.commanded_step_len) > 0.1:
-                        swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
-                    thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(lift_factor_now, swing_forward_x, self.left_step_height_scale)
-                    pose[13] = max(500, min(2500, STANDING[13] + thigh_delta))
-                    pose[14] = max(500, min(2500, STANDING[14] + knee_delta))
-                    pose[15] = max(500, min(2500, STANDING[15] + ankle_delta))
-                else:
-                    swing_forward_x = float(foot_R_now[0] - foot_L_now[0])
-                    if abs(self.commanded_step_len) > 0.1:
-                        swing_forward_x = math.copysign(abs(swing_forward_x), self.commanded_step_len)
-                    thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(
-                        lift_factor_now,
-                        swing_forward_x,
-                        self.right_step_height_scale,
-                    )
-                    pose[20] = max(500, min(2500, STANDING[20] - thigh_delta))
-                    pose[19] = max(500, min(2500, STANDING[19] - knee_delta))
-                    pose[18] = max(500, min(2500, STANDING[18] - ankle_delta))
-
         pose = self._apply_arm_swing(pose, arm_delta_now)
         max_pwm_per_frame = self.max_pwm_per_frame
         if not input_active and phase_mode_now in ("land", "idle"):
             max_pwm_per_frame = min(max_pwm_per_frame, 70.0)
-        landing_limits = None
-        if phase_mode_now == "land" and swing_leg_now in ("left", "right"):
-            landing_rate = max(max_pwm_per_frame, 2000.0 * self.dt)
-            landing_ids = (13, 14, 15) if swing_leg_now == "left" else (18, 19, 20)
-            landing_limits = {sid: landing_rate for sid in landing_ids}
-        pose = clamp_pose_rate(self.prev_pose, pose, max_pwm_per_frame, landing_limits)
+        swing_pitch_pose = None
+        if phase_mode_now in ("swing", "land") and swing_leg_now in ("left", "right"):
+            swing_pitch_ids = (13, 14, 15) if swing_leg_now == "left" else (18, 19, 20)
+            swing_pitch_rate = max_pwm_per_frame
+            if phase_mode_now == "land":
+                swing_pitch_rate = max(swing_pitch_rate, 2000.0 * self.dt)
+            swing_pitch_pose = clamp_pose_group(self.prev_pose, pose, swing_pitch_ids, swing_pitch_rate)
+        pose = clamp_pose_rate(self.prev_pose, pose, max_pwm_per_frame)
+        if swing_pitch_pose is not None:
+            pose.update(swing_pitch_pose)
         self.prev_pose = pose
         return pose
