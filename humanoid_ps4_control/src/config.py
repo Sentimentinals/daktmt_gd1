@@ -19,7 +19,7 @@ ROBOT = {
 
 # --- Default Gait Parameters ---
 GAIT = {
-    "zmp_support_ratio": 0.96,
+    "zmp_support_ratio": 0.70,
     "ankle_roll_gain": -0.50,
     "step_x_ratio": 1.60,
     "left_swing_x_scale": 1.0,
