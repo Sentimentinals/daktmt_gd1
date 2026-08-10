@@ -985,9 +985,10 @@ class DynamicWalkingEngine:
         swing_pitch_pose = None
         if phase_mode_now in ("swing", "land") and swing_leg_now in ("left", "right"):
             swing_pitch_ids = (13, 14, 15) if swing_leg_now == "left" else (18, 19, 20)
-            swing_pitch_rate = max(max_pwm_per_frame, 900.0 * self.dt)
+            lift_rate = 900.0 if swing_leg_now == "left" else 1000.0
+            swing_pitch_rate = max(max_pwm_per_frame, lift_rate * self.dt)
             if phase_mode_now == "land":
-                landing_rate = 2000.0 if swing_leg_now == "left" else 1300.0
+                landing_rate = 2000.0 if swing_leg_now == "left" else 1400.0
                 swing_pitch_rate = max(swing_pitch_rate, landing_rate * self.dt)
             swing_pitch_pose = clamp_pose_group(self.prev_pose, pose, swing_pitch_ids, swing_pitch_rate)
         pose = clamp_pose_rate(self.prev_pose, pose, max_pwm_per_frame)
