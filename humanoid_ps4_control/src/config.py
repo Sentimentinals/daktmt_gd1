@@ -14,7 +14,7 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-    "step_height": 4.0,
+    "step_height": 18.0,
 }
 
 # --- Default Gait Parameters ---
@@ -24,7 +24,7 @@ GAIT = {
     "step_x_ratio": 1.60,
     "left_swing_x_scale": 1.0,
     "left_step_height_scale": 1.3,
-    "landing_gap_mm": 58.0,
+    "landing_gap_mm": 32.0,
     "right_swing_x_scale": 1.0,
     "right_step_height_scale": 1.3,
     "lift_start_phase": 0.00,
@@ -110,7 +110,7 @@ class Config:
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = ROBOT["step_height"]
     t_step: float = 1.30
-    t_dbl: float = 0.08
+    t_dbl: float = 0.16
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
     step_x_ratio: float = GAIT["step_x_ratio"]
