@@ -23,7 +23,7 @@ GAIT = {
     "ankle_roll_gain": -0.80,
     "step_x_ratio": 1.60,
     "left_swing_x_scale": 1.0,
-    "left_step_height_scale": 1.3,
+    "left_step_height_scale": 1.7,
     "landing_gap_mm": 48.0,
     "right_swing_x_scale": 1.0,
     "right_step_height_scale": 1.3,
