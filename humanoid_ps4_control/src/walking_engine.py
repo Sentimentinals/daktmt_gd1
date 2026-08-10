@@ -25,14 +25,20 @@ def angle_to_pwm(sid: int, base_ang: float, new_ang: float, base_pwm: int) -> in
     return max(500, min(2500, round(base_pwm + delta)))
 
 
-def clamp_pose_rate(prev: dict[int, int], curr: dict[int, int], max_pwm_per_frame: float) -> dict[int, int]:
+def clamp_pose_rate(
+    prev: dict[int, int],
+    curr: dict[int, int],
+    max_pwm_per_frame: float,
+    servo_limits: dict[int, float] | None = None,
+) -> dict[int, int]:
     """Limit leg servo pulse changes per frame to reduce shock load."""
     out = dict(curr)
     for sid in DIR:
         if sid in prev and sid in curr:
+            limit = servo_limits.get(sid, max_pwm_per_frame) if servo_limits else max_pwm_per_frame
             delta = curr[sid] - prev[sid]
-            if abs(delta) > max_pwm_per_frame:
-                out[sid] = prev[sid] + int(math.copysign(max_pwm_per_frame, delta))
+            if abs(delta) > limit:
+                out[sid] = prev[sid] + int(math.copysign(limit, delta))
     return out
 
 
@@ -999,6 +1005,11 @@ class DynamicWalkingEngine:
         max_pwm_per_frame = self.max_pwm_per_frame
         if not input_active and phase_mode_now in ("land", "idle"):
             max_pwm_per_frame = min(max_pwm_per_frame, 70.0)
-        pose = clamp_pose_rate(self.prev_pose, pose, max_pwm_per_frame)
+        landing_limits = None
+        if phase_mode_now == "land" and swing_leg_now in ("left", "right"):
+            landing_rate = max(max_pwm_per_frame, 2000.0 * self.dt)
+            landing_ids = (13, 14, 15) if swing_leg_now == "left" else (18, 19, 20)
+            landing_limits = {sid: landing_rate for sid in landing_ids}
+        pose = clamp_pose_rate(self.prev_pose, pose, max_pwm_per_frame, landing_limits)
         self.prev_pose = pose
         return pose
