@@ -963,12 +963,16 @@ class DynamicWalkingEngine:
                 next_support_pose[17] = STANDING[17] - side_dir * side_support_roll if swing_leg_now == "right" else STANDING[17]
                 next_support_pose[16] = STANDING[16] - side_dir * side_support_roll if swing_leg_now == "left" else STANDING[16]
             if swing_leg_now == "left":
+                if not side_active:
+                    next_support_pose[16] = STANDING[16]
                 if not terrain_landing:
                     next_support_pose[13] = STANDING[13]
                     next_support_pose[14] = STANDING[14]
                     next_support_pose[15] = STANDING[15]
                 old_support_pitch = () if terrain_landing else (18, 19, 20)
             else:
+                if not side_active:
+                    next_support_pose[17] = STANDING[17]
                 if not terrain_landing:
                     next_support_pose[20] = STANDING[20]
                     next_support_pose[19] = STANDING[19]
