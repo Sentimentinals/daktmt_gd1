@@ -14,7 +14,7 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-    "step_height": 84.0,
+    "step_height": 4.0,
 }
 
 # --- Default Gait Parameters ---
