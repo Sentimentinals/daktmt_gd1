@@ -281,6 +281,7 @@ class DynamicWalkingEngine:
         max_turn_step_len: float | None = None,
         max_side_step_len: float | None = None,
         step_height: float | None = None,
+        crouch_depth_mm: float = 0.0,
         zmp_support_ratio: float | None = None,
         ankle_roll_gain: float | None = None,
         step_x_ratio: float | None = None,
@@ -314,6 +315,7 @@ class DynamicWalkingEngine:
         self.zc = ROBOT["com_height"]
         self.hw = ROBOT["half_hip"]
         self.step_height = ROBOT["step_height"] if step_height is None else step_height
+        self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
         self.step_x_ratio = GAIT["step_x_ratio"] if step_x_ratio is None else step_x_ratio
@@ -373,6 +375,7 @@ class DynamicWalkingEngine:
         self.zmp_y_queue: Deque[float] = deque()
         self.zmp_x_queue: Deque[float] = deque()
         self.zmp_z_queue: Deque[float] = deque()
+        self.crouch_depth_queue: Deque[float] = deque()
         self.foot_L_queue: Deque[np.ndarray] = deque()
         self.foot_R_queue: Deque[np.ndarray] = deque()
         self.arm_queue: Deque[tuple[int, int]] = deque()
@@ -395,10 +398,11 @@ class DynamicWalkingEngine:
         self.last_landing_progress = 0.0
         self.last_phase_mode = "idle"
         self.last_step_elevation = 0.0
+        self.last_crouch_depth = 0.0
         self._arm_state = [0.0, 0.0]
         self._com_y = 0.0
         self._com_x = 0.0
-        self._com_z = 0.0
+        self._ground_z = 0.0
         self._last_motion_target = (0.0, 0.0, 0.0)
         self._stop_steps_remaining = 0
         self._stop_decelerating = False
@@ -407,6 +411,7 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(0.0)
             self.zmp_x_queue.append(0.0)
             self.zmp_z_queue.append(0.0)
+            self.crouch_depth_queue.append(0.0)
             self.foot_L_queue.append(np.array([0.0, -self.hw, 0.0]))
             self.foot_R_queue.append(np.array([0.0, self.hw, 0.0]))
             self.arm_queue.append((0, 0))
@@ -429,6 +434,10 @@ class DynamicWalkingEngine:
 
         if any(abs(zmp_y) > tolerance for zmp_y in self.zmp_y_queue):
             return False
+        if any(depth > tolerance for depth in self.crouch_depth_queue):
+            return False
+        if self.last_crouch_depth > tolerance:
+            return False
         if any(delta != (0, 0) for delta in self.arm_queue):
             return False
         if any(swing_leg != "none" for swing_leg in self.swing_leg_queue):
@@ -440,6 +449,8 @@ class DynamicWalkingEngine:
         if any(phase_mode != "idle" for phase_mode in self.phase_mode_queue):
             return False
         if any(abs(side_len) > tolerance for side_len in self.side_len_queue):
+            return False
+        if any(abs(self.prev_pose.get(sid, STANDING[sid]) - STANDING[sid]) > 3 for sid in DIR):
             return False
         arms_settled = abs(self._arm_state[0]) < self.arm_min_pwm and abs(self._arm_state[1]) < self.arm_min_pwm
         return arms_settled and self.zmp_ctrl.is_settled()
@@ -459,10 +470,13 @@ class DynamicWalkingEngine:
             settle_frames = self.n_s + self.n_d
             stance_center_x = (base_L[0] + base_R[0]) / 2.0
             stance_center_z = (base_L[2] + base_R[2]) / 2.0
-            for _ in range(settle_frames):
+            crouch_start = self.crouch_depth_queue[-1] if self.crouch_depth_queue else self.last_crouch_depth
+            for frame in range(settle_frames):
+                stand_t = self._smooth01((frame + 1) / settle_frames)
                 self.zmp_x_queue.append(stance_center_x)
                 self.zmp_y_queue.append(0.0)
                 self.zmp_z_queue.append(stance_center_z)
+                self.crouch_depth_queue.append(crouch_start * (1.0 - stand_t))
                 self.foot_L_queue.append(base_L.copy())
                 self.foot_R_queue.append(base_R.copy())
                 self.arm_queue.append((0, 0))
@@ -537,6 +551,7 @@ class DynamicWalkingEngine:
             swing_distance = target_x - base_R[0]
 
         step_n_s = self.n_s
+        crouch_start = self.crouch_depth_queue[-1] if self.crouch_depth_queue else self.last_crouch_depth
 
         for k in range(step_n_s):
             alpha = k / max(step_n_s - 1, 1)
@@ -554,6 +569,12 @@ class DynamicWalkingEngine:
                 zmp_y = stance_y
             self.zmp_y_queue.append(zmp_y)
             self.zmp_z_queue.append(support_z + (swing_target_z - support_z) * release_t)
+            if self.crouch_depth_mm > crouch_start:
+                crouch_t = self._phase_progress(alpha, 0.0, max(self.lift_start_phase, self.dt / self.t_single))
+                crouch_depth = crouch_start + (self.crouch_depth_mm - crouch_start) * crouch_t
+            else:
+                crouch_depth = self.crouch_depth_mm
+            self.crouch_depth_queue.append(crouch_depth)
 
             lift_height_scale = (
                 self.side_lift_scale
@@ -759,6 +780,7 @@ class DynamicWalkingEngine:
         zmp_now = self.zmp_y_queue.popleft()
         zmp_x_now = self.zmp_x_queue.popleft()
         zmp_z_now = self.zmp_z_queue.popleft()
+        crouch_depth_now = self.crouch_depth_queue.popleft()
         foot_L_now = self.foot_L_queue.popleft()
         foot_R_now = self.foot_R_queue.popleft()
         arm_delta_now = self.arm_queue.popleft()
@@ -775,6 +797,7 @@ class DynamicWalkingEngine:
         self.last_landing_progress = landing_t_now
         self.last_phase_mode = phase_mode_now
         self.last_step_elevation = step_elevation_now
+        self.last_crouch_depth = crouch_depth_now
 
         lateral_origin_y = 0.5 * (float(foot_L_now[1]) + float(foot_R_now[1]))
         zmp_rel_y = zmp_now - lateral_origin_y
@@ -795,7 +818,7 @@ class DynamicWalkingEngine:
         
         self._com_y = com_y_preview
         self._com_x = com_x_preview
-        self._com_z = zmp_z_now
+        self._ground_z = zmp_z_now
         com_y = self._com_y
         com_x = self._com_x
         pose_foot_L = foot_L_now.copy()
@@ -831,13 +854,26 @@ class DynamicWalkingEngine:
         side_support_roll = round(26.0 * side_strength)
         side_swing_roll = round(max(side_support_roll * 2.15, 155.0 * max(0.82, side_strength)) * side_swing_scale)
         side_hip_roll = round(175.0 * max(0.82, side_strength) * side_swing_scale) if side_active else 0
+        neutral_crouch_pose = None
+        if crouch_depth_now > 0.01:
+            neutral_crouch_pose = compute_pose(
+                0.0,
+                0.0,
+                neutral_l,
+                neutral_r,
+                com_z=self.zc - crouch_depth_now,
+                support_leg="double",
+            )
         if phase_mode_now == "idle":
-            pose = {
-                sid: STANDING[sid]
-                if abs(self.prev_pose.get(sid, STANDING[sid]) - STANDING[sid]) <= 3
-                else blend_pwm(self.prev_pose.get(sid, STANDING[sid]), STANDING[sid], 0.16)
-                for sid in STANDING
-            }
+            if neutral_crouch_pose is not None:
+                pose = neutral_crouch_pose
+            else:
+                pose = {
+                    sid: STANDING[sid]
+                    if abs(self.prev_pose.get(sid, STANDING[sid]) - STANDING[sid]) <= 3
+                    else blend_pwm(self.prev_pose.get(sid, STANDING[sid]), STANDING[sid], 0.16)
+                    for sid in STANDING
+                }
         elif leg_active:
             compute_phase_mode = "shift" if phase_mode_now == "swing" else phase_mode_now
             pose = compute_pose(
@@ -845,7 +881,7 @@ class DynamicWalkingEngine:
                 pose_com_y,
                 pose_foot_L,
                 pose_foot_R,
-                com_z=self.zc + self._com_z,
+                com_z=self.zc + self._ground_z - crouch_depth_now,
                 support_leg=support_leg_for_pose,
                 phase_mode=compute_phase_mode,
                 zmp_support_ratio=self.zmp_support_ratio,
@@ -864,9 +900,10 @@ class DynamicWalkingEngine:
                 target_21 = STANDING[21]
             pose[17] = round(self.prev_pose.get(17, pose[17]) + (target_17 - self.prev_pose.get(17, pose[17])) * support_blend)
             pose[21] = round(self.prev_pose.get(21, pose[21]) + (target_21 - self.prev_pose.get(21, pose[21])) * support_blend)
-            for sid in (18, 19, 20):
-                if sid in self.prev_pose:
-                    pose[sid] = self.prev_pose[sid]
+            if neutral_crouch_pose is None:
+                for sid in (18, 19, 20):
+                    if sid in self.prev_pose:
+                        pose[sid] = self.prev_pose[sid]
             swing_lift = lift_factor_now
             swing_forward_x = float(foot_L_now[0] - foot_R_now[0])
             if abs(self.commanded_step_len) > 0.1:
@@ -878,9 +915,10 @@ class DynamicWalkingEngine:
             else:
                 lift_scale = self.side_lift_scale if side_active else self.left_step_height_scale
                 thigh_delta, knee_delta, ankle_delta = self._swing_pitch_deltas(swing_lift, swing_forward_x, lift_scale)
-                target_13 = STANDING[13] + thigh_delta
-                target_14 = STANDING[14] + knee_delta
-                target_15 = STANDING[15] + ankle_delta
+                pitch_base = STANDING if neutral_crouch_pose is None else neutral_crouch_pose
+                target_13 = pitch_base[13] + thigh_delta
+                target_14 = pitch_base[14] + knee_delta
+                target_15 = pitch_base[15] + ankle_delta
             if side_active:
                 target_16 = max(500, min(2500, STANDING[16] - side_dir * side_swing_roll))
                 target_12 = max(500, min(2500, STANDING[12] - side_dir * side_hip_roll))
@@ -904,9 +942,10 @@ class DynamicWalkingEngine:
                 target_12 = STANDING[12]
             pose[16] = round(self.prev_pose.get(16, pose[16]) + (target_16 - self.prev_pose.get(16, pose[16])) * support_blend)
             pose[12] = round(self.prev_pose.get(12, pose[12]) + (target_12 - self.prev_pose.get(12, pose[12])) * support_blend)
-            for sid in (13, 14, 15):
-                if sid in self.prev_pose:
-                    pose[sid] = self.prev_pose[sid]
+            if neutral_crouch_pose is None:
+                for sid in (13, 14, 15):
+                    if sid in self.prev_pose:
+                        pose[sid] = self.prev_pose[sid]
             swing_lift = lift_factor_now
             swing_forward_x = float(foot_R_now[0] - foot_L_now[0])
             if abs(self.commanded_step_len) > 0.1:
@@ -922,9 +961,10 @@ class DynamicWalkingEngine:
                     swing_forward_x,
                     lift_scale,
                 )
-                target_20 = STANDING[20] - thigh_delta
-                target_19 = STANDING[19] - knee_delta
-                target_18 = STANDING[18] - ankle_delta
+                pitch_base = STANDING if neutral_crouch_pose is None else neutral_crouch_pose
+                target_20 = pitch_base[20] - thigh_delta
+                target_19 = pitch_base[19] - knee_delta
+                target_18 = pitch_base[18] - ankle_delta
             if side_active:
                 target_17 = max(500, min(2500, STANDING[17] - side_dir * side_swing_roll))
                 target_21 = max(500, min(2500, STANDING[21] - side_dir * side_hip_roll))
@@ -947,7 +987,7 @@ class DynamicWalkingEngine:
                 pose_com_y,
                 pose_foot_L,
                 pose_foot_R,
-                com_z=self.zc + self._com_z,
+                com_z=self.zc + self._ground_z - crouch_depth_now,
                 support_leg=swing_leg_now,
                 phase_mode="shift",
                 zmp_support_ratio=self.zmp_support_ratio,
@@ -965,7 +1005,7 @@ class DynamicWalkingEngine:
             if swing_leg_now == "left":
                 if not side_active:
                     next_support_pose[16] = STANDING[16]
-                if not terrain_landing:
+                if not terrain_landing and neutral_crouch_pose is None:
                     next_support_pose[13] = STANDING[13]
                     next_support_pose[14] = STANDING[14]
                     next_support_pose[15] = STANDING[15]
@@ -973,7 +1013,7 @@ class DynamicWalkingEngine:
             else:
                 if not side_active:
                     next_support_pose[17] = STANDING[17]
-                if not terrain_landing:
+                if not terrain_landing and neutral_crouch_pose is None:
                     next_support_pose[20] = STANDING[20]
                     next_support_pose[19] = STANDING[19]
                     next_support_pose[18] = STANDING[18]
