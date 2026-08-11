@@ -231,8 +231,8 @@ def run_keyboard(args: Config) -> None:
         print("[main] IMU balance requested but IMU sensor feedback is disabled.")
 
     print(
-        "\n[Keyboard Mode - Real-time ZMP] W/S walk, A/D turn (head leads), J/K side, "
-        "X single support, L/M dance, G get-up, "
+        "\n[Keyboard Mode - Real-time ZMP] Up/Down walk, Left/Right turn (head leads), J/K side, "
+        "X one-foot balance, L/M dance, G get-up, "
         "B get-up back, R hold squat, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
 
@@ -493,14 +493,14 @@ def run_keyboard(args: Config) -> None:
                         if single_support.running:
                             single_support.stop()
                             standing_hold_active = True
-                            print("[main] X single-support OFF - returning to STANDING.")
+                            print("[main] X one-foot balance OFF - returning to STANDING.")
                         elif foot_contact_frames < args.foot_fsr_stable_frames:
-                            print("[main] X single-support requires stable contact on both foot FSRs.")
+                            print("[main] X one-foot balance requires stable contact on both foot FSRs.")
                         else:
                             single_support.start(next_single_support_leg, current_pose=last_pose)
                             standing_hold_active = False
                             swing_leg = "left" if next_single_support_leg == "right" else "right"
-                            print(f"[main] X single-support ON: support={next_single_support_leg}, lifted={swing_leg}.")
+                            print(f"[main] X one-foot balance ON: support={next_single_support_leg}, lifted={swing_leg}.")
                             next_single_support_leg = "left" if next_single_support_leg == "right" else "right"
                     prev_single_support_pressed = single_support_pressed
     
@@ -764,7 +764,7 @@ def run_keyboard(args: Config) -> None:
                     elif recovery is not None and recovery.state is not RecoveryState.STABLE:
                         camera_status = f"BALANCE: {recovery_status.upper()}"
                     elif single_support.running:
-                        camera_status = f"SINGLE SUPPORT: {single_support.support_leg.upper()}"
+                        camera_status = f"ONE-FOOT BALANCE: {single_support.support_leg.upper()}"
                     else:
                         directions = []
                         if vy > 0.0:
