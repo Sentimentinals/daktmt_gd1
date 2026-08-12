@@ -295,8 +295,12 @@ def run_keyboard(args: Config) -> None:
             if not reader.init():
                 raise RuntimeError("pygame keyboard control is unavailable")
             camera_ready = camera_preview.start()
+            backend.send(engine.ready_pose, duration_ms=600, force=True)
+            time.sleep(0.6)
+            last_pose = dict(engine.ready_pose)
+            standing_hold_active = False
             camera_preview.render(
-                "STANDING" if camera_ready else "CAMERA OFF - KEYBOARD READY",
+                "WALK READY" if camera_ready else "CAMERA OFF - WALK READY",
                 follow_enabled=False,
             )
             try:
@@ -614,15 +618,13 @@ def run_keyboard(args: Config) -> None:
                             standing_hold_active = True
                     elif standing_hold_active and not motion_requested:
                         pose = dict(STANDING)
+                    elif not motion_requested and engine.is_idle_ready():
+                        pose = dict(engine.ready_pose)
                     else:
                         if motion_requested and standing_hold_active:
                             engine.reset()
                             standing_hold_active = False
                         pose = engine.update(vy, turn_cmd=turn_cmd, side_cmd=side_cmd)
-                        if not motion_requested and engine.is_idle_ready():
-                            engine.reset()
-                            standing_hold_active = True
-                            pose = dict(STANDING)
 
                     if balance is not None and not pose_from_getup:
                         now = time.monotonic()
@@ -645,7 +647,7 @@ def run_keyboard(args: Config) -> None:
                                 recovery_step_active
                                 or single_support.running
                                 or (
-                                    standing_hold_active
+                                    (standing_hold_active or engine.is_idle_ready())
                                     and not motion_requested
                                     and not arm_dance.running
                                 )
@@ -780,7 +782,7 @@ def run_keyboard(args: Config) -> None:
                             directions.append("SIDE LEFT")
                         elif side_cmd < 0.0:
                             directions.append("SIDE RIGHT")
-                        camera_status = " + ".join(directions) if directions else "STANDING"
+                        camera_status = " + ".join(directions) if directions else "WALK READY"
                     camera_preview.render(camera_status, follow_enabled=person_follow.enabled)
             except KeyboardInterrupt:
                 print("\n[main] Ctrl+C received. Returning to STANDING.")

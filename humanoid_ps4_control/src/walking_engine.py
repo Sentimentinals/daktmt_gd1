@@ -316,6 +316,17 @@ class DynamicWalkingEngine:
         self.hw = ROBOT["half_hip"]
         self.step_height = ROBOT["step_height"] if step_height is None else step_height
         self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
+        if self.crouch_depth_mm > 0.0:
+            self.ready_pose = compute_pose(
+                0.0,
+                0.0,
+                np.array([0.0, -self.hw, 0.0]),
+                np.array([0.0, self.hw, 0.0]),
+                com_z=self.zc - self.crouch_depth_mm,
+                support_leg="double",
+            )
+        else:
+            self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
         self.step_x_ratio = GAIT["step_x_ratio"] if step_x_ratio is None else step_x_ratio
@@ -398,7 +409,7 @@ class DynamicWalkingEngine:
         self.last_landing_progress = 0.0
         self.last_phase_mode = "idle"
         self.last_step_elevation = 0.0
-        self.last_crouch_depth = 0.0
+        self.last_crouch_depth = self.crouch_depth_mm
         self._arm_state = [0.0, 0.0]
         self._com_y = 0.0
         self._com_x = 0.0
@@ -411,7 +422,7 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(0.0)
             self.zmp_x_queue.append(0.0)
             self.zmp_z_queue.append(0.0)
-            self.crouch_depth_queue.append(0.0)
+            self.crouch_depth_queue.append(self.crouch_depth_mm)
             self.foot_L_queue.append(np.array([0.0, -self.hw, 0.0]))
             self.foot_R_queue.append(np.array([0.0, self.hw, 0.0]))
             self.arm_queue.append((0, 0))
@@ -422,7 +433,7 @@ class DynamicWalkingEngine:
             self.side_len_queue.append(0.0)
             self.step_elevation_queue.append(0.0)
 
-        self.prev_pose = dict(STANDING)
+        self.prev_pose = dict(self.ready_pose)
 
     def is_idle_ready(self, tolerance: float = 0.05) -> bool:
         if (
@@ -434,9 +445,9 @@ class DynamicWalkingEngine:
 
         if any(abs(zmp_y) > tolerance for zmp_y in self.zmp_y_queue):
             return False
-        if any(depth > tolerance for depth in self.crouch_depth_queue):
+        if any(abs(depth - self.crouch_depth_mm) > tolerance for depth in self.crouch_depth_queue):
             return False
-        if self.last_crouch_depth > tolerance:
+        if abs(self.last_crouch_depth - self.crouch_depth_mm) > tolerance:
             return False
         if any(delta != (0, 0) for delta in self.arm_queue):
             return False
@@ -450,7 +461,7 @@ class DynamicWalkingEngine:
             return False
         if any(abs(side_len) > tolerance for side_len in self.side_len_queue):
             return False
-        if any(abs(self.prev_pose.get(sid, STANDING[sid]) - STANDING[sid]) > 3 for sid in DIR):
+        if any(abs(self.prev_pose.get(sid, self.ready_pose[sid]) - self.ready_pose[sid]) > 3 for sid in DIR):
             return False
         arms_settled = abs(self._arm_state[0]) < self.arm_min_pwm and abs(self._arm_state[1]) < self.arm_min_pwm
         return arms_settled and self.zmp_ctrl.is_settled()
@@ -470,13 +481,11 @@ class DynamicWalkingEngine:
             settle_frames = self.n_s + self.n_d
             stance_center_x = (base_L[0] + base_R[0]) / 2.0
             stance_center_z = (base_L[2] + base_R[2]) / 2.0
-            crouch_start = self.crouch_depth_queue[-1] if self.crouch_depth_queue else self.last_crouch_depth
-            for frame in range(settle_frames):
-                stand_t = self._smooth01((frame + 1) / settle_frames)
+            for _ in range(settle_frames):
                 self.zmp_x_queue.append(stance_center_x)
                 self.zmp_y_queue.append(0.0)
                 self.zmp_z_queue.append(stance_center_z)
-                self.crouch_depth_queue.append(crouch_start * (1.0 - stand_t))
+                self.crouch_depth_queue.append(self.crouch_depth_mm)
                 self.foot_L_queue.append(base_L.copy())
                 self.foot_R_queue.append(base_R.copy())
                 self.arm_queue.append((0, 0))

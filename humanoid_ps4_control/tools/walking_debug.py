@@ -278,7 +278,7 @@ def main() -> None:
     phase_started: str | None = None
     direction = 1
     selected_support = "right"
-    phase_pose = dict(STANDING)
+    phase_pose = dict(walking.ready_pose)
     sensor_hub = None
     balance = None
     recovery = None
@@ -293,8 +293,8 @@ def main() -> None:
 
     try:
         with SerialRTBackend(args.port, args.baudrate) as backend:
-            backend.send(STANDING, duration_ms=1200, force=True)
-            last_sent_pose = dict(STANDING)
+            backend.send(walking.ready_pose, duration_ms=1200, force=True)
+            last_sent_pose = dict(walking.ready_pose)
             print(f"[walking-debug] Connected to {args.port}.")
             running = True
             while running:
@@ -317,6 +317,8 @@ def main() -> None:
                             running = False
                         elif event.key == pygame.K_1:
                             mode = "phases"
+                            walking.reset()
+                            phase_pose = dict(walking.ready_pose)
                             one_foot.stop()
                             phase_running = False
                             phase_step = False
@@ -371,7 +373,7 @@ def main() -> None:
                                 phase_running = False
                                 phase_step = False
                                 phase_started = None
-                                phase_pose = dict(STANDING)
+                                phase_pose = dict(walking.ready_pose)
                                 changed = True
                         else:
                             if event.key == pygame.K_l:
