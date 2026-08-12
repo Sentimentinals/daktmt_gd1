@@ -316,17 +316,7 @@ class DynamicWalkingEngine:
         self.hw = ROBOT["half_hip"]
         self.step_height = ROBOT["step_height"] if step_height is None else step_height
         self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
-        if self.crouch_depth_mm > 0.0:
-            self.ready_pose = compute_pose(
-                0.0,
-                0.0,
-                np.array([0.0, -self.hw, 0.0]),
-                np.array([0.0, self.hw, 0.0]),
-                com_z=self.zc - self.crouch_depth_mm,
-                support_leg="double",
-            )
-        else:
-            self.ready_pose = dict(STANDING)
+        self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
         self.step_x_ratio = GAIT["step_x_ratio"] if step_x_ratio is None else step_x_ratio
@@ -409,7 +399,7 @@ class DynamicWalkingEngine:
         self.last_landing_progress = 0.0
         self.last_phase_mode = "idle"
         self.last_step_elevation = 0.0
-        self.last_crouch_depth = self.crouch_depth_mm
+        self.last_crouch_depth = 0.0
         self._arm_state = [0.0, 0.0]
         self._com_y = 0.0
         self._com_x = 0.0
@@ -422,7 +412,7 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(0.0)
             self.zmp_x_queue.append(0.0)
             self.zmp_z_queue.append(0.0)
-            self.crouch_depth_queue.append(self.crouch_depth_mm)
+            self.crouch_depth_queue.append(0.0)
             self.foot_L_queue.append(np.array([0.0, -self.hw, 0.0]))
             self.foot_R_queue.append(np.array([0.0, self.hw, 0.0]))
             self.arm_queue.append((0, 0))
@@ -445,9 +435,9 @@ class DynamicWalkingEngine:
 
         if any(abs(zmp_y) > tolerance for zmp_y in self.zmp_y_queue):
             return False
-        if any(abs(depth - self.crouch_depth_mm) > tolerance for depth in self.crouch_depth_queue):
+        if any(abs(depth) > tolerance for depth in self.crouch_depth_queue):
             return False
-        if abs(self.last_crouch_depth - self.crouch_depth_mm) > tolerance:
+        if abs(self.last_crouch_depth) > tolerance:
             return False
         if any(delta != (0, 0) for delta in self.arm_queue):
             return False
@@ -485,7 +475,7 @@ class DynamicWalkingEngine:
                 self.zmp_x_queue.append(stance_center_x)
                 self.zmp_y_queue.append(0.0)
                 self.zmp_z_queue.append(stance_center_z)
-                self.crouch_depth_queue.append(self.crouch_depth_mm)
+                self.crouch_depth_queue.append(0.0)
                 self.foot_L_queue.append(base_L.copy())
                 self.foot_R_queue.append(base_R.copy())
                 self.arm_queue.append((0, 0))
@@ -506,6 +496,7 @@ class DynamicWalkingEngine:
             self._stop_steps_remaining -= 1
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
+        step_crouch_depth = self.crouch_depth_mm if abs(step_len) > 0.1 and not side_dominant else 0.0
         side_step_len = side_len * 1.80 if side_dominant else side_len
         next_step_count = self.step_count + 1
         if side_dominant and side_len > 0.0:
@@ -576,7 +567,7 @@ class DynamicWalkingEngine:
                 zmp_y = stance_y
             self.zmp_y_queue.append(zmp_y)
             self.zmp_z_queue.append(support_z + (swing_target_z - support_z) * release_t)
-            self.crouch_depth_queue.append(self.crouch_depth_mm)
+            self.crouch_depth_queue.append(step_crouch_depth)
 
             lift_height_scale = (
                 self.side_lift_scale
