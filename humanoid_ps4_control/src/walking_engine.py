@@ -551,8 +551,6 @@ class DynamicWalkingEngine:
             swing_distance = target_x - base_R[0]
 
         step_n_s = self.n_s
-        crouch_start = self.crouch_depth_queue[-1] if self.crouch_depth_queue else self.last_crouch_depth
-
         for k in range(step_n_s):
             alpha = k / max(step_n_s - 1, 1)
             swing_t = self._phase_progress(alpha, self.lift_start_phase, self.swing_advance_end_phase)
@@ -569,12 +567,7 @@ class DynamicWalkingEngine:
                 zmp_y = stance_y
             self.zmp_y_queue.append(zmp_y)
             self.zmp_z_queue.append(support_z + (swing_target_z - support_z) * release_t)
-            if self.crouch_depth_mm > crouch_start:
-                crouch_t = self._phase_progress(alpha, 0.0, max(self.lift_start_phase, self.dt / self.t_single))
-                crouch_depth = crouch_start + (self.crouch_depth_mm - crouch_start) * crouch_t
-            else:
-                crouch_depth = self.crouch_depth_mm
-            self.crouch_depth_queue.append(crouch_depth)
+            self.crouch_depth_queue.append(self.crouch_depth_mm)
 
             lift_height_scale = (
                 self.side_lift_scale
