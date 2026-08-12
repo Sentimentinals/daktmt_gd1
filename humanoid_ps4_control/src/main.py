@@ -152,7 +152,6 @@ def run_keyboard(args: Config) -> None:
         step_height=args.push_recovery_step_height_mm,
         command_rate_limit=1000.0,
     )
-    recovery_engine.stop_extra_steps = 0
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,
         period_s=args.dance_period,
@@ -675,7 +674,6 @@ def run_keyboard(args: Config) -> None:
                                 recovery_status = f"{decision.state.value}: {decision.reason}"
                                 if decision.start_step:
                                     recovery_engine.reset()
-                                    recovery_engine.stop_extra_steps = 0
                                     recovery_step_active = True
                                     engine.reset()
                                     person_follow.disable()

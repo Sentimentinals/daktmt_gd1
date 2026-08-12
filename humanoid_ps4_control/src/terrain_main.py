@@ -151,8 +151,6 @@ def run_terrain(args: Config) -> None:
         arm_quantum_pwm=args.arm_quantum_pwm,
         max_step_elevation=args.terrain_max_step_elevation_mm,
     )
-    engine.stop_extra_steps = 0
-
     sensor_hub = RobotSensorHub(
         port=args.sensor_port,
         baudrate=args.sensor_baudrate,

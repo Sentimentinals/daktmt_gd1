@@ -40,7 +40,6 @@ GAIT = {
     "arm_quantum_pwm": 10,
     "max_side_step_len": 38.0,
     "max_turn_step_len": 7.0,
-    "stop_extra_steps": 4,
 }
 
 # --- Calibrated standing pulse widths ---

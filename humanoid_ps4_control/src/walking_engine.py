@@ -365,8 +365,6 @@ class DynamicWalkingEngine:
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
         self.command_rate_limit = abs(command_rate_limit)
         self.max_step_elevation = max(0.0, abs(max_step_elevation))
-        self.stop_extra_steps = max(0, int(GAIT["stop_extra_steps"]))
-
         self.reset()
 
     def reset(self) -> None:
@@ -405,8 +403,6 @@ class DynamicWalkingEngine:
         self._com_x = 0.0
         self._ground_z = 0.0
         self._last_motion_target = (0.0, 0.0, 0.0)
-        self._stop_steps_remaining = 0
-        self._stop_decelerating = False
 
         for _ in range(self.n_d):
             self.zmp_y_queue.append(0.0)
@@ -486,14 +482,6 @@ class DynamicWalkingEngine:
                 self.side_len_queue.append(0.0)
                 self.step_elevation_queue.append(0.0)
             return
-
-        if self._stop_decelerating and self._stop_steps_remaining > 0:
-            raw_scale = self._stop_steps_remaining / max(1, self.stop_extra_steps)
-            scale = max(0.12, self._smooth01(raw_scale))
-            step_len *= scale
-            turn_len *= scale
-            side_len *= scale
-            self._stop_steps_remaining -= 1
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
         step_crouch_depth = self.crouch_depth_mm if abs(step_len) > 0.1 and not side_dominant else 0.0
@@ -733,17 +721,13 @@ class DynamicWalkingEngine:
         )
         if input_active:
             self._last_motion_target = (requested_step_len, requested_turn_len, requested_side_len)
-            self._stop_steps_remaining = self.stop_extra_steps
-            self._stop_decelerating = False
-            target_step_len, target_turn_len, target_side_len = self._last_motion_target
-        elif self._stop_steps_remaining > 0:
-            self._stop_decelerating = True
             target_step_len, target_turn_len, target_side_len = self._last_motion_target
         else:
-            self._stop_decelerating = False
-            target_step_len = 0.0
-            target_turn_len = 0.0
-            target_side_len = 0.0
+            self._last_motion_target = (0.0, 0.0, 0.0)
+            self.commanded_step_len = 0.0
+            self.commanded_turn_len = 0.0
+            self.commanded_side_len = 0.0
+            target_step_len, target_turn_len, target_side_len = self._last_motion_target
         max_delta = self.command_rate_limit * self.dt
 
         step_delta = target_step_len - self.commanded_step_len

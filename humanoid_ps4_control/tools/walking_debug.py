@@ -129,7 +129,6 @@ def make_recovery_engine() -> DynamicWalkingEngine:
         step_height=settings.push_recovery_step_height_mm,
         command_rate_limit=1000.0,
     )
-    engine.stop_extra_steps = 0
     return engine
 
 
@@ -459,7 +458,6 @@ def main() -> None:
                     recovery_status = f"{decision.state.value}: {decision.reason}"
                     if decision.start_step:
                         recovery_engine.reset()
-                        recovery_engine.stop_extra_steps = 0
                         recovery_step_active = True
                         walking.reset()
                         one_foot.stop()
