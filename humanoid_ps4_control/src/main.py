@@ -494,9 +494,12 @@ def run_keyboard(args: Config) -> None:
                             single_support.stop()
                             standing_hold_active = True
                             print("[main] X one-foot balance OFF - returning to STANDING.")
-                        elif foot_contact_frames < args.foot_fsr_stable_frames:
-                            print("[main] X one-foot balance requires stable contact on both foot FSRs.")
                         else:
+                            recovery_engine.reset()
+                            recovery_step_active = False
+                            if recovery is not None:
+                                recovery.reset()
+                                recovery_status = "STABLE"
                             single_support.start(next_single_support_leg, current_pose=last_pose)
                             standing_hold_active = False
                             swing_leg = "left" if next_single_support_leg == "right" else "right"
@@ -587,26 +590,7 @@ def run_keyboard(args: Config) -> None:
                         turn_cmd = 0.0
                         side_cmd = 0.0
                         motion_requested = False
-                        feet = sensor_snapshot.feet if sensor_snapshot is not None else None
-                        support_force = (
-                            feet.left_force if single_support.support_leg == "left" and feet is not None
-                            else feet.right_force if feet is not None
-                            else 0.0
-                        )
-                        if support_force < args.foot_fsr_contact_threshold:
-                            single_support.stop()
-                            standing_hold_active = True
-                            if recovery is not None:
-                                recovery.force_safe_lower("support FSR lost")
-                                recovery_status = "safe-lower: support FSR lost"
-                            pose = lower_toward_standing(
-                                last_pose,
-                                STANDING,
-                                args.update_ms / 1000.0,
-                                args.push_recovery_lower_rate_pwm_s,
-                            )
-                        else:
-                            pose = single_support.update()
+                        pose = single_support.update()
                     elif squat_requested:
                         pose = squat_engine.update(squat_ratio)
                         if squat_engine.is_idle():
@@ -661,6 +645,9 @@ def run_keyboard(args: Config) -> None:
                                     feet is not None
                                     and feet.right_force >= args.foot_fsr_contact_threshold
                                 )
+                                if single_support.running:
+                                    left_contact = True
+                                    right_contact = True
                                 decision = recovery.update(
                                     -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
                                     -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),

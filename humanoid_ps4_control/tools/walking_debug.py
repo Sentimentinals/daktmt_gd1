@@ -296,9 +296,8 @@ def main() -> None:
     snapshot = None
     last_balance_at = time.monotonic()
     last_sent_pose = None
-    one_foot_status = "SENSORS OFF"
+    one_foot_status = "READY: select support L/R"
     sensor_status = "SENSORS: OFF (press I to connect IMU + foot FSR)"
-    contact_frames = 0
 
     try:
         with SerialRTBackend(args.port, args.baudrate) as backend:
@@ -313,10 +312,6 @@ def main() -> None:
                 else:
                     snapshot = None
                 feet = snapshot.feet if snapshot is not None else None
-                both_contact = foot_contact(feet, "left", settings.foot_fsr_contact_threshold) and foot_contact(
-                    feet, "right", settings.foot_fsr_contact_threshold
-                )
-                contact_frames = contact_frames + 1 if both_contact else 0
 
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
@@ -350,7 +345,6 @@ def main() -> None:
                                 recovery_engine.reset()
                                 recovery_step_active = False
                                 recovery_status = "SENSORS OFF"
-                                one_foot_status = "SENSORS OFF"
                                 sensor_status = "SENSORS: OFF"
                                 changed = True
                             else:
@@ -360,7 +354,7 @@ def main() -> None:
                                     last_balance_at = time.monotonic()
                                     recovery_status = "STABLE"
                                     sensor_status = "SENSORS: READY (IMU + 2 foot FSR)"
-                                    one_foot_status = "READY: place both feet down"
+                                    one_foot_status = "READY: select support L/R"
                                 except Exception as exc:
                                     sensor_status = f"SENSORS: OFF - {exc}"
                                     print(f"[walking-debug] {sensor_status}")
@@ -403,10 +397,6 @@ def main() -> None:
                                     one_foot.stop()
                                     one_foot_status = "STANDING"
                                     changed = True
-                                elif balance is None or feet is None:
-                                    one_foot_status = "WAIT: press I for IMU + FSR"
-                                elif contact_frames < settings.foot_fsr_stable_frames:
-                                    one_foot_status = "WAIT: both feet must contact floor"
                                 else:
                                     one_foot.start(selected_support)
                                     one_foot_status = "LIFTING"
@@ -429,21 +419,8 @@ def main() -> None:
                     support_leg = walking.support_leg
                 elif one_foot.running:
                     support_leg = selected_support
-                    if not foot_contact(feet, selected_support, settings.foot_fsr_contact_threshold):
-                        one_foot.stop()
-                        one_foot_status = "FAULT: SUPPORT FSR LOST - STANDING"
-                        changed = True
-                    else:
-                        base_pose = one_foot.update()
-                        lifted_leg = "right" if selected_support == "left" else "left"
-                        if one_foot.phase >= 1.0 and foot_contact(
-                            feet,
-                            lifted_leg,
-                            settings.foot_fsr_contact_threshold,
-                        ):
-                            one_foot_status = "LIFT BLOCKED: SWING FSR CONTACT"
-                        else:
-                            one_foot_status = "HOLDING" if one_foot.phase >= 1.0 else "LIFTING"
+                    base_pose = one_foot.update()
+                    one_foot_status = "HOLDING" if one_foot.phase >= 1.0 else "LIFTING"
 
                 reading = snapshot.imu if snapshot is not None else None
                 if recovery_step_active:
@@ -459,6 +436,9 @@ def main() -> None:
                     now = time.monotonic()
                     left_contact = foot_contact(feet, "left", settings.foot_fsr_contact_threshold)
                     right_contact = foot_contact(feet, "right", settings.foot_fsr_contact_threshold)
+                    if one_foot.running:
+                        left_contact = True
+                        right_contact = True
                     decision = recovery.update(
                         -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
                         -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
