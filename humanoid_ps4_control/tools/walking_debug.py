@@ -105,10 +105,10 @@ def make_one_foot_engine() -> SingleSupportTestEngine:
     settings = Config()
     return SingleSupportTestEngine(
         dt=0.04,
-        lift_height=settings.one_foot_lift_height,
         zmp_support_ratio=settings.zmp_support_ratio,
         ankle_roll_gain=settings.ankle_roll_gain,
-        arm_pwm=0,
+        swing_knee_pwm=settings.one_foot_swing_knee_pwm,
+        arm_lift_pwm=settings.one_foot_arm_lift_pwm,
         ramp_s=settings.one_foot_ramp_s,
     )
 
@@ -239,17 +239,17 @@ def draw(
             ("Execution", state),
         )
     else:
-        lifted_leg = "right" if support_leg == "left" else "left"
+        free_leg = "right" if support_leg == "left" else "left"
         screen.blit(
             small_font.render("L/R: support leg  Space: start/stop  C: standing", True, (184, 194, 204)),
             (28, 82),
         )
         rows = (
             ("Support leg", support_leg.upper()),
-            ("Lifted leg", lifted_leg.upper()),
+            ("Free leg", free_leg.upper()),
             ("Left FSR", foot_text(snapshot.feet if snapshot is not None else None, "left")),
             ("Right FSR", foot_text(snapshot.feet if snapshot is not None else None, "right")),
-            ("Lift progress", f"{one_foot.phase:.2f}"),
+            ("Pose progress", f"{one_foot.phase:.2f}"),
             ("State", one_foot_status),
         )
 
@@ -323,7 +323,7 @@ def main() -> None:
                             mode = "phases"
                             walking.reset()
                             phase_pose = dict(walking.ready_pose)
-                            one_foot.stop()
+                            one_foot.reset()
                             phase_running = False
                             phase_step = False
                             changed = True
@@ -332,12 +332,12 @@ def main() -> None:
                             walking.reset()
                             phase_running = False
                             phase_step = False
-                            one_foot.stop()
+                            one_foot.reset()
                             one_foot_status = "READY: select support L/R"
                             changed = True
                         elif event.key == pygame.K_i:
                             if sensor_hub is not None:
-                                one_foot.stop()
+                                one_foot.reset()
                                 sensor_hub.close()
                                 sensor_hub = None
                                 balance = None
@@ -390,16 +390,16 @@ def main() -> None:
                                 if recovery is not None:
                                     recovery.reset()
                                     recovery_status = "STABLE"
-                                one_foot_status = "STANDING"
+                                one_foot_status = "RETURNING"
                                 changed = True
                             elif event.key == pygame.K_SPACE:
                                 if one_foot.running:
                                     one_foot.stop()
-                                    one_foot_status = "STANDING"
+                                    one_foot_status = "RETURNING"
                                     changed = True
                                 else:
                                     one_foot.start(selected_support)
-                                    one_foot_status = "LIFTING"
+                                    one_foot_status = "ENTERING BALANCE"
 
                 base_pose = dict(STANDING)
                 support_leg = "double"
@@ -417,10 +417,13 @@ def main() -> None:
                 elif mode == "phases":
                     base_pose = dict(phase_pose)
                     support_leg = walking.support_leg
-                elif one_foot.running:
+                elif one_foot.active:
                     support_leg = selected_support
                     base_pose = one_foot.update()
-                    one_foot_status = "HOLDING" if one_foot.phase >= 1.0 else "LIFTING"
+                    if one_foot.running:
+                        one_foot_status = "HOLDING" if one_foot.phase >= 1.0 else "ENTERING BALANCE"
+                    else:
+                        one_foot_status = "RETURNING"
 
                 reading = snapshot.imu if snapshot is not None else None
                 if recovery_step_active:
@@ -436,7 +439,7 @@ def main() -> None:
                     now = time.monotonic()
                     left_contact = foot_contact(feet, "left", settings.foot_fsr_contact_threshold)
                     right_contact = foot_contact(feet, "right", settings.foot_fsr_contact_threshold)
-                    if one_foot.running:
+                    if one_foot.active:
                         left_contact = True
                         right_contact = True
                     decision = recovery.update(
@@ -445,7 +448,7 @@ def main() -> None:
                         now - last_balance_at,
                         left_contact,
                         right_contact,
-                        single_support=one_foot.running,
+                        single_support=one_foot.active,
                         walking=mode == "phases" and (phase_running or not walking.is_idle_ready()),
                         support_leg=support_leg,
                         now=now,
@@ -457,13 +460,13 @@ def main() -> None:
                         recovery_engine.reset()
                         recovery_step_active = True
                         walking.reset()
-                        one_foot.stop()
+                        one_foot.reset()
                         one_foot_status = "RECOVERY STEP"
                     if decision.safe_lower:
                         recovery_step_active = False
                         recovery_engine.reset()
                         walking.reset()
-                        one_foot.stop()
+                        one_foot.reset()
                         one_foot_status = "SAFE LOWER"
                         base_pose = lower_toward_standing(
                             last_sent_pose or STANDING,
@@ -505,7 +508,7 @@ def main() -> None:
                             recovery_step_active = False
                 elif recovery is not None and (
                     recovery_step_active
-                    or one_foot.running
+                    or one_foot.active
                     or recovery.state is RecoveryState.SAFE_LOWER
                 ):
                     now = time.monotonic()
@@ -514,7 +517,7 @@ def main() -> None:
                     recovery_step_active = False
                     recovery_engine.reset()
                     walking.reset()
-                    one_foot.stop()
+                    one_foot.reset()
                     one_foot_status = "SAFE LOWER"
                     base_pose = lower_toward_standing(
                         last_sent_pose or STANDING,
@@ -535,7 +538,7 @@ def main() -> None:
                 if imu_message is not None:
                     sensor_status = imu_message
 
-                moving = phase_running or one_foot.running or recovery_step_active
+                moving = phase_running or one_foot.active or recovery_step_active
                 if changed or command_pose != last_sent_pose:
                     backend.send(command_pose, duration_ms=80 if moving else 350, force=True)
                     last_sent_pose = command_pose

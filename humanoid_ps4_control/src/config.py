@@ -119,9 +119,9 @@ class Config:
     lift_end_phase: float = GAIT["lift_end_phase"]
     landing_roll_release_start: float = GAIT["landing_roll_release_start"]
     command_rate_limit: float = 60.0
-    single_support_lift_height: float = 82.0
-    single_support_arm_pwm: int = 180
-    single_support_ramp_s: float = 0.8
+    one_foot_swing_knee_pwm: int = 260
+    one_foot_arm_lift_pwm: int = 950
+    one_foot_ramp_s: float = 1.5
 
     # --- Arms (Linked to GAIT values by default) ---
     arm_swing_pwm: int = GAIT["arm_swing_pwm"]
@@ -232,5 +232,3 @@ class Config:
     foot_fsr_full_raw: int = 4095
     foot_fsr_contact_threshold: float = 0.12
     foot_fsr_stable_frames: int = 5
-    one_foot_lift_height: float = 18.0
-    one_foot_ramp_s: float = 1.5

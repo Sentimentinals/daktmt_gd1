@@ -134,22 +134,26 @@ class SingleSupportTestEngine:
         self,
         dt: float = 0.04,
         support_leg: str = "right",
-        lift_height: float = 28.0,
         zmp_support_ratio: float | None = None,
         ankle_roll_gain: float | None = None,
-        arm_pwm: int = 180,
-        ramp_s: float = 0.8,
+        swing_knee_pwm: int = 260,
+        arm_lift_pwm: int = 950,
+        ramp_s: float = 1.5,
     ) -> None:
         self.dt = dt
         self.support_leg = support_leg
-        self.lift_height = lift_height
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
-        self.arm_pwm = arm_pwm
+        self.swing_knee_pwm = max(0, int(swing_knee_pwm))
+        self.arm_lift_pwm = max(0, int(arm_lift_pwm))
         self.ramp_s = max(dt, ramp_s)
         self.running = False
         self.phase = 0.0
         self.prev_pose = dict(STANDING)
+
+    @property
+    def active(self) -> bool:
+        return self.running or self.phase > 0.0
 
     def start(self, support_leg: str | None = None, current_pose: dict[int, int] | None = None) -> None:
         if support_leg is not None:
@@ -160,39 +164,44 @@ class SingleSupportTestEngine:
 
     def stop(self) -> None:
         self.running = False
+
+    def reset(self) -> None:
+        self.running = False
         self.phase = 0.0
+        self.prev_pose = dict(STANDING)
 
     def update(self) -> dict[int, int]:
-        if not self.running:
+        phase_step = self.dt / self.ramp_s
+        if self.running:
+            self.phase = min(1.0, self.phase + phase_step)
+        else:
+            self.phase = max(0.0, self.phase - phase_step)
+        if self.phase <= 0.0:
             self.prev_pose = dict(STANDING)
             return dict(STANDING)
 
-        self.phase = min(1.0, self.phase + self.dt / self.ramp_s)
         blend = self.phase * self.phase * (3.0 - 2.0 * self.phase)
+        free_leg_phase = max(0.0, min(1.0, (self.phase - 0.30) / 0.70))
+        free_leg_blend = free_leg_phase * free_leg_phase * (3.0 - 2.0 * free_leg_phase)
         hw = ROBOT["half_hip"]
         support_y = hw * self.zmp_support_ratio
         com_y = support_y if self.support_leg == "right" else -support_y
-        com_x = 8.0 * blend
 
         foot_l = np.array([0.0, -hw, 0.0])
         foot_r = np.array([0.0, hw, 0.0])
-        if self.support_leg == "right":
-            foot_l[2] = self.lift_height * blend
-        else:
-            foot_r[2] = self.lift_height * blend
-
         target = compute_pose(
-            com_x,
+            0.0,
             com_y * blend,
             foot_l,
             foot_r,
             support_leg=self.support_leg,
-            phase_mode="shift",
+            phase_mode="full",
             zmp_support_ratio=self.zmp_support_ratio,
             ankle_roll_gain=self.ankle_roll_gain,
         )
-        lift_shape_height = min(self.lift_height * blend, ROBOT["step_height"])
-        thigh_delta, knee_delta, ankle_delta = lift_pitch_deltas(lift_shape_height)
+        knee_delta = round(self.swing_knee_pwm * free_leg_blend)
+        thigh_delta = round(knee_delta * 0.25)
+        ankle_delta = knee_delta - thigh_delta
         if self.support_leg == "right":
             target[13] = max(500, min(2500, STANDING[13] + thigh_delta))
             target[14] = max(500, min(2500, STANDING[14] + knee_delta))
@@ -201,13 +210,9 @@ class SingleSupportTestEngine:
             target[20] = max(500, min(2500, STANDING[20] - thigh_delta))
             target[19] = max(500, min(2500, STANDING[19] - knee_delta))
             target[18] = max(500, min(2500, STANDING[18] - ankle_delta))
-        arm_delta = round(self.arm_pwm * blend)
-        if self.support_leg == "right":
-            target[22] = max(500, min(2500, STANDING[22] + arm_delta))
-            target[11] = max(500, min(2500, STANDING[11] + arm_delta))
-        else:
-            target[22] = max(500, min(2500, STANDING[22] - arm_delta))
-            target[11] = max(500, min(2500, STANDING[11] - arm_delta))
+        arm_delta = round(self.arm_lift_pwm * blend)
+        target[10] = max(500, min(2500, STANDING[10] - arm_delta))
+        target[23] = max(500, min(2500, STANDING[23] + arm_delta))
         pose = {sid: blend_pwm(self.prev_pose.get(sid, STANDING[sid]), target[sid], 0.35) for sid in STANDING}
         self.prev_pose = pose
         return pose

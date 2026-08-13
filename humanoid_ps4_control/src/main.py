@@ -125,11 +125,11 @@ def run_keyboard(args: Config) -> None:
     )
     single_support = SingleSupportTestEngine(
         dt=args.update_ms / 1000.0,
-        lift_height=args.single_support_lift_height,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
-        arm_pwm=args.single_support_arm_pwm,
-        ramp_s=args.single_support_ramp_s,
+        swing_knee_pwm=args.one_foot_swing_knee_pwm,
+        arm_lift_pwm=args.one_foot_arm_lift_pwm,
+        ramp_s=args.one_foot_ramp_s,
     )
     squat_engine = AdaptiveSquatEngine(
         dt=args.update_ms / 1000.0,
@@ -358,7 +358,7 @@ def run_keyboard(args: Config) -> None:
                             camera_preview.person_ready()
                             and not getup.running
                             and not arm_dance.running
-                            and not single_support.running
+                            and not single_support.active
                             and squat_engine.is_idle()
                             and not motion_requested
                         )
@@ -424,7 +424,7 @@ def run_keyboard(args: Config) -> None:
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
-                        single_support.stop()
+                        single_support.reset()
                         recovery_engine.reset()
                         squat_engine.reset()
                         recovery_step_active = False
@@ -448,7 +448,7 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
-                        single_support.stop()
+                        single_support.reset()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode=args.getup_mode)
                         print(f"[main] G pressed. Running {args.getup_mode} get-up sequence from step {label}.")
@@ -459,7 +459,7 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
-                        single_support.stop()
+                        single_support.reset()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode="back")
                         print(f"[main] B pressed. Running back get-up sequence from step {label}.")
@@ -475,7 +475,7 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         enabled = arm_dance.toggle()
                         engine.reset()
-                        single_support.stop()
+                        single_support.reset()
                         standing_hold_active = not enabled
                         print("[main] L/M arm dance ON." if enabled else "[main] L/M arm dance OFF - returning to STANDING.")
                     prev_dance_pressed = dance_pressed
@@ -490,7 +490,7 @@ def run_keyboard(args: Config) -> None:
                         person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
-                        if single_support.running:
+                        if single_support.active:
                             single_support.stop()
                             standing_hold_active = True
                             print("[main] X one-foot balance OFF - returning to STANDING.")
@@ -502,8 +502,8 @@ def run_keyboard(args: Config) -> None:
                                 recovery_status = "STABLE"
                             single_support.start(next_single_support_leg, current_pose=last_pose)
                             standing_hold_active = False
-                            swing_leg = "left" if next_single_support_leg == "right" else "right"
-                            print(f"[main] X one-foot balance ON: support={next_single_support_leg}, lifted={swing_leg}.")
+                            free_leg = "left" if next_single_support_leg == "right" else "right"
+                            print(f"[main] X one-foot balance ON: support={next_single_support_leg}, free_leg={free_leg}.")
                             next_single_support_leg = "left" if next_single_support_leg == "right" else "right"
                     prev_single_support_pressed = single_support_pressed
     
@@ -512,7 +512,7 @@ def run_keyboard(args: Config) -> None:
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
-                        single_support.stop()
+                        single_support.reset()
                         recovery_engine.reset()
                         squat_engine.reset()
                         recovery_step_active = False
@@ -535,7 +535,7 @@ def run_keyboard(args: Config) -> None:
                         turn_cmd = 0.0
                         side_cmd = 0.0
                         motion_requested = False
-                        busy = any((getup.running, arm_dance.running, single_support.running))
+                        busy = any((getup.running, arm_dance.running, single_support.active))
                         if busy:
                             squat_status = "BUSY"
                         elif foot_contact_frames < args.foot_fsr_stable_frames:
@@ -585,7 +585,7 @@ def run_keyboard(args: Config) -> None:
                         side_cmd = 0.0
                         motion_requested = False
                         pose = arm_dance.update()
-                    elif single_support.running:
+                    elif single_support.active:
                         vy = 0.0
                         turn_cmd = 0.0
                         side_cmd = 0.0
@@ -616,7 +616,7 @@ def run_keyboard(args: Config) -> None:
                         ):
                             if recovery_step_active:
                                 support_leg = recovery_engine.support_leg
-                            elif single_support.running:
+                            elif single_support.active:
                                 support_leg = single_support.support_leg
                             elif squat_requested:
                                 support_leg = "double"
@@ -626,13 +626,13 @@ def run_keyboard(args: Config) -> None:
                             recovery_pitch_offset = 0.0
                             walking_active = (
                                 not recovery_step_active
-                                and not single_support.running
+                                and not single_support.active
                                 and not squat_requested
                                 and (motion_requested or not engine.is_idle_ready())
                             )
                             recovery_allowed = (
                                 recovery_step_active
-                                or single_support.running
+                                or single_support.active
                                 or (not arm_dance.running and not squat_requested)
                             )
                             if recovery is not None and recovery_allowed:
@@ -645,7 +645,7 @@ def run_keyboard(args: Config) -> None:
                                     feet is not None
                                     and feet.right_force >= args.foot_fsr_contact_threshold
                                 )
-                                if single_support.running:
+                                if single_support.active:
                                     left_contact = True
                                     right_contact = True
                                 decision = recovery.update(
@@ -654,7 +654,7 @@ def run_keyboard(args: Config) -> None:
                                     balance_dt,
                                     left_contact,
                                     right_contact,
-                                    single_support=single_support.running,
+                                    single_support=single_support.active,
                                     walking=walking_active,
                                     support_leg=support_leg,
                                     now=now,
@@ -670,7 +670,7 @@ def run_keyboard(args: Config) -> None:
                                     standing_hold_active = False
                                     print("[main] Push recovery: starting near-in-place stomp.")
                                 if decision.safe_lower:
-                                    single_support.stop()
+                                    single_support.reset()
                                     recovery_step_active = False
                                     recovery_engine.reset()
                                     engine.reset()
@@ -726,7 +726,7 @@ def run_keyboard(args: Config) -> None:
                         else:
                             sensor_safe_lower = (
                                 recovery_step_active
-                                or single_support.running
+                                or single_support.active
                                 or (
                                     recovery is not None
                                     and recovery.state is RecoveryState.SAFE_LOWER
@@ -736,7 +736,7 @@ def run_keyboard(args: Config) -> None:
                                 if recovery is not None:
                                     recovery.force_safe_lower("IMU stream lost")
                                 recovery_status = "safe-lower: IMU stream lost"
-                                single_support.stop()
+                                single_support.reset()
                                 recovery_step_active = False
                                 recovery_engine.reset()
                                 engine.reset()
@@ -786,7 +786,7 @@ def run_keyboard(args: Config) -> None:
                         camera_status = "ARM DANCE"
                     elif recovery is not None and recovery.state is not RecoveryState.STABLE:
                         camera_status = f"BALANCE: {recovery_status.upper()}"
-                    elif single_support.running:
+                    elif single_support.active:
                         camera_status = f"ONE-FOOT BALANCE: {single_support.support_leg.upper()}"
                     else:
                         directions = []
