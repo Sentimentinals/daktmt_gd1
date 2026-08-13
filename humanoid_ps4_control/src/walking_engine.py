@@ -100,22 +100,16 @@ def compute_pose(
         support_y = hw * (GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio)
         signed_support_y = support_y if support_leg == "right" else -support_y
         shift_ankle_roll = math.degrees(math.atan2(signed_support_y, roll_height)) * ankle_gain
-        if abs(shift_ankle_roll) > 0.01:
-            shift_ankle_roll += math.copysign(2.0, shift_ankle_roll)
         right_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "right" else 0.0)
         left_ankle_roll = STAND_ANG["hip_roll"] + (-shift_ankle_roll if support_leg == "left" else 0.0)
     else:
         ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
         if support_leg == "right":
-            right_ankle_roll = STAND_ANG["hip_roll"] + (
-                ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
-            )
+            right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll
             left_ankle_roll = STAND_ANG["hip_roll"]
         elif support_leg == "left":
             right_ankle_roll = STAND_ANG["hip_roll"]
-            left_ankle_roll = STAND_ANG["hip_roll"] + (
-                ankle_roll + math.copysign(2.0, ankle_roll) if abs(ankle_roll) > 0.01 else ankle_roll
-            )
+            left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll
         else:
             right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
             left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
@@ -848,7 +842,6 @@ class DynamicWalkingEngine:
                     for sid in STANDING
                 }
         elif leg_active:
-            compute_phase_mode = "shift" if phase_mode_now == "swing" else phase_mode_now
             pose = compute_pose(
                 com_x,
                 pose_com_y,
@@ -856,7 +849,7 @@ class DynamicWalkingEngine:
                 pose_foot_R,
                 com_z=self.zc + self._ground_z - crouch_depth_now,
                 support_leg=support_leg_for_pose,
-                phase_mode=compute_phase_mode,
+                phase_mode="shift",
                 zmp_support_ratio=self.zmp_support_ratio,
                 ankle_roll_gain=self.ankle_roll_gain,
             )
