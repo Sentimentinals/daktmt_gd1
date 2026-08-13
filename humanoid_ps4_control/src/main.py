@@ -108,6 +108,7 @@ def run_keyboard(args: Config) -> None:
         max_side_step_len=args.max_side_step_len,
         step_height=args.flat_walk_step_height_mm,
         crouch_depth_mm=args.flat_walk_crouch_depth_mm,
+        crouch_prepare_s=args.flat_walk_prepare_s,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
         step_x_ratio=args.step_x_ratio,
@@ -701,8 +702,12 @@ def run_keyboard(args: Config) -> None:
                                     )
                                 elif recovery_step_active:
                                     pose = recovery_engine.update(
-                                        decision.forward_cmd if decision.start_step else 0.0,
-                                        side_cmd=decision.side_cmd if decision.start_step else 0.0,
+                                        decision.forward_cmd if recovery_engine.step_count == 0 else 0.0,
+                                        side_cmd=(
+                                            decision.side_cmd
+                                            if recovery_engine.step_count == 0
+                                            else 0.0
+                                        ),
                                     )
                                     support_leg = recovery_engine.support_leg
                                     swing_leg = recovery_engine.last_swing_leg

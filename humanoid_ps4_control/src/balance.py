@@ -129,10 +129,14 @@ class PushRecoveryController:
         self._started_at = 0.0
         self._counter_roll_deg = 0.0
         self._counter_pitch_deg = 0.0
+        self._step_forward_cmd = 0.0
+        self._step_side_cmd = 0.0
 
     def force_safe_lower(self, reason: str) -> RecoveryDecision:
         self.state = RecoveryState.SAFE_LOWER
         self.reason = reason
+        self._step_forward_cmd = 0.0
+        self._step_side_cmd = 0.0
         return RecoveryDecision(self.state, self.reason)
 
     def complete_step(self, now: float) -> RecoveryDecision:
@@ -140,6 +144,8 @@ class PushRecoveryController:
             self.state = RecoveryState.COUNTER_LEAN
             self.reason = "stomp landed; counter-lean"
             self._started_at = now
+            self._step_forward_cmd = 0.0
+            self._step_side_cmd = 0.0
         return self._decision()
 
     def update(
@@ -162,7 +168,7 @@ class PushRecoveryController:
         self._previous_pitch = pitch_deg
 
         if self.state is RecoveryState.SAFE_LOWER:
-            return RecoveryDecision(self.state, self.reason)
+            return self._decision()
 
         max_tilt = max(abs(roll_deg), abs(pitch_deg))
         max_rate = max(abs(roll_rate), abs(pitch_rate))
@@ -180,7 +186,7 @@ class PushRecoveryController:
                 return self.force_safe_lower("foot FSR unavailable during stomp")
             if now > 0.0 and now - self._started_at > cfg.recovery_step_timeout_s:
                 return self.force_safe_lower("stomp timeout")
-            return RecoveryDecision(self.state, self.reason)
+            return self._decision()
         if self.state is RecoveryState.COUNTER_LEAN:
             if not both_contact:
                 return self.force_safe_lower("foot FSR unavailable during counter-lean")
@@ -206,6 +212,8 @@ class PushRecoveryController:
             self.reason = "stomp recovery"
             self._started_at = now
             forward_cmd, side_cmd = self._fall_command(roll_deg, pitch_deg)
+            self._step_forward_cmd = forward_cmd
+            self._step_side_cmd = side_cmd
             counter = abs(cfg.counter_lean_deg)
             self._counter_roll_deg = -counter if roll_deg > 0.0 else counter if roll_deg < 0.0 else 0.0
             self._counter_pitch_deg = -counter if pitch_deg > 0.0 else counter if pitch_deg < 0.0 else 0.0
@@ -229,6 +237,13 @@ class PushRecoveryController:
         return self._decision()
 
     def _decision(self) -> RecoveryDecision:
+        if self.state is RecoveryState.STOMP:
+            return RecoveryDecision(
+                self.state,
+                self.reason,
+                forward_cmd=self._step_forward_cmd,
+                side_cmd=self._step_side_cmd,
+            )
         if self.state is RecoveryState.COUNTER_LEAN:
             return RecoveryDecision(
                 self.state,

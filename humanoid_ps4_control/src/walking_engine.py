@@ -282,6 +282,7 @@ class DynamicWalkingEngine:
         max_side_step_len: float | None = None,
         step_height: float | None = None,
         crouch_depth_mm: float = 0.0,
+        crouch_prepare_s: float = 0.0,
         zmp_support_ratio: float | None = None,
         ankle_roll_gain: float | None = None,
         step_x_ratio: float | None = None,
@@ -316,6 +317,7 @@ class DynamicWalkingEngine:
         self.hw = ROBOT["half_hip"]
         self.step_height = ROBOT["step_height"] if step_height is None else step_height
         self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
+        self.crouch_prepare_s = max(0.0, float(crouch_prepare_s))
         self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
@@ -403,6 +405,7 @@ class DynamicWalkingEngine:
         self._com_x = 0.0
         self._ground_z = 0.0
         self._last_motion_target = (0.0, 0.0, 0.0)
+        self._sagittal_prepared = False
 
         for _ in range(self.n_d):
             self.zmp_y_queue.append(0.0)
@@ -464,6 +467,7 @@ class DynamicWalkingEngine:
         step_elevation = max(-self.max_step_elevation, min(self.max_step_elevation, step_elevation))
 
         if abs(step_len) < 0.1 and abs(turn_len) < 0.1 and abs(side_len) < 0.1:
+            self._sagittal_prepared = False
             settle_frames = self.n_s + self.n_d
             stance_center_x = (base_L[0] + base_R[0]) / 2.0
             stance_center_z = (base_L[2] + base_R[2]) / 2.0
@@ -484,6 +488,31 @@ class DynamicWalkingEngine:
             return
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
+        sagittal = abs(step_len) > 0.1 and not side_dominant
+        if not sagittal:
+            self._sagittal_prepared = False
+        elif self.crouch_depth_mm > 0.0 and self.crouch_prepare_s > 0.0 and not self._sagittal_prepared:
+            prepare_frames = max(2, round(self.crouch_prepare_s / self.dt))
+            stance_center_x = (base_L[0] + base_R[0]) / 2.0
+            stance_center_z = (base_L[2] + base_R[2]) / 2.0
+            for frame in range(prepare_frames):
+                progress = self._smooth01((frame + 1) / prepare_frames)
+                self.zmp_x_queue.append(stance_center_x)
+                self.zmp_y_queue.append(0.0)
+                self.zmp_z_queue.append(stance_center_z)
+                self.crouch_depth_queue.append(self.crouch_depth_mm * progress)
+                self.foot_L_queue.append(base_L.copy())
+                self.foot_R_queue.append(base_R.copy())
+                self.arm_queue.append((0, 0))
+                self.swing_leg_queue.append("none")
+                self.lift_factor_queue.append(0.0)
+                self.landing_progress_queue.append(0.0)
+                self.phase_mode_queue.append("idle")
+                self.side_len_queue.append(0.0)
+                self.step_elevation_queue.append(0.0)
+            self._sagittal_prepared = True
+            return
+
         step_crouch_depth = self.crouch_depth_mm if abs(step_len) > 0.1 and not side_dominant else 0.0
         side_step_len = side_len * 1.80 if side_dominant else side_len
         next_step_count = self.step_count + 1
@@ -746,7 +775,7 @@ class DynamicWalkingEngine:
             side_delta = math.copysign(side_rate, side_delta)
         self.commanded_side_len += side_delta
 
-        while len(self.zmp_y_queue) < self.preview_steps + 1:
+        if not self.zmp_y_queue:
             self._enqueue_next_step(
                 self.commanded_step_len,
                 self.commanded_turn_len,
@@ -790,8 +819,18 @@ class DynamicWalkingEngine:
             if phase_mode_now in ("swing", "land"):
                 support_leg_for_pose = old_support_leg
 
-        com_y_preview = self.zmp_ctrl.step(zmp_now, list(self.zmp_y_queue)[: self.preview_steps])
-        com_x_preview = self.zmp_ctrl_x.step(zmp_x_now, list(self.zmp_x_queue)[: self.preview_steps])
+        zmp_y_preview = list(self.zmp_y_queue)[: self.preview_steps]
+        zmp_x_preview = list(self.zmp_x_queue)[: self.preview_steps]
+        zmp_y_preview.extend(
+            [zmp_y_preview[-1] if zmp_y_preview else zmp_now]
+            * (self.preview_steps - len(zmp_y_preview))
+        )
+        zmp_x_preview.extend(
+            [zmp_x_preview[-1] if zmp_x_preview else zmp_x_now]
+            * (self.preview_steps - len(zmp_x_preview))
+        )
+        com_y_preview = self.zmp_ctrl.step(zmp_now, zmp_y_preview)
+        com_x_preview = self.zmp_ctrl_x.step(zmp_x_now, zmp_x_preview)
         
         self._com_y = com_y_preview
         self._com_x = com_x_preview

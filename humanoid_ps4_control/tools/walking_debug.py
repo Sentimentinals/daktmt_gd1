@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sensor-port", default="/dev/ttyUSB0")
     parser.add_argument("--sensor-baudrate", type=int, default=115200)
     parser.add_argument("--step-command", type=float, default=0.22)
-    parser.add_argument("--step-time", type=float, default=1.60)
+    parser.add_argument("--step-time", type=float, default=Config().t_step)
     return parser.parse_args()
 
 
@@ -77,13 +77,14 @@ def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
     settings = Config()
     return DynamicWalkingEngine(
         dt=0.04,
-        t_step=max(1.20, args.step_time),
+        t_step=max(0.80, args.step_time),
         t_dbl=settings.t_dbl,
         max_step_len=settings.max_step_len,
         max_turn_step_len=settings.max_turn_step_len,
         max_side_step_len=settings.max_side_step_len,
         step_height=settings.flat_walk_step_height_mm,
         crouch_depth_mm=settings.flat_walk_crouch_depth_mm,
+        crouch_prepare_s=settings.flat_walk_prepare_s,
         zmp_support_ratio=settings.zmp_support_ratio,
         ankle_roll_gain=settings.ankle_roll_gain,
         step_x_ratio=settings.step_x_ratio,
@@ -151,6 +152,8 @@ def make_recovery_controller() -> PushRecoveryController:
 
 
 def phase_label(engine: DynamicWalkingEngine) -> str:
+    if engine.last_phase_mode == "idle" and engine.last_crouch_depth > 0.05:
+        return "PREPARE: both feet down"
     labels = {
         "idle": "DOUBLE SUPPORT",
         "swing": "SWING: shift, raise, advance",
@@ -498,8 +501,12 @@ def main() -> None:
                         )
                     elif recovery_step_active:
                         base_pose = recovery_engine.update(
-                            decision.forward_cmd if decision.start_step else 0.0,
-                            side_cmd=decision.side_cmd if decision.start_step else 0.0,
+                            decision.forward_cmd if recovery_engine.step_count == 0 else 0.0,
+                            side_cmd=(
+                                decision.side_cmd
+                                if recovery_engine.step_count == 0
+                                else 0.0
+                            ),
                         )
                         support_leg = recovery_engine.support_leg
                         swing_leg = recovery_engine.last_swing_leg
