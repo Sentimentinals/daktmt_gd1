@@ -105,8 +105,8 @@ class Config:
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = ROBOT["step_height"]
     flat_walk_step_height_mm: float = 22.0
-    flat_walk_crouch_depth_mm: float = 10.0
-    flat_walk_prepare_s: float = 0.40
+    flat_walk_crouch_depth_mm: float = 12.0
+    flat_walk_prepare_s: float = 0.60
     flat_walk_lift_start_phase: float = 0.14
     flat_walk_swing_advance_end_phase: float = 0.65
     t_step: float = 0.95
