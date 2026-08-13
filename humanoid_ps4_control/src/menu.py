@@ -18,7 +18,7 @@ def run_menu() -> str:
 
     entries = [
         ("Walking & Balance", "Keyboard locomotion with live camera", "walking"),
-        ("Terrain Auto", "Continuous ramp and stair adaptation", "terrain"),
+        ("Terrain Balance", "IMU ankle and hip stabilization", "terrain"),
         ("Exit", "Return all servos to standing", "quit"),
     ]
     selected = 0

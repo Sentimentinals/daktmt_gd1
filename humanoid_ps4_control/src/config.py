@@ -163,30 +163,13 @@ class Config:
     squat_min_depth_ratio: float = 0.20
     squat_target_timeout_s: float = 0.8
 
-    # --- Autonomous Terrain Vision ---
-    terrain_camera_width: int = 480
-    terrain_camera_height: int = 360
-    terrain_camera_fps: int = 10
-    terrain_stable_frames: int = 6
-    terrain_unknown_frames: int = 3
-    terrain_calibration_frames: int = 24
-    terrain_roi_top_ratio: float = 0.28
-    terrain_horizon_delta_ratio: float = 0.055
-    terrain_horizon_up_sign: float = 1.0
-    terrain_min_confidence: float = 0.58
-    terrain_t_step: float = 1.55
-    terrain_t_dbl: float = 0.12
-    terrain_ramp_step_elevation_mm: float = 3.0
-    terrain_stair_rise_mm: float = 12.0
-    terrain_stair_tread_mm: float = 62.0
-    terrain_max_step_elevation_mm: float = 18.0
-    terrain_allow_stairs_down: bool = True
+    # --- Terrain IMU Balance ---
     terrain_emergency_tilt_deg: float = 12.0
     terrain_balance_limit_deg: float = 5.0
     terrain_balance_deadband_deg: float = 0.6
-    terrain_stair_depth_relief_mm: int = 80
+
+    # --- ToF Obstacle Guard ---
     tof_obstacle_stop_mm: int = 350
-    tof_terrain_emergency_stop_mm: int = 160
     tof_obstacle_clear_margin_mm: int = 100
     tof_obstacle_stable_frames: int = 3
 

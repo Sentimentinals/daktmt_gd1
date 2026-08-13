@@ -841,7 +841,7 @@ def main() -> None:
 
                 run_terrain(args)
             except Exception as exc:
-                print(f"[main] Terrain Auto unavailable: {exc}")
+                print(f"[main] Terrain Balance unavailable: {exc}")
                 time.sleep(1.5)
 
 if __name__ == "__main__":
