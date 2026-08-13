@@ -90,6 +90,7 @@ class PushRecoveryConfig:
     recovery_step_side_cmd: float = 0.08
     recovery_step_timeout_s: float = 3.0
     counter_lean_s: float = 0.40
+    counter_lean_deg: float = 1.5
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,8 @@ class RecoveryDecision:
     start_step: bool = False
     forward_cmd: float = 0.0
     side_cmd: float = 0.0
+    target_roll_offset_deg: float = 0.0
+    target_pitch_offset_deg: float = 0.0
 
     @property
     def safe_lower(self) -> bool:
@@ -124,6 +127,8 @@ class PushRecoveryController:
         self._previous_roll: Optional[float] = None
         self._previous_pitch: Optional[float] = None
         self._started_at = 0.0
+        self._counter_roll_deg = 0.0
+        self._counter_pitch_deg = 0.0
 
     def force_safe_lower(self, reason: str) -> RecoveryDecision:
         self.state = RecoveryState.SAFE_LOWER
@@ -135,7 +140,7 @@ class PushRecoveryController:
             self.state = RecoveryState.COUNTER_LEAN
             self.reason = "stomp landed; counter-lean"
             self._started_at = now
-        return RecoveryDecision(self.state, self.reason)
+        return self._decision()
 
     def update(
         self,
@@ -145,6 +150,7 @@ class PushRecoveryController:
         left_contact: bool,
         right_contact: bool,
         single_support: bool = False,
+        walking: bool = False,
         support_leg: str = "double",
         now: float = 0.0,
     ) -> RecoveryDecision:
@@ -181,7 +187,9 @@ class PushRecoveryController:
             if now > 0.0 and now - self._started_at >= cfg.counter_lean_s:
                 self.state = RecoveryState.ANKLE_HIP
                 self.reason = "settling"
-            return RecoveryDecision(self.state, self.reason)
+                self._counter_roll_deg = 0.0
+                self._counter_pitch_deg = 0.0
+            return self._decision()
 
         if single_support and max_tilt >= cfg.recovery_tilt_deg:
             return self.force_safe_lower("single-support tilt")
@@ -189,11 +197,18 @@ class PushRecoveryController:
         step_triggered = max_tilt >= cfg.recovery_tilt_deg and (
             max_rate >= cfg.recovery_rate_deg_s or max_tilt >= cfg.recovery_tilt_deg + 1.0
         )
+        if step_triggered and walking:
+            self.state = RecoveryState.ANKLE_HIP
+            self.reason = "walking ankle/hip correction"
+            return self._decision()
         if step_triggered and both_contact and not single_support:
             self.state = RecoveryState.STOMP
             self.reason = "stomp recovery"
             self._started_at = now
             forward_cmd, side_cmd = self._fall_command(roll_deg, pitch_deg)
+            counter = abs(cfg.counter_lean_deg)
+            self._counter_roll_deg = -counter if roll_deg > 0.0 else counter if roll_deg < 0.0 else 0.0
+            self._counter_pitch_deg = -counter if pitch_deg > 0.0 else counter if pitch_deg < 0.0 else 0.0
             return RecoveryDecision(
                 self.state,
                 self.reason,
@@ -211,6 +226,16 @@ class PushRecoveryController:
         else:
             self.state = RecoveryState.ANKLE_HIP
             self.reason = "settling"
+        return self._decision()
+
+    def _decision(self) -> RecoveryDecision:
+        if self.state is RecoveryState.COUNTER_LEAN:
+            return RecoveryDecision(
+                self.state,
+                self.reason,
+                target_roll_offset_deg=self._counter_roll_deg,
+                target_pitch_offset_deg=self._counter_pitch_deg,
+            )
         return RecoveryDecision(self.state, self.reason)
 
     @staticmethod
@@ -282,10 +307,12 @@ class IMUBalanceController:
         pitch_deg: float,
         dt: float,
         support_leg: str = "double",
+        target_roll_offset_deg: float = 0.0,
+        target_pitch_offset_deg: float = 0.0,
     ) -> Pose:
         cfg = self.config
-        roll_error = angle_error_deg(roll_deg, cfg.target_roll_deg)
-        pitch_error = angle_error_deg(pitch_deg, cfg.target_pitch_deg)
+        roll_error = angle_error_deg(roll_deg, cfg.target_roll_deg + target_roll_offset_deg)
+        pitch_error = angle_error_deg(pitch_deg, cfg.target_pitch_deg + target_pitch_offset_deg)
 
         if abs(roll_error) < cfg.roll_deadband_deg:
             roll_error = 0.0

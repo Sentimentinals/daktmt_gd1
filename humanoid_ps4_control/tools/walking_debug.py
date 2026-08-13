@@ -88,10 +88,10 @@ def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
         ankle_roll_gain=settings.ankle_roll_gain,
         step_x_ratio=settings.step_x_ratio,
         left_swing_x_scale=settings.left_swing_x_scale,
-        left_step_height_scale=1.0,
+        left_step_height_scale=settings.left_step_height_scale,
         landing_gap_mm=settings.landing_gap_mm,
         right_swing_x_scale=settings.right_swing_x_scale,
-        right_step_height_scale=1.0,
+        right_step_height_scale=settings.right_step_height_scale,
         lift_start_phase=settings.flat_walk_lift_start_phase,
         swing_advance_end_phase=settings.flat_walk_swing_advance_end_phase,
         lift_end_phase=settings.lift_end_phase,
@@ -145,6 +145,7 @@ def make_recovery_controller() -> PushRecoveryController:
             recovery_step_side_cmd=settings.push_recovery_step_side_cmd,
             recovery_step_timeout_s=settings.push_recovery_timeout_s,
             counter_lean_s=settings.push_recovery_counter_lean_s,
+            counter_lean_deg=settings.push_recovery_counter_lean_deg,
         )
     )
 
@@ -179,6 +180,8 @@ def apply_imu(
     balance: IMUBalanceController | None,
     support_leg: str,
     last_balance_at: float,
+    target_roll_offset_deg: float = 0.0,
+    target_pitch_offset_deg: float = 0.0,
 ) -> tuple[dict[int, int], float, str | None]:
     if balance is None:
         return pose, last_balance_at, None
@@ -187,7 +190,19 @@ def apply_imu(
     settings = Config()
     if reading is None or not reading.balance_ready(settings.imu_min_gyro_cal, settings.imu_min_accel_cal):
         return pose, now, "IMU: WAITING"
-    return balance.apply(pose, reading.roll_deg, reading.pitch_deg, now - last_balance_at, support_leg), now, None
+    return (
+        balance.apply(
+            pose,
+            reading.roll_deg,
+            reading.pitch_deg,
+            now - last_balance_at,
+            support_leg,
+            target_roll_offset_deg,
+            target_pitch_offset_deg,
+        ),
+        now,
+        None,
+    )
 
 
 def draw(
@@ -438,10 +453,14 @@ def main() -> None:
                 reading = snapshot.imu if snapshot is not None else None
                 if recovery_step_active:
                     support_leg = recovery_engine.support_leg
-                recovery_allowed = mode == "one-foot" or (
-                    mode == "phases" and not phase_running and walking.is_idle_ready()
+                recovery_roll_offset = 0.0
+                recovery_pitch_offset = 0.0
+                recovery_allowed = mode == "one-foot" or mode == "phases"
+                imu_ready = (
+                    reading is not None
+                    and reading.balance_ready(settings.imu_min_gyro_cal, settings.imu_min_accel_cal)
                 )
-                if recovery is not None and reading is not None and recovery_allowed:
+                if recovery is not None and imu_ready and recovery_allowed:
                     now = time.monotonic()
                     left_contact = foot_contact(feet, "left", settings.foot_fsr_contact_threshold)
                     right_contact = foot_contact(feet, "right", settings.foot_fsr_contact_threshold)
@@ -452,10 +471,13 @@ def main() -> None:
                         left_contact,
                         right_contact,
                         single_support=one_foot.running,
+                        walking=mode == "phases" and (phase_running or not walking.is_idle_ready()),
                         support_leg=support_leg,
                         now=now,
                     )
                     recovery_status = f"{decision.state.value}: {decision.reason}"
+                    recovery_roll_offset = decision.target_roll_offset_deg
+                    recovery_pitch_offset = decision.target_pitch_offset_deg
                     if decision.start_step:
                         recovery_engine.reset()
                         recovery_step_active = True
@@ -499,9 +521,28 @@ def main() -> None:
                         elif recovery_engine.is_idle_ready():
                             completed = recovery.complete_step(now)
                             recovery_status = f"{completed.state.value}: {completed.reason}"
+                            recovery_roll_offset = completed.target_roll_offset_deg
+                            recovery_pitch_offset = completed.target_pitch_offset_deg
                             recovery_step_active = False
-                elif recovery is not None and recovery.state is RecoveryState.SAFE_LOWER:
-                    recovery_status = f"{recovery.state.value}: {recovery.reason}"
+                elif recovery is not None and (
+                    recovery_step_active
+                    or one_foot.running
+                    or recovery.state is RecoveryState.SAFE_LOWER
+                ):
+                    now = time.monotonic()
+                    recovery.force_safe_lower("IMU stream lost")
+                    recovery_status = "safe-lower: IMU stream lost"
+                    recovery_step_active = False
+                    recovery_engine.reset()
+                    walking.reset()
+                    one_foot.stop()
+                    one_foot_status = "SAFE LOWER"
+                    base_pose = lower_toward_standing(
+                        last_sent_pose or STANDING,
+                        STANDING,
+                        now - last_balance_at,
+                        settings.push_recovery_lower_rate_pwm_s,
+                    )
 
                 command_pose, last_balance_at, imu_message = apply_imu(
                     base_pose,
@@ -509,6 +550,8 @@ def main() -> None:
                     balance,
                     support_leg,
                     last_balance_at,
+                    recovery_roll_offset,
+                    recovery_pitch_offset,
                 )
                 if imu_message is not None:
                     sensor_status = imu_message

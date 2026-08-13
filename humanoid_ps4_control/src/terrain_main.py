@@ -70,7 +70,6 @@ def _sensor_ready(snapshot: SensorSnapshot, args: Config) -> bool:
         imu is not None
         and imu.balance_ready(args.imu_min_gyro_cal, args.imu_min_accel_cal)
         and snapshot.depth is not None
-        and (not args.sensor_use_foot_fsr or snapshot.feet is not None)
     )
 
 
@@ -108,7 +107,7 @@ def run_terrain(args: Config) -> None:
     )
     controller = TerrainModeController(
         flat_step_len_mm=args.max_step_len,
-        flat_step_height_mm=args.step_height,
+        flat_step_height_mm=args.flat_walk_step_height_mm,
         flat_landing_gap_mm=args.landing_gap_mm,
         ramp_step_elevation_mm=args.terrain_ramp_step_elevation_mm,
         stair_rise_mm=args.terrain_stair_rise_mm,
@@ -190,7 +189,6 @@ def run_terrain(args: Config) -> None:
     fault_reason = ""
     previous_toggle = False
     previous_stop = False
-    last_pose = dict(STANDING)
     reference: Optional[tuple[float, float]] = None
     balance: Optional[IMUBalanceController] = None
     last_balance_t = time.monotonic()
@@ -214,9 +212,9 @@ def run_terrain(args: Config) -> None:
                     BalanceConfig(
                         target_roll_deg=reference[0],
                         target_pitch_deg=reference[1],
-                        max_correction_deg=args.balance_limit_deg,
-                        roll_deadband_deg=args.balance_deadband_deg,
-                        pitch_deadband_deg=args.balance_deadband_deg,
+                        max_correction_deg=args.terrain_balance_limit_deg,
+                        roll_deadband_deg=args.terrain_balance_deadband_deg,
+                        pitch_deadband_deg=args.terrain_balance_deadband_deg,
                     )
                 )
             else:
@@ -274,7 +272,8 @@ def run_terrain(args: Config) -> None:
                     fault_latched = False
                     fault_reason = ""
                     engine.reset()
-                    last_pose = dict(STANDING)
+                    if balance is not None:
+                        balance.reset()
                     backend.send(STANDING, duration_ms=800, force=True)
                     print("[terrain] Reset to STANDING. AUTO is OFF.")
                 previous_stop = stop_pressed
@@ -294,7 +293,9 @@ def run_terrain(args: Config) -> None:
                         armed = False
 
                 if fault_latched:
-                    pose = dict(last_pose)
+                    pose = engine.update(0.0)
+                    if engine.is_idle_ready():
+                        pose = dict(STANDING)
                     status = f"FAULT: {fault_reason}"
                 else:
                     command = 0.0
@@ -322,8 +323,6 @@ def run_terrain(args: Config) -> None:
                         )
 
                 backend.send(pose, duration_ms=args.update_ms)
-                last_pose = dict(pose)
-
                 if frame is not None and observation is not None:
                     preview = perception.draw(frame, observation)
                     preview = cv2.cvtColor(cv2.flip(preview, 1), cv2.COLOR_BGR2RGB)
@@ -349,7 +348,7 @@ def run_terrain(args: Config) -> None:
                 backend.send(STANDING, duration_ms=args.stop_ms, force=True)
                 time.sleep(args.stop_ms / 1000.0)
             else:
-                print(f"[terrain] Holding last pose because of fault: {fault_reason}. Support robot before power-off.")
+                print(f"[terrain] Fault remains latched: {fault_reason}. Support robot and press C before power-off.")
     except KeyboardInterrupt:
         print("\n[terrain] Interrupted. AUTO stopped.")
     finally:

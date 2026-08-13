@@ -112,10 +112,10 @@ def run_keyboard(args: Config) -> None:
         ankle_roll_gain=args.ankle_roll_gain,
         step_x_ratio=args.step_x_ratio,
         left_swing_x_scale=args.left_swing_x_scale,
-        left_step_height_scale=1.0,
+        left_step_height_scale=args.left_step_height_scale,
         landing_gap_mm=args.landing_gap_mm,
         right_swing_x_scale=args.right_swing_x_scale,
-        right_step_height_scale=1.0,
+        right_step_height_scale=args.right_step_height_scale,
         lift_start_phase=args.flat_walk_lift_start_phase,
         swing_advance_end_phase=args.flat_walk_swing_advance_end_phase,
         lift_end_phase=args.lift_end_phase,
@@ -283,6 +283,7 @@ def run_keyboard(args: Config) -> None:
                                 recovery_step_side_cmd=args.push_recovery_step_side_cmd,
                                 recovery_step_timeout_s=args.push_recovery_timeout_s,
                                 counter_lean_s=args.push_recovery_counter_lean_s,
+                                counter_lean_deg=args.push_recovery_counter_lean_deg,
                             )
                         )
                     print(
@@ -642,14 +643,18 @@ def run_keyboard(args: Config) -> None:
                                 support_leg = "double"
                             else:
                                 support_leg = engine.support_leg
+                            recovery_roll_offset = 0.0
+                            recovery_pitch_offset = 0.0
+                            walking_active = (
+                                not recovery_step_active
+                                and not single_support.running
+                                and not squat_requested
+                                and (motion_requested or not engine.is_idle_ready())
+                            )
                             recovery_allowed = (
                                 recovery_step_active
                                 or single_support.running
-                                or (
-                                    (standing_hold_active or engine.is_idle_ready())
-                                    and not motion_requested
-                                    and not arm_dance.running
-                                )
+                                or (not arm_dance.running and not squat_requested)
                             )
                             if recovery is not None and recovery_allowed:
                                 feet = sensor_snapshot.feet if sensor_snapshot is not None else None
@@ -668,10 +673,13 @@ def run_keyboard(args: Config) -> None:
                                     left_contact,
                                     right_contact,
                                     single_support=single_support.running,
+                                    walking=walking_active,
                                     support_leg=support_leg,
                                     now=now,
                                 )
                                 recovery_status = f"{decision.state.value}: {decision.reason}"
+                                recovery_roll_offset = decision.target_roll_offset_deg
+                                recovery_pitch_offset = decision.target_pitch_offset_deg
                                 if decision.start_step:
                                     recovery_engine.reset()
                                     recovery_step_active = True
@@ -716,6 +724,8 @@ def run_keyboard(args: Config) -> None:
                                     elif recovery_engine.is_idle_ready():
                                         completed = recovery.complete_step(now)
                                         recovery_status = f"{completed.state.value}: {completed.reason}"
+                                        recovery_roll_offset = completed.target_roll_offset_deg
+                                        recovery_pitch_offset = completed.target_pitch_offset_deg
                                         recovery_step_active = False
                             pose = balance.apply(
                                 pose,
@@ -723,11 +733,37 @@ def run_keyboard(args: Config) -> None:
                                 pitch_deg=reading.pitch_deg,
                                 dt=balance_dt,
                                 support_leg=support_leg,
+                                target_roll_offset_deg=recovery_roll_offset,
+                                target_pitch_offset_deg=recovery_pitch_offset,
                             )
                             balance_has_valid_imu = True
-                        elif balance_has_valid_imu:
-                            balance.reset()
-                            balance_has_valid_imu = False
+                        else:
+                            sensor_safe_lower = (
+                                recovery_step_active
+                                or single_support.running
+                                or (
+                                    recovery is not None
+                                    and recovery.state is RecoveryState.SAFE_LOWER
+                                )
+                            )
+                            if sensor_safe_lower:
+                                if recovery is not None:
+                                    recovery.force_safe_lower("IMU stream lost")
+                                recovery_status = "safe-lower: IMU stream lost"
+                                single_support.stop()
+                                recovery_step_active = False
+                                recovery_engine.reset()
+                                engine.reset()
+                                standing_hold_active = True
+                                pose = lower_toward_standing(
+                                    last_pose,
+                                    STANDING,
+                                    balance_dt,
+                                    args.push_recovery_lower_rate_pwm_s,
+                                )
+                            if balance_has_valid_imu:
+                                balance.reset()
+                                balance_has_valid_imu = False
                     elif balance is not None and balance_has_valid_imu:
                         balance.reset()
                         balance_has_valid_imu = False

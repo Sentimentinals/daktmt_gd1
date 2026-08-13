@@ -23,11 +23,11 @@ GAIT = {
     "ankle_roll_gain": -0.80,
     "step_x_ratio": 1.60,
     "left_swing_x_scale": 1.0,
-    "left_step_height_scale": 1.7,
+    "left_step_height_scale": 1.0,
     "landing_gap_mm": 48.0,
     "right_swing_x_scale": 1.0,
-    "right_step_height_scale": 1.3,
-    "lift_start_phase": 0.00,
+    "right_step_height_scale": 1.0,
+    "lift_start_phase": 0.14,
     "swing_advance_end_phase": 0.62,
     "lift_end_phase": 1.0,
     "landing_roll_release_start": 0.42,
@@ -110,7 +110,7 @@ class Config:
     step_height: float = ROBOT["step_height"]
     flat_walk_step_height_mm: float = 22.0
     flat_walk_crouch_depth_mm: float = 10.0
-    flat_walk_lift_start_phase: float = 0.0
+    flat_walk_lift_start_phase: float = 0.18
     flat_walk_swing_advance_end_phase: float = 0.65
     t_step: float = 0.95
     t_dbl: float = 0.12
@@ -190,6 +190,8 @@ class Config:
     terrain_max_step_elevation_mm: float = 18.0
     terrain_allow_stairs_down: bool = True
     terrain_emergency_tilt_deg: float = 12.0
+    terrain_balance_limit_deg: float = 5.0
+    terrain_balance_deadband_deg: float = 0.6
     terrain_stair_depth_relief_mm: int = 80
     tof_obstacle_stop_mm: int = 350
     tof_terrain_emergency_stop_mm: int = 160
@@ -237,6 +239,7 @@ class Config:
     push_recovery_step_height_mm: float = 8.0
     push_recovery_timeout_s: float = 3.0
     push_recovery_counter_lean_s: float = 0.40
+    push_recovery_counter_lean_deg: float = 1.5
     push_recovery_lower_rate_pwm_s: float = 300.0
 
     # --- Sensor Feedback ---
