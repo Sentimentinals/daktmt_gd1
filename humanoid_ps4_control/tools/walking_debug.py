@@ -79,16 +79,14 @@ def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
         dt=0.04,
         t_step=max(0.80, args.step_time),
         t_dbl=settings.t_dbl,
-        max_step_len=settings.max_step_len,
+        max_step_len=settings.flat_walk_step_length_mm,
         max_turn_step_len=settings.max_turn_step_len,
         max_side_step_len=settings.max_side_step_len,
         step_height=settings.flat_walk_step_height_mm,
-        crouch_depth_mm=settings.flat_walk_crouch_depth_mm,
-        crouch_prepare_s=settings.flat_walk_prepare_s,
         zmp_support_ratio=settings.zmp_support_ratio,
         ankle_roll_gain=settings.ankle_roll_gain,
-        step_x_ratio=settings.step_x_ratio,
-        landing_gap_mm=settings.landing_gap_mm,
+        step_x_ratio=1.0,
+        landing_gap_mm=settings.flat_walk_step_length_mm,
         lift_start_phase=settings.flat_walk_lift_start_phase,
         swing_advance_end_phase=settings.flat_walk_swing_advance_end_phase,
         lift_end_phase=settings.lift_end_phase,
@@ -148,8 +146,6 @@ def make_recovery_controller() -> PushRecoveryController:
 
 
 def phase_label(engine: DynamicWalkingEngine) -> str:
-    if engine.last_phase_mode == "idle" and engine.last_crouch_depth > 0.05:
-        return "PREPARE: both feet down"
     labels = {
         "idle": "DOUBLE SUPPORT",
         "swing": "SWING: shift, raise, advance",
@@ -237,7 +233,7 @@ def draw(
             ("Current phase", phase_label(engine)),
             ("Support leg", engine.support_leg),
             ("Swing leg", engine.last_swing_leg),
-            ("Lift / crouch", f"{engine.last_lift_factor:.2f} / {engine.last_crouch_depth:.1f} mm"),
+            ("Lift", f"{engine.last_lift_factor:.2f}"),
             ("Landing progress", f"{engine.last_landing_progress:.2f}"),
             ("Direction", "FORWARD" if direction > 0 else "BACKWARD"),
             ("Execution", state),

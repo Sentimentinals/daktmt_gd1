@@ -104,12 +104,11 @@ class Config:
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = ROBOT["step_height"]
-    flat_walk_step_height_mm: float = 22.0
-    flat_walk_crouch_depth_mm: float = 12.0
-    flat_walk_prepare_s: float = 0.60
-    flat_walk_lift_start_phase: float = 0.14
-    flat_walk_swing_advance_end_phase: float = 0.65
-    t_step: float = 0.95
+    flat_walk_step_length_mm: float = 18.0
+    flat_walk_step_height_mm: float = 18.0
+    flat_walk_lift_start_phase: float = 0.22
+    flat_walk_swing_advance_end_phase: float = 0.60
+    t_step: float = 1.15
     t_dbl: float = 0.12
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
