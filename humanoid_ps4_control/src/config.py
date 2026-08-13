@@ -22,11 +22,7 @@ GAIT = {
     "zmp_support_ratio": 0.65,
     "ankle_roll_gain": -0.80,
     "step_x_ratio": 1.60,
-    "left_swing_x_scale": 1.0,
-    "left_step_height_scale": 1.0,
     "landing_gap_mm": 48.0,
-    "right_swing_x_scale": 1.0,
-    "right_step_height_scale": 1.0,
     "lift_start_phase": 0.14,
     "swing_advance_end_phase": 0.62,
     "lift_end_phase": 1.0,
@@ -118,10 +114,6 @@ class Config:
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
     step_x_ratio: float = GAIT["step_x_ratio"]
-    left_swing_x_scale: float = GAIT["left_swing_x_scale"]
-    left_step_height_scale: float = GAIT["left_step_height_scale"]
-    right_swing_x_scale: float = GAIT["right_swing_x_scale"]
-    right_step_height_scale: float = GAIT["right_step_height_scale"]
     landing_gap_mm: float = GAIT["landing_gap_mm"]
     lift_start_phase: float = GAIT["lift_start_phase"]
     swing_advance_end_phase: float = GAIT["swing_advance_end_phase"]
