@@ -101,7 +101,7 @@ def compute_pose(
         signed_support_y = support_y if support_leg == "right" else -support_y
         shift_ankle_roll = math.degrees(math.atan2(signed_support_y, roll_height)) * ankle_gain
         right_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "right" else 0.0)
-        left_ankle_roll = STAND_ANG["hip_roll"] + (-shift_ankle_roll if support_leg == "left" else 0.0)
+        left_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "left" else 0.0)
     else:
         ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
         if support_leg == "right":
@@ -769,6 +769,7 @@ class DynamicWalkingEngine:
             old_support_leg = "right" if swing_leg_now == "left" else "left"
             if phase_mode_now in ("swing", "land"):
                 support_leg_for_pose = old_support_leg
+        self.support_leg = support_leg_for_pose
 
         zmp_y_preview = list(self.zmp_y_queue)[: self.preview_steps]
         zmp_x_preview = list(self.zmp_x_queue)[: self.preview_steps]
