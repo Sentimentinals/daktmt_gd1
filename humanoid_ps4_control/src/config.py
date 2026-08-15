@@ -106,7 +106,7 @@ class Config:
     step_height: float = ROBOT["step_height"]
     flat_walk_step_length_mm: float = 18.0
     flat_walk_step_height_mm: float = 18.0
-    flat_walk_lift_start_phase: float = 0.22
+    flat_walk_lift_start_phase: float = 0.30
     flat_walk_swing_advance_end_phase: float = 0.60
     t_step: float = 1.15
     t_dbl: float = 0.12
