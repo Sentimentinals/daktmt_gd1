@@ -157,11 +157,6 @@ class Config:
     squat_max_depth_mm: float = 40.0
     squat_depth_rate_mm_s: float = 35.0
     squat_max_pwm_per_frame: float = 28.0
-    squat_min_object_distance_mm: int = 180
-    squat_max_object_distance_mm: int = 650
-    squat_camera_center_tolerance: float = 0.28
-    squat_min_depth_ratio: float = 0.20
-    squat_target_timeout_s: float = 0.8
 
     # --- Terrain IMU Balance ---
     terrain_emergency_tilt_deg: float = 12.0

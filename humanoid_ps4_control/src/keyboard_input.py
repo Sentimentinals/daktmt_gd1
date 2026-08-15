@@ -282,20 +282,6 @@ class LiveCameraPreview:
                     (58, 210, 148),
                 )
                 self.screen.blit(confidence, (x1, max(2, y1 - 24)))
-            for item in person_frame.objects:
-                x1, y1, x2, y2 = item.box
-                self._pygame.draw.rect(
-                    self.screen,
-                    (245, 190, 72),
-                    self._pygame.Rect(x1, y1, x2 - x1, y2 - y1),
-                    2,
-                )
-                label = self.font.render(
-                    f"{item.label.upper()} {item.confidence:.2f}",
-                    True,
-                    (245, 190, 72),
-                )
-                self.screen.blit(label, (x1, max(2, y1 - 24)))
         label = self.font.render(status, True, (238, 245, 248))
         panel = self._pygame.Surface((label.get_width() + 24, label.get_height() + 12), self._pygame.SRCALPHA)
         panel.fill((10, 14, 18, 205))

@@ -21,7 +21,7 @@ def run_keyboard(args: Config) -> None:
       C          : stop and hold standing
       E/T        : reset walking engine
       Y/N        : follow detected person / ignore or stop following
-      R          : hold squat; camera/ToF adjust depth when available
+      R          : hold squat
       O/Escape   : return to menu
       Q          : quit
     """
@@ -32,7 +32,6 @@ def run_keyboard(args: Config) -> None:
         PersonDetector,
         PersonFollowController,
         PersonFrame,
-        SquatTargetController,
     )
     from .walking_engine import (
         AdaptiveSquatEngine,
@@ -68,7 +67,7 @@ def run_keyboard(args: Config) -> None:
             confidence=args.person_detect_confidence,
             detect_every_frames=args.person_detect_every_frames,
         )
-        print("[main] MobileNet-SSD person/object detector ready.")
+        print("[main] MobileNet-SSD person detector ready.")
     except Exception as exc:
         print(f"[main] Person detection unavailable: {exc}")
 
@@ -91,14 +90,6 @@ def run_keyboard(args: Config) -> None:
         clear_margin_mm=args.tof_obstacle_clear_margin_mm,
         stable_frames=args.tof_obstacle_stable_frames,
     )
-    squat_target = SquatTargetController(
-        min_distance_mm=args.squat_min_object_distance_mm,
-        max_distance_mm=args.squat_max_object_distance_mm,
-        camera_center_tolerance=args.squat_camera_center_tolerance,
-        min_depth_ratio=args.squat_min_depth_ratio,
-        target_timeout_s=args.squat_target_timeout_s,
-    )
-
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
         t_step=args.t_step,
@@ -523,12 +514,8 @@ def run_keyboard(args: Config) -> None:
                         if busy:
                             squat_status = "BUSY"
                         else:
-                            target_frame = camera_preview.person_frame() or PersonFrame()
-                            depth = sensor_snapshot.depth if sensor_snapshot is not None else None
-                            squat_ratio, squat_status = squat_target.command(depth, target_frame)
-                            if squat_ratio <= 0.0:
-                                squat_ratio = 1.0
-                                squat_status = "MANUAL"
+                            squat_ratio = 1.0
+                            squat_status = "MANUAL"
                             if squat_engine.is_idle():
                                 squat_engine.reset(last_pose)
                             squat_requested = True
