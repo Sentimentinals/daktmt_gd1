@@ -195,8 +195,8 @@ class Config:
     imu_yaw_sign: float = 1.0
     imu_vertical_mount: bool = True
     imu_board_face_sign: float = 1.0  # +Z/component side faces robot front; use -1 if it faces rear
-    balance_limit_deg: float = 2.0
-    balance_deadband_deg: float = 0.8
+    balance_limit_deg: float = 6.0
+    balance_deadband_deg: float = 0.4
     imu_reference_seconds: float = 1.5
     imu_reference_timeout_s: float = 8.0
     imu_reference_max_rms_deg: float = 2.0

@@ -142,9 +142,11 @@ def run_keyboard(args: Config) -> None:
         dt=args.update_ms / 1000.0,
         t_step=args.push_recovery_step_time_s,
         t_dbl=args.t_dbl,
-        max_step_len=args.max_step_len,
+        max_step_len=args.flat_walk_step_length_mm,
         max_side_step_len=args.max_side_step_len,
         step_height=args.push_recovery_step_height_mm,
+        step_x_ratio=1.0,
+        landing_gap_mm=0.0,
         command_rate_limit=1000.0,
     )
     arm_dance = ArmDanceEngine(
@@ -235,16 +237,7 @@ def run_keyboard(args: Config) -> None:
         with backend:
             backend.send(STANDING, duration_ms=1200, force=True)
             time.sleep(1.2)
-            initial_imu = sensor_hub.read().imu if sensor_hub is not None else None
-            sensor_start_deadline = time.monotonic() + 0.5
-            while (
-                sensor_hub is not None
-                and initial_imu is None
-                and time.monotonic() < sensor_start_deadline
-            ):
-                time.sleep(0.02)
-                initial_imu = sensor_hub.read().imu
-            if args.imu_balance and initial_imu is not None:
+            if args.imu_balance and sensor_hub is not None and args.sensor_use_imu:
                 print("[main] Keep the robot upright and still while IMU reference is captured.")
                 imu_reference = sensor_hub.capture_imu_reference(
                     sample_seconds=args.imu_reference_seconds,
@@ -286,7 +279,7 @@ def run_keyboard(args: Config) -> None:
                         f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
                     )
             elif args.imu_balance:
-                print("[main] IMU not ready at startup. Manual keyboard control remains enabled without balance.")
+                print("[main] IMU unavailable. Manual keyboard control remains enabled without balance.")
             if not reader.init():
                 raise RuntimeError("pygame keyboard control is unavailable")
             camera_ready = camera_preview.start()
@@ -636,27 +629,12 @@ def run_keyboard(args: Config) -> None:
                                 or (not arm_dance.running and not squat_requested)
                             )
                             if recovery is not None and recovery_allowed:
-                                feet = sensor_snapshot.feet if sensor_snapshot is not None else None
-                                left_contact = (
-                                    feet is not None
-                                    and feet.left_force >= args.foot_fsr_contact_threshold
-                                )
-                                right_contact = (
-                                    feet is not None
-                                    and feet.right_force >= args.foot_fsr_contact_threshold
-                                )
-                                if single_support.active:
-                                    left_contact = True
-                                    right_contact = True
                                 decision = recovery.update(
                                     -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
                                     -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
                                     balance_dt,
-                                    left_contact,
-                                    right_contact,
                                     single_support=single_support.active,
                                     walking=walking_active,
-                                    support_leg=support_leg,
                                     now=now,
                                 )
                                 recovery_status = f"{decision.state.value}: {decision.reason}"
@@ -691,23 +669,7 @@ def run_keyboard(args: Config) -> None:
                                         ),
                                     )
                                     support_leg = recovery_engine.support_leg
-                                    swing_leg = recovery_engine.last_swing_leg
-                                    if (
-                                        recovery_engine.last_phase_mode == "land"
-                                        and recovery_engine.last_landing_progress >= 0.85
-                                        and swing_leg in ("left", "right")
-                                        and not (left_contact if swing_leg == "left" else right_contact)
-                                    ):
-                                        recovery.force_safe_lower("swing FSR did not contact")
-                                        recovery_status = "safe-lower: swing FSR did not contact"
-                                        recovery_step_active = False
-                                        pose = lower_toward_standing(
-                                            last_pose,
-                                            STANDING,
-                                            balance_dt,
-                                            args.push_recovery_lower_rate_pwm_s,
-                                        )
-                                    elif recovery_engine.is_idle_ready():
+                                    if recovery_engine.is_idle_ready():
                                         completed = recovery.complete_step(now)
                                         recovery_status = f"{completed.state.value}: {completed.reason}"
                                         recovery_roll_offset = completed.target_roll_offset_deg

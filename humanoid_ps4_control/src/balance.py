@@ -111,10 +111,8 @@ class RecoveryDecision:
 class PushRecoveryController:
     """Safety state machine around the bounded ankle/hip stabilizer.
 
-    It does not generate servo corrections itself.  The caller keeps the
-    existing IMU PID post-IK and runs a short gait step only after this class
-    confirms that both foot FSRs are present.  This keeps knees and swing
-    trajectories under the walking engine rather than under IMU feedback.
+    It does not generate servo corrections itself. The caller keeps the IMU
+    PID post-IK and uses the walking engine for the short recovery step.
     """
 
     def __init__(self, config: Optional[PushRecoveryConfig] = None) -> None:
@@ -153,11 +151,8 @@ class PushRecoveryController:
         roll_deg: float,
         pitch_deg: float,
         dt: float,
-        left_contact: bool,
-        right_contact: bool,
         single_support: bool = False,
         walking: bool = False,
-        support_leg: str = "double",
         now: float = 0.0,
     ) -> RecoveryDecision:
         cfg = self.config
@@ -166,30 +161,21 @@ class PushRecoveryController:
         pitch_rate = self._rate(pitch_deg, self._previous_pitch, dt)
         self._previous_roll = roll_deg
         self._previous_pitch = pitch_deg
-
-        if self.state is RecoveryState.SAFE_LOWER:
-            return self._decision()
-
         max_tilt = max(abs(roll_deg), abs(pitch_deg))
         max_rate = max(abs(roll_rate), abs(pitch_rate))
-        support_contact = left_contact if support_leg == "left" else right_contact
-        both_contact = left_contact and right_contact
+
+        if self.state is RecoveryState.SAFE_LOWER:
+            if max_tilt <= cfg.settle_tilt_deg:
+                self.reset()
+            return self._decision()
 
         if max_tilt >= cfg.safe_lower_tilt_deg:
             return self.force_safe_lower("tilt limit")
-        if single_support and not support_contact:
-            return self.force_safe_lower("support FSR lost")
         if self.state is RecoveryState.STOMP:
-            if support_leg in ("left", "right") and not support_contact:
-                return self.force_safe_lower("support FSR lost during stomp")
-            if support_leg == "double" and not both_contact:
-                return self.force_safe_lower("foot FSR unavailable during stomp")
             if now > 0.0 and now - self._started_at > cfg.recovery_step_timeout_s:
                 return self.force_safe_lower("stomp timeout")
             return self._decision()
         if self.state is RecoveryState.COUNTER_LEAN:
-            if not both_contact:
-                return self.force_safe_lower("foot FSR unavailable during counter-lean")
             if now > 0.0 and now - self._started_at >= cfg.counter_lean_s:
                 self.state = RecoveryState.ANKLE_HIP
                 self.reason = "settling"
@@ -207,7 +193,7 @@ class PushRecoveryController:
             self.state = RecoveryState.ANKLE_HIP
             self.reason = "walking ankle/hip correction"
             return self._decision()
-        if step_triggered and both_contact and not single_support:
+        if step_triggered and not single_support:
             self.state = RecoveryState.STOMP
             self.reason = "stomp recovery"
             self._started_at = now
@@ -227,7 +213,7 @@ class PushRecoveryController:
 
         if max_tilt >= cfg.warning_tilt_deg:
             self.state = RecoveryState.ANKLE_HIP
-            self.reason = "FSR recovery blocked" if not both_contact else "ankle/hip correction"
+            self.reason = "ankle/hip correction"
         elif max_tilt <= cfg.settle_tilt_deg:
             self.state = RecoveryState.STABLE
             self.reason = "stable"

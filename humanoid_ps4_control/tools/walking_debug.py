@@ -119,9 +119,11 @@ def make_recovery_engine() -> DynamicWalkingEngine:
         dt=0.04,
         t_step=settings.push_recovery_step_time_s,
         t_dbl=settings.t_dbl,
-        max_step_len=settings.max_step_len,
+        max_step_len=settings.flat_walk_step_length_mm,
         max_side_step_len=settings.max_side_step_len,
         step_height=settings.push_recovery_step_height_mm,
+        step_x_ratio=1.0,
+        landing_gap_mm=0.0,
         command_rate_limit=1000.0,
     )
     return engine
@@ -160,13 +162,6 @@ def foot_text(feet: FootForceReading | None, leg: str) -> str:
     force = feet.left_force if leg == "left" else feet.right_force
     raw = feet.left_raw if leg == "left" else feet.right_raw
     return f"{force:.2f}  raw={raw if raw is not None else '-'}"
-
-
-def foot_contact(feet: FootForceReading | None, leg: str, threshold: float) -> bool:
-    if feet is None:
-        return False
-    force = feet.left_force if leg == "left" else feet.right_force
-    return force >= threshold
 
 
 def apply_imu(
@@ -297,7 +292,7 @@ def main() -> None:
     last_balance_at = time.monotonic()
     last_sent_pose = None
     one_foot_status = "READY: select support L/R"
-    sensor_status = "SENSORS: OFF (press I to connect IMU + foot FSR)"
+    sensor_status = "SENSORS: OFF (press I for IMU; FSR is optional telemetry)"
 
     try:
         with SerialRTBackend(args.port, args.baudrate) as backend:
@@ -353,7 +348,7 @@ def main() -> None:
                                     recovery = make_recovery_controller()
                                     last_balance_at = time.monotonic()
                                     recovery_status = "STABLE"
-                                    sensor_status = "SENSORS: READY (IMU + 2 foot FSR)"
+                                    sensor_status = "IMU READY (FSR is optional telemetry)"
                                     one_foot_status = "READY: select support L/R"
                                 except Exception as exc:
                                     sensor_status = f"SENSORS: OFF - {exc}"
@@ -437,20 +432,12 @@ def main() -> None:
                 )
                 if recovery is not None and imu_ready and recovery_allowed:
                     now = time.monotonic()
-                    left_contact = foot_contact(feet, "left", settings.foot_fsr_contact_threshold)
-                    right_contact = foot_contact(feet, "right", settings.foot_fsr_contact_threshold)
-                    if one_foot.active:
-                        left_contact = True
-                        right_contact = True
                     decision = recovery.update(
                         -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
                         -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
                         now - last_balance_at,
-                        left_contact,
-                        right_contact,
                         single_support=one_foot.active,
                         walking=mode == "phases" and (phase_running or not walking.is_idle_ready()),
-                        support_leg=support_leg,
                         now=now,
                     )
                     recovery_status = f"{decision.state.value}: {decision.reason}"
@@ -484,23 +471,7 @@ def main() -> None:
                             ),
                         )
                         support_leg = recovery_engine.support_leg
-                        swing_leg = recovery_engine.last_swing_leg
-                        if (
-                            recovery_engine.last_phase_mode == "land"
-                            and recovery_engine.last_landing_progress >= 0.85
-                            and swing_leg in ("left", "right")
-                            and not foot_contact(feet, swing_leg, settings.foot_fsr_contact_threshold)
-                        ):
-                            recovery.force_safe_lower("swing FSR did not contact")
-                            recovery_status = "safe-lower: swing FSR did not contact"
-                            recovery_step_active = False
-                            base_pose = lower_toward_standing(
-                                last_sent_pose or STANDING,
-                                STANDING,
-                                now - last_balance_at,
-                                settings.push_recovery_lower_rate_pwm_s,
-                            )
-                        elif recovery_engine.is_idle_ready():
+                        if recovery_engine.is_idle_ready():
                             completed = recovery.complete_step(now)
                             recovery_status = f"{completed.state.value}: {completed.reason}"
                             recovery_roll_offset = completed.target_roll_offset_deg
