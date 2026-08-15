@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 
-def run_menu() -> str:
-    """Show the top-level mode picker and return walking, terrain, or quit."""
+def _run_picker(title: str, entries: list[tuple[str, str, str]]) -> str:
     try:
         import pygame
     except ImportError as exc:
@@ -16,11 +15,6 @@ def run_menu() -> str:
     item_font = pygame.font.Font(None, 32)
     detail_font = pygame.font.Font(None, 22)
 
-    entries = [
-        ("Walking & Balance", "Keyboard locomotion with live camera", "walking"),
-        ("Terrain Balance", "IMU ankle and hip stabilization", "terrain"),
-        ("Exit", "Return all servos to standing", "quit"),
-    ]
     selected = 0
 
     try:
@@ -35,10 +29,8 @@ def run_menu() -> str:
                         selected = (selected + 1) % len(entries)
                     elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                         return entries[selected][2]
-                    elif event.key == pygame.K_t:
-                        return "terrain"
                     elif event.key in (pygame.K_q, pygame.K_ESCAPE):
-                        return "quit"
+                        return "back"
                 if event.type == pygame.MOUSEMOTION:
                     for index in range(len(entries)):
                         if pygame.Rect(70, 105 + index * 82, 540, 64).collidepoint(event.pos):
@@ -49,8 +41,8 @@ def run_menu() -> str:
                         return entries[selected][2]
 
             screen.fill((18, 22, 28))
-            title = title_font.render("Humanoid Robot", True, (238, 242, 246))
-            screen.blit(title, (70, 42))
+            title_surface = title_font.render(title, True, (238, 242, 246))
+            screen.blit(title_surface, (70, 42))
 
             for index, (label, detail, _) in enumerate(entries):
                 rect = pygame.Rect(70, 105 + index * 82, 540, 64)
@@ -64,3 +56,26 @@ def run_menu() -> str:
             clock.tick(30)
     finally:
         pygame.quit()
+
+
+def run_menu() -> str:
+    return _run_picker(
+        "Humanoid Robot",
+        [
+            ("Locomotion", "Walking, recovery and terrain balance", "locomotion"),
+            ("Person Follow", "Detect and follow one person", "follow"),
+            ("Pick Up Positioning", "Manual squat positioning", "pickup"),
+            ("Exit", "Return all servos to standing", "quit"),
+        ],
+    )
+
+
+def run_locomotion_menu() -> str:
+    return _run_picker(
+        "Locomotion",
+        [
+            ("Walking & Recovery", "Keyboard gait and push recovery", "walking"),
+            ("Terrain Balance", "IMU ankle and hip stabilization", "terrain"),
+            ("Back", "Return to function menu", "back"),
+        ],
+    )

@@ -27,8 +27,15 @@ class KeyboardState:
 class KeyboardReader:
     """Poll keyboard commands through a focused pygame window."""
 
-    def __init__(self, poll_rate_hz: int = 50) -> None:
+    def __init__(
+        self,
+        poll_rate_hz: int = 50,
+        caption: str = "Humanoid Keyboard Control",
+        controls: str | None = None,
+    ) -> None:
         self.poll_rate_hz = max(1, poll_rate_hz)
+        self.caption = caption
+        self.controls = controls
         self._pygame_ready = False
 
     def init(self) -> bool:
@@ -41,13 +48,10 @@ class KeyboardReader:
         pygame.init()
         if pygame.display.get_surface() is None:
             pygame.display.set_mode((520, 170))
-        pygame.display.set_caption("Humanoid Keyboard Control")
+        pygame.display.set_caption(self.caption)
         self._pygame_ready = True
-        print(
-            "[KeyboardReader] Up/Down walk, Left/Right turn (head leads), J/K side, "
-            "X one-foot balance, L/M dance, G/B get-up, Y follow, N ignore/stop follow, "
-            "R hold squat, C stop, E/T reset, O/Esc menu."
-        )
+        if self.controls:
+            print(f"[KeyboardReader] {self.controls}")
         return True
 
     @staticmethod

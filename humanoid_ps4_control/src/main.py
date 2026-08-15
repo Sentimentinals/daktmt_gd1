@@ -20,21 +20,11 @@ def run_keyboard(args: Config) -> None:
       B          : run back get-up sequence
       C          : stop and hold standing
       E/T        : reset walking engine
-      Y/N        : follow detected person / ignore or stop following
-      R          : hold squat
       O/Escape   : return to menu
       Q          : quit
     """
-    from pathlib import Path
-
     from .keyboard_input import KeyboardReader, LiveCameraPreview
-    from .person_follow import (
-        PersonDetector,
-        PersonFollowController,
-        PersonFrame,
-    )
     from .walking_engine import (
-        AdaptiveSquatEngine,
         DynamicWalkingEngine,
         SingleSupportTestEngine,
         STANDING,
@@ -55,35 +45,20 @@ def run_keyboard(args: Config) -> None:
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
 
     poll_hz = int(1000 / args.update_ms)
-    reader = KeyboardReader(poll_rate_hz=poll_hz)
-    package_root = Path(__file__).resolve().parent.parent
-    prototxt_path = package_root / args.person_detect_prototxt
-    model_path = package_root / args.person_detect_model
-    detector = None
-    try:
-        detector = PersonDetector(
-            prototxt_path=str(prototxt_path.resolve()),
-            model_path=str(model_path.resolve()),
-            confidence=args.person_detect_confidence,
-            detect_every_frames=args.person_detect_every_frames,
-        )
-        print("[main] MobileNet-SSD person detector ready.")
-    except Exception as exc:
-        print(f"[main] Person detection unavailable: {exc}")
+    reader = KeyboardReader(
+        poll_rate_hz=poll_hz,
+        caption="Humanoid Walking & Recovery",
+        controls=(
+            "Up/Down walk, Left/Right turn, J/K side, X one-foot balance, "
+            "L/M dance, G/B get-up, C stop, E/T reset, O/Esc menu."
+        ),
+    )
 
     camera_preview = LiveCameraPreview(
         width=args.vision_camera_width,
         height=args.vision_camera_height,
         fps=args.vision_fps,
-        detector=detector,
-        stable_frames=args.person_detect_stable_frames,
-    )
-    person_follow = PersonFollowController(
-        turn_deadband=args.person_follow_turn_deadband,
-        stop_height_ratio=args.person_follow_stop_height_ratio,
-        lost_timeout_s=args.person_follow_lost_timeout_s,
-        forward_speed=args.person_follow_speed,
-        turn_speed=args.person_follow_turn_speed,
+        detector=None,
     )
     obstacle_guard = DepthObstacleGuard(
         stop_distance_mm=args.tof_obstacle_stop_mm,
@@ -122,13 +97,6 @@ def run_keyboard(args: Config) -> None:
         arm_lift_pwm=args.one_foot_arm_lift_pwm,
         ramp_s=args.one_foot_ramp_s,
     )
-    squat_engine = AdaptiveSquatEngine(
-        dt=args.update_ms / 1000.0,
-        min_depth_mm=args.squat_min_depth_mm,
-        max_depth_mm=args.squat_max_depth_mm,
-        depth_rate_mm_s=args.squat_depth_rate_mm_s,
-        max_pwm_per_frame=args.squat_max_pwm_per_frame,
-    )
     recovery_engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
         t_step=args.push_recovery_step_time_s,
@@ -162,8 +130,6 @@ def run_keyboard(args: Config) -> None:
     prev_getup_pressed = False
     prev_getup_back_pressed = False
     prev_single_support_pressed = False
-    prev_follow_pressed = False
-    prev_ignore_person_pressed = False
     prev_menu_pressed = False
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
@@ -181,9 +147,6 @@ def run_keyboard(args: Config) -> None:
     obstacle_blocked = False
     obstacle_mm = None
     previous_obstacle_blocked = False
-    squat_requested = False
-    squat_ratio = 0.0
-    squat_status = "OFF"
     head_pwm = float(STANDING[25])
     head_turn_sign = 0
     head_turn_lead_until = 0.0
@@ -220,7 +183,7 @@ def run_keyboard(args: Config) -> None:
     print(
         "\n[Keyboard Mode - Real-time ZMP] Up/Down walk, Left/Right turn (head leads), J/K side, "
         "X one-foot balance, L/M dance, G get-up, "
-        "B get-up back, R hold squat, C stop, E/T reset, O/Esc menu, Q quit\n"
+        "B get-up back, C stop, E/T reset, O/Esc menu, Q quit\n"
     )
 
     try:
@@ -310,75 +273,14 @@ def run_keyboard(args: Config) -> None:
                     turn_cmd = state.turn * args.turn_speed
                     side_cmd = state.side * args.side_speed
                     motion_requested = vy != 0.0 or turn_cmd != 0.0 or side_cmd != 0.0
-
-                    if motion_requested and person_follow.enabled:
-                        person_follow.disable()
-                        print("[main] Manual movement canceled person follow.")
-
-                    ignore_pressed = state.ignore_person
-                    if ignore_pressed and not prev_ignore_person_pressed:
-                        if person_follow.enabled:
-                            person_follow.disable()
-                            engine.reset()
-                            standing_hold_active = True
-                            print("[main] Person follow stopped.")
-                        else:
-                            camera_preview.ignore_person()
-                            print("[main] Detected person ignored.")
-                    prev_ignore_person_pressed = ignore_pressed
-
-                    follow_pressed = state.follow
-                    if follow_pressed and not prev_follow_pressed:
-                        can_follow = (
-                            camera_preview.person_ready()
-                            and not getup.running
-                            and not arm_dance.running
-                            and not single_support.active
-                            and squat_engine.is_idle()
-                            and not motion_requested
-                        )
-                        if can_follow:
-                            person_follow.enable()
-                            engine.reset()
-                            standing_hold_active = False
-                            print("[main] Person follow enabled. Press N, C, or move manually to stop.")
-                        else:
-                            print("[main] Follow rejected: one stable person and STANDING are required.")
-                    prev_follow_pressed = follow_pressed
-
-                    follow_status = "OFF"
-                    if person_follow.enabled:
-                        person_frame = camera_preview.person_frame() or PersonFrame()
-                        vy, turn_cmd, follow_status = person_follow.command(person_frame)
-                        side_cmd = 0.0
-                        motion_requested = vy != 0.0 or turn_cmd != 0.0
-                        if follow_status in ("TARGET LOST", "MULTIPLE PEOPLE"):
-                            person_follow.disable()
-                            engine.reset()
-                            standing_hold_active = True
-                            vy = 0.0
-                            turn_cmd = 0.0
-                            motion_requested = False
-                            print(f"[main] Person follow stopped: {follow_status.lower()}.")
-
-                    depth_missing = bool(
-                        args.sensor_feedback
-                        and args.sensor_use_depth
-                        and (sensor_snapshot is None or sensor_snapshot.depth is None)
-                    )
-                    if vy > 0.0 and (obstacle_blocked or (person_follow.enabled and depth_missing)):
+                    if vy > 0.0 and obstacle_blocked:
                         vy = 0.0
                         motion_requested = turn_cmd != 0.0 or side_cmd != 0.0
-                        follow_status = (
-                            f"OBJECT {obstacle_mm} MM"
-                            if obstacle_blocked and obstacle_mm is not None
-                            else "TOF WAIT"
-                        )
 
                     head_turn_cmd = turn_cmd
                     turn_sign = 1 if turn_cmd > 0.0 else -1 if turn_cmd < 0.0 else 0
                     now = time.monotonic()
-                    if not person_follow.enabled and turn_sign != 0 and turn_sign != head_turn_sign:
+                    if turn_sign != 0 and turn_sign != head_turn_sign:
                         head_turn_sign = turn_sign
                         head_turn_lead_until = now + args.head_turn_lead_s
                     elif turn_sign == 0:
@@ -395,13 +297,11 @@ def run_keyboard(args: Config) -> None:
                         if not prev_stop_pressed:
                             print("[main] C pressed. Hard stop to STANDING.")
                         prev_stop_pressed = True
-                        person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
                         single_support.reset()
                         recovery_engine.reset()
-                        squat_engine.reset()
                         recovery_step_active = False
                         if recovery is not None:
                             recovery.reset()
@@ -417,10 +317,9 @@ def run_keyboard(args: Config) -> None:
                         camera_preview.render("STOP / STANDING", follow_enabled=False)
                         continue
                     prev_stop_pressed = False
-    
+
                     getup_pressed = state.getup
-                    if getup_pressed and not prev_getup_pressed and squat_engine.is_idle():
-                        person_follow.disable()
+                    if getup_pressed and not prev_getup_pressed:
                         engine.reset()
                         arm_dance.reset()
                         single_support.reset()
@@ -428,10 +327,9 @@ def run_keyboard(args: Config) -> None:
                         label = getup.start(last_pose, mode=args.getup_mode)
                         print(f"[main] G pressed. Running {args.getup_mode} get-up sequence from step {label}.")
                     prev_getup_pressed = getup_pressed
-    
+
                     getup_back_pressed = state.getup_back
-                    if getup_back_pressed and not prev_getup_back_pressed and squat_engine.is_idle():
-                        person_follow.disable()
+                    if getup_back_pressed and not prev_getup_back_pressed:
                         engine.reset()
                         arm_dance.reset()
                         single_support.reset()
@@ -445,9 +343,7 @@ def run_keyboard(args: Config) -> None:
                         dance_pressed
                         and not prev_dance_pressed
                         and not getup.running
-                        and squat_engine.is_idle()
                     ):
-                        person_follow.disable()
                         enabled = arm_dance.toggle()
                         engine.reset()
                         single_support.reset()
@@ -460,9 +356,7 @@ def run_keyboard(args: Config) -> None:
                         single_support_pressed
                         and not prev_single_support_pressed
                         and not getup.running
-                        and squat_engine.is_idle()
                     ):
-                        person_follow.disable()
                         engine.reset()
                         arm_dance.reset()
                         if single_support.active:
@@ -489,44 +383,15 @@ def run_keyboard(args: Config) -> None:
                         getup.reset()
                         single_support.reset()
                         recovery_engine.reset()
-                        squat_engine.reset()
                         recovery_step_active = False
                         if recovery is not None:
                             recovery.reset()
                             recovery_status = "STABLE"
                         standing_hold_active = True
-                        person_follow.disable()
                         vy = 0.0
                         turn_cmd = 0.0
                         side_cmd = 0.0
                         motion_requested = False
-
-                    squat_requested = False
-                    squat_ratio = 0.0
-                    squat_status = "OFF"
-                    if state.squat:
-                        person_follow.disable()
-                        vy = 0.0
-                        turn_cmd = 0.0
-                        side_cmd = 0.0
-                        motion_requested = False
-                        busy = any((getup.running, arm_dance.running, single_support.active))
-                        if busy:
-                            squat_status = "BUSY"
-                        else:
-                            squat_ratio = 1.0
-                            squat_status = "MANUAL"
-                            if squat_engine.is_idle():
-                                squat_engine.reset(last_pose)
-                            squat_requested = True
-                            engine.reset()
-                            standing_hold_active = False
-                        if not squat_requested and not squat_engine.is_idle():
-                            squat_requested = True
-                            squat_status = f"{squat_status} - RETURNING"
-                    elif not squat_engine.is_idle():
-                        squat_requested = True
-                        squat_status = "RETURNING"
 
                     pose_from_getup = False
                     if getup.running:
@@ -552,10 +417,6 @@ def run_keyboard(args: Config) -> None:
                         side_cmd = 0.0
                         motion_requested = False
                         pose = single_support.update()
-                    elif squat_requested:
-                        pose = squat_engine.update(squat_ratio)
-                        if squat_engine.is_idle():
-                            standing_hold_active = True
                     elif standing_hold_active and not motion_requested:
                         pose = dict(STANDING)
                     elif not motion_requested and engine.is_idle_ready():
@@ -579,8 +440,6 @@ def run_keyboard(args: Config) -> None:
                                 support_leg = recovery_engine.support_leg
                             elif single_support.active:
                                 support_leg = single_support.support_leg
-                            elif squat_requested:
-                                support_leg = "double"
                             else:
                                 support_leg = engine.support_leg
                             recovery_roll_offset = 0.0
@@ -588,13 +447,12 @@ def run_keyboard(args: Config) -> None:
                             walking_active = (
                                 not recovery_step_active
                                 and not single_support.active
-                                and not squat_requested
                                 and (motion_requested or not engine.is_idle_ready())
                             )
                             recovery_allowed = (
                                 recovery_step_active
                                 or single_support.active
-                                or (not arm_dance.running and not squat_requested)
+                                or not arm_dance.running
                             )
                             if recovery is not None and recovery_allowed:
                                 decision = recovery.update(
@@ -612,7 +470,6 @@ def run_keyboard(args: Config) -> None:
                                     recovery_engine.reset()
                                     recovery_step_active = True
                                     engine.reset()
-                                    person_follow.disable()
                                     standing_hold_active = False
                                     print("[main] Push recovery: starting near-in-place stomp.")
                                 if decision.safe_lower:
@@ -704,12 +561,8 @@ def run_keyboard(args: Config) -> None:
                     except Exception as exc:
                         print(f"[main] Backend send exception: {exc}")
 
-                    if squat_requested:
-                        camera_status = f"SQUAT {round(squat_ratio * 100)}%: {squat_status}"
-                    elif obstacle_blocked:
+                    if obstacle_blocked:
                         camera_status = f"OBJECT {obstacle_mm} MM - FORWARD BLOCKED"
-                    elif person_follow.enabled:
-                        camera_status = follow_status
                     elif getup.running:
                         camera_status = f"GET-UP: {getup.label.upper()}"
                     elif arm_dance.running:
@@ -733,7 +586,7 @@ def run_keyboard(args: Config) -> None:
                         elif side_cmd < 0.0:
                             directions.append("SIDE RIGHT")
                         camera_status = " + ".join(directions) if directions else "WALK READY"
-                    camera_preview.render(camera_status, follow_enabled=person_follow.enabled)
+                    camera_preview.render(camera_status, follow_enabled=False)
             except KeyboardInterrupt:
                 print("\n[main] Ctrl+C received. Returning to STANDING.")
             finally:
@@ -752,13 +605,22 @@ def run_keyboard(args: Config) -> None:
 
 def main() -> None:
     args = Config()
-    from .menu import run_menu
+    from .menu import run_locomotion_menu, run_menu
 
     while True:
         choice = run_menu()
-        if choice == "quit":
+        if choice in ("quit", "back"):
             print("[main] Exiting function menu.")
             return
+        if choice == "locomotion":
+            locomotion_choice = run_locomotion_menu()
+            if locomotion_choice == "back":
+                continue
+            if locomotion_choice == "quit":
+                print("[main] Exiting function menu.")
+                return
+            choice = locomotion_choice
+
         if choice == "walking":
             try:
                 run_keyboard(args)
@@ -772,6 +634,22 @@ def main() -> None:
                 run_terrain(args)
             except Exception as exc:
                 print(f"[main] Terrain Balance unavailable: {exc}")
+                time.sleep(1.5)
+        elif choice == "follow":
+            try:
+                from .follow_main import run_follow
+
+                run_follow(args)
+            except Exception as exc:
+                print(f"[main] Person Follow unavailable: {exc}")
+                time.sleep(1.5)
+        elif choice == "pickup":
+            try:
+                from .pickup_main import run_pickup
+
+                run_pickup(args)
+            except Exception as exc:
+                print(f"[main] Pick Up Positioning unavailable: {exc}")
                 time.sleep(1.5)
 
 if __name__ == "__main__":
