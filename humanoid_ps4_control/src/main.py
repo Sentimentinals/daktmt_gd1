@@ -21,7 +21,7 @@ def run_keyboard(args: Config) -> None:
       C          : stop and hold standing
       E/T        : reset walking engine
       Y/N        : follow detected person / ignore or stop following
-      R          : hold adaptive squat toward a centered detected object
+      R          : hold squat; camera/ToF adjust depth when available
       O/Escape   : return to menu
       Q          : quit
     """
@@ -185,7 +185,6 @@ def run_keyboard(args: Config) -> None:
     previous_recovery_status = recovery_status
     sensor_hub = None
     sensor_snapshot = None
-    foot_contact_frames = 0
     last_balance_t = time.monotonic()
     balance_has_valid_imu = False
     obstacle_blocked = False
@@ -303,7 +302,6 @@ def run_keyboard(args: Config) -> None:
                         break
                     prev_menu_pressed = menu_pressed
 
-                    both_feet_contact = False
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
                         depth = sensor_snapshot.depth
@@ -316,13 +314,6 @@ def run_keyboard(args: Config) -> None:
                                 f"{f' at {obstacle_mm} mm' if obstacle_mm is not None else ''}."
                             )
                             previous_obstacle_blocked = obstacle_blocked
-                        feet = sensor_snapshot.feet
-                        both_feet_contact = (
-                            feet is not None
-                            and feet.left_force >= args.foot_fsr_contact_threshold
-                            and feet.right_force >= args.foot_fsr_contact_threshold
-                        )
-                        foot_contact_frames = foot_contact_frames + 1 if both_feet_contact else 0
     
                     vy = state.forward * args.walk_speed
                     turn_cmd = state.turn * args.turn_speed
@@ -531,28 +522,18 @@ def run_keyboard(args: Config) -> None:
                         busy = any((getup.running, arm_dance.running, single_support.active))
                         if busy:
                             squat_status = "BUSY"
-                        elif foot_contact_frames < args.foot_fsr_stable_frames:
-                            squat_status = "FSR WAIT"
-                        elif (
-                            balance is None
-                            or sensor_snapshot is None
-                            or sensor_snapshot.imu is None
-                            or not sensor_snapshot.imu.balance_ready(
-                                args.imu_min_gyro_cal,
-                                args.imu_min_accel_cal,
-                            )
-                        ):
-                            squat_status = "IMU WAIT"
-                        elif not standing_hold_active and squat_engine.is_idle():
-                            squat_status = "WAIT STANDING"
                         else:
                             target_frame = camera_preview.person_frame() or PersonFrame()
                             depth = sensor_snapshot.depth if sensor_snapshot is not None else None
                             squat_ratio, squat_status = squat_target.command(depth, target_frame)
-                            if squat_ratio > 0.0:
-                                squat_requested = True
-                                engine.reset()
-                                standing_hold_active = False
+                            if squat_ratio <= 0.0:
+                                squat_ratio = 1.0
+                                squat_status = "MANUAL"
+                            if squat_engine.is_idle():
+                                squat_engine.reset(last_pose)
+                            squat_requested = True
+                            engine.reset()
+                            standing_hold_active = False
                         if not squat_requested and not squat_engine.is_idle():
                             squat_requested = True
                             squat_status = f"{squat_status} - RETURNING"

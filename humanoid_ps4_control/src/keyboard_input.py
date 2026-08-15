@@ -46,7 +46,7 @@ class KeyboardReader:
         print(
             "[KeyboardReader] Up/Down walk, Left/Right turn (head leads), J/K side, "
             "X one-foot balance, L/M dance, G/B get-up, Y follow, N ignore/stop follow, "
-            "R adaptive squat, C stop, E/T reset, O/Esc menu."
+            "R hold squat, C stop, E/T reset, O/Esc menu."
         )
         return True
 
