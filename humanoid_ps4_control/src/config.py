@@ -121,7 +121,7 @@ class Config:
     command_rate_limit: float = 60.0
     one_foot_swing_knee_pwm: int = 700
     one_foot_arm_lift_pwm: int = 950
-    one_foot_ramp_s: float = 1.5
+    one_foot_ramp_s: float = 0.75
 
     # --- Arms (Linked to GAIT values by default) ---
     arm_swing_pwm: int = GAIT["arm_swing_pwm"]
