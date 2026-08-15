@@ -200,7 +200,7 @@ class SingleSupportTestEngine:
             ankle_roll_gain=self.ankle_roll_gain,
         )
         knee_delta = round(self.swing_knee_pwm * free_leg_blend)
-        thigh_delta = round(knee_delta * 0.25)
+        thigh_delta = round(knee_delta * 0.50)
         ankle_delta = knee_delta - thigh_delta
         if self.support_leg == "right":
             target[13] = max(500, min(2500, STANDING[13] + thigh_delta))

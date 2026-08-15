@@ -119,7 +119,7 @@ class Config:
     lift_end_phase: float = GAIT["lift_end_phase"]
     landing_roll_release_start: float = GAIT["landing_roll_release_start"]
     command_rate_limit: float = 60.0
-    one_foot_swing_knee_pwm: int = 260
+    one_foot_swing_knee_pwm: int = 700
     one_foot_arm_lift_pwm: int = 950
     one_foot_ramp_s: float = 1.5
 
