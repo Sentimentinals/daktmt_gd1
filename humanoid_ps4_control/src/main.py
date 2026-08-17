@@ -33,11 +33,14 @@ def run_keyboard(args: Config) -> None:
     from .getup import GetupEngine
     from .balance import (
         BalanceConfig,
+        FallConfig,
+        FallDetector,
         IMUBalanceController,
         PushRecoveryConfig,
         PushRecoveryController,
         RecoveryState,
         angle_error_deg,
+        extend_arms_forward,
         lower_toward_standing,
     )
     from .sensors import DepthObstacleGuard, RobotSensorHub
@@ -88,6 +91,9 @@ def run_keyboard(args: Config) -> None:
         arm_smooth_tau=args.arm_smooth_tau,
         arm_min_pwm=args.arm_min_pwm,
         arm_quantum_pwm=args.arm_quantum_pwm,
+        prepare_hold_s=args.flat_walk_prepare_hold_s,
+        prepare_step_s=args.flat_walk_prepare_step_s,
+        prepare_lift_mm=args.flat_walk_prepare_lift_mm,
     )
     single_support = SingleSupportTestEngine(
         dt=args.update_ms / 1000.0,
@@ -136,6 +142,7 @@ def run_keyboard(args: Config) -> None:
     standing_hold_active = True
 
     balance = None
+    fall_detector = None
     recovery = None
     recovery_step_active = False
     recovery_status = "STABLE"
@@ -143,6 +150,7 @@ def run_keyboard(args: Config) -> None:
     sensor_hub = None
     sensor_snapshot = None
     last_balance_t = time.monotonic()
+    last_fall_t = time.monotonic()
     balance_has_valid_imu = False
     obstacle_blocked = False
     obstacle_mm = None
@@ -227,6 +235,15 @@ def run_keyboard(args: Config) -> None:
                                 counter_lean_deg=args.push_recovery_counter_lean_deg,
                             )
                         )
+                    if args.fall_detection_enabled:
+                        fall_detector = FallDetector(
+                            FallConfig(
+                                trigger_tilt_deg=args.fall_trigger_tilt_deg,
+                                trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
+                                hard_tilt_deg=args.fall_hard_tilt_deg,
+                                consecutive_frames=args.fall_trigger_frames,
+                            )
+                        )
                     print(
                         f"[main] IMU balance enabled: reference roll={target_roll:.2f}, "
                         f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
@@ -294,6 +311,15 @@ def run_keyboard(args: Config) -> None:
 
                     stop_pressed = state.stop
                     if stop_pressed:
+                        if fall_detector is not None and fall_detector.triggered:
+                            pose = extend_arms_forward(
+                                last_pose,
+                                args.fall_arm_forward_pwm,
+                            )
+                            backend.send(pose, duration_ms=args.stop_ms, force=True)
+                            last_pose = dict(pose)
+                            camera_preview.render("FALL - HOLDING PROTECTIVE POSE", follow_enabled=False)
+                            continue
                         if not prev_stop_pressed:
                             print("[main] C pressed. Hard stop to STANDING.")
                         prev_stop_pressed = True
@@ -320,6 +346,8 @@ def run_keyboard(args: Config) -> None:
 
                     getup_pressed = state.getup
                     if getup_pressed and not prev_getup_pressed:
+                        if fall_detector is not None:
+                            fall_detector.reset()
                         engine.reset()
                         arm_dance.reset()
                         single_support.reset()
@@ -330,6 +358,8 @@ def run_keyboard(args: Config) -> None:
 
                     getup_back_pressed = state.getup_back
                     if getup_back_pressed and not prev_getup_back_pressed:
+                        if fall_detector is not None:
+                            fall_detector.reset()
                         engine.reset()
                         arm_dance.reset()
                         single_support.reset()
@@ -377,6 +407,21 @@ def run_keyboard(args: Config) -> None:
                     prev_single_support_pressed = single_support_pressed
     
                     if state.reset:
+                        if fall_detector is not None and fall_detector.triggered:
+                            reading = sensor_snapshot.imu if sensor_snapshot is not None else None
+                            reset_tilt = None
+                            if reading is not None and reading.balance_ready(
+                                args.imu_min_gyro_cal,
+                                args.imu_min_accel_cal,
+                            ):
+                                reset_tilt = max(
+                                    abs(angle_error_deg(reading.roll_deg, balance.config.target_roll_deg)),
+                                    abs(angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg)),
+                                )
+                            if reset_tilt is None or reset_tilt > args.fall_reset_tilt_deg:
+                                print("[main] FALL reset blocked. Hold the robot upright, then press E/T again.")
+                                camera_preview.render("FALL - RESET BLOCKED", follow_enabled=False)
+                                continue
                         print("[main] E/T pressed. Resetting walking engine and arm dance.")
                         engine.reset()
                         arm_dance.reset()
@@ -387,6 +432,8 @@ def run_keyboard(args: Config) -> None:
                         if recovery is not None:
                             recovery.reset()
                             recovery_status = "STABLE"
+                        if fall_detector is not None:
+                            fall_detector.reset()
                         standing_hold_active = True
                         vy = 0.0
                         turn_cmd = 0.0
@@ -420,6 +467,8 @@ def run_keyboard(args: Config) -> None:
                     elif standing_hold_active and not motion_requested:
                         pose = dict(STANDING)
                     elif not motion_requested and engine.is_idle_ready():
+                        engine.reset()
+                        standing_hold_active = True
                         pose = dict(engine.ready_pose)
                     else:
                         if motion_requested and standing_hold_active:
@@ -427,7 +476,45 @@ def run_keyboard(args: Config) -> None:
                             standing_hold_active = False
                         pose = engine.update(vy, turn_cmd=turn_cmd, side_cmd=side_cmd)
 
-                    if balance is not None and not pose_from_getup:
+                    fall_active = False
+                    fall_now = time.monotonic()
+                    fall_dt = fall_now - last_fall_t
+                    last_fall_t = fall_now
+                    if fall_detector is not None and not getup.running:
+                        reading = sensor_snapshot.imu if sensor_snapshot is not None else None
+                        was_triggered = fall_detector.triggered
+                        if reading is not None and reading.balance_ready(
+                            args.imu_min_gyro_cal,
+                            args.imu_min_accel_cal,
+                        ):
+                            fall_detector.update(
+                                -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
+                                -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
+                                fall_dt,
+                            )
+                        if fall_detector.triggered:
+                            fall_active = True
+                            vy = 0.0
+                            turn_cmd = 0.0
+                            side_cmd = 0.0
+                            motion_requested = False
+                            if not was_triggered:
+                                engine.reset()
+                                arm_dance.reset()
+                                single_support.reset()
+                                recovery_engine.reset()
+                                recovery_step_active = False
+                                if recovery is not None:
+                                    recovery.reset()
+                                balance.reset()
+                                standing_hold_active = False
+                                print(f"[main] FALL detected: {fall_detector.reason}. Arms moving forward.")
+                            pose = extend_arms_forward(
+                                last_pose,
+                                args.fall_arm_forward_pwm,
+                            )
+
+                    if balance is not None and not pose_from_getup and not fall_active:
                         now = time.monotonic()
                         balance_dt = now - last_balance_t
                         last_balance_t = now
@@ -545,7 +632,7 @@ def run_keyboard(args: Config) -> None:
                         print(f"[main] Push recovery: {recovery_status}.")
                         previous_recovery_status = recovery_status
 
-                    if not pose_from_getup and not arm_dance.running:
+                    if not pose_from_getup and not arm_dance.running and not fall_active:
                         head_target = STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
                             1 if head_turn_cmd > 0.0 else -1 if head_turn_cmd < 0.0 else 0
                         )
@@ -561,7 +648,9 @@ def run_keyboard(args: Config) -> None:
                     except Exception as exc:
                         print(f"[main] Backend send exception: {exc}")
 
-                    if obstacle_blocked:
+                    if fall_active:
+                        camera_status = "FALL DETECTED - ARMS FORWARD"
+                    elif obstacle_blocked:
                         camera_status = f"OBJECT {obstacle_mm} MM - FORWARD BLOCKED"
                     elif getup.running:
                         camera_status = f"GET-UP: {getup.label.upper()}"
@@ -588,13 +677,18 @@ def run_keyboard(args: Config) -> None:
                         camera_status = " + ".join(directions) if directions else "WALK READY"
                     camera_preview.render(camera_status, follow_enabled=False)
             except KeyboardInterrupt:
-                print("\n[main] Ctrl+C received. Returning to STANDING.")
+                print("\n[main] Ctrl+C received. Stopping control output.")
             finally:
                 try:
-                    backend.send(STANDING, duration_ms=args.stop_ms, force=True)
+                    exit_pose = (
+                        last_pose
+                        if (fall_detector is not None and fall_detector.triggered) or getup.running
+                        else STANDING
+                    )
+                    backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
                     time.sleep(args.stop_ms / 1000.0)
                 except Exception as exc:
-                    print(f"[main] Backend send exception while returning to STANDING: {exc}")
+                    print(f"[main] Backend send exception while stopping: {exc}")
     finally:
         if sensor_hub is not None:
             sensor_hub.close()

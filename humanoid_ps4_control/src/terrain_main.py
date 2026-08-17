@@ -3,7 +3,14 @@ from __future__ import annotations
 import time
 
 from .backends import make_backend
-from .balance import BalanceConfig, IMUBalanceController, angle_error_deg
+from .balance import (
+    BalanceConfig,
+    FallConfig,
+    FallDetector,
+    IMUBalanceController,
+    angle_error_deg,
+    extend_arms_forward,
+)
 from .config import Config, STANDING
 from .sensors import RobotSensorHub
 
@@ -114,12 +121,14 @@ def run_terrain(args: Config) -> None:
 
     reference: tuple[float, float] | None = None
     balance: IMUBalanceController | None = None
+    fall_detector: FallDetector | None = None
     enabled = False
     fault = ""
     previous_toggle = False
     previous_stop = False
     previous_reset = False
     last_balance_at = time.monotonic()
+    last_pose = dict(STANDING)
 
     try:
         with backend:
@@ -128,6 +137,15 @@ def run_terrain(args: Config) -> None:
             reference = _capture_reference(sensor_hub, args)
             if reference is not None:
                 balance = _make_balance(reference, args)
+                if args.fall_detection_enabled:
+                    fall_detector = FallDetector(
+                        FallConfig(
+                            trigger_tilt_deg=args.fall_trigger_tilt_deg,
+                            trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
+                            hard_tilt_deg=args.fall_hard_tilt_deg,
+                            consecutive_frames=args.fall_trigger_frames,
+                        )
+                    )
                 enabled = True
                 print("[terrain] IMU balance ON. V toggles, E/T recalibrates, C stops, O/Escape exits.")
 
@@ -149,6 +167,15 @@ def run_terrain(args: Config) -> None:
 
                 stop = keyboard.stop
                 if stop and not previous_stop:
+                    if fall_detector is not None and fall_detector.triggered:
+                        print("[terrain] FALL latched. Holding protective pose; use E/T only when safe.")
+                        last_pose = extend_arms_forward(
+                            last_pose,
+                            args.fall_arm_forward_pwm,
+                        )
+                        backend.send(last_pose, duration_ms=args.stop_ms, force=True)
+                        previous_stop = stop
+                        continue
                     enabled = False
                     fault = ""
                     if balance is not None:
@@ -159,12 +186,40 @@ def run_terrain(args: Config) -> None:
 
                 reset = keyboard.reset
                 if reset and not previous_reset:
+                    if fall_detector is not None and fall_detector.triggered:
+                        snapshot = sensor_hub.read()
+                        imu = snapshot.imu
+                        reset_tilt = None
+                        if imu is not None and reference is not None and imu.balance_ready(
+                            args.imu_min_gyro_cal,
+                            args.imu_min_accel_cal,
+                        ):
+                            reset_tilt = max(
+                                abs(angle_error_deg(imu.roll_deg, reference[0])),
+                                abs(angle_error_deg(imu.pitch_deg, reference[1])),
+                            )
+                        if reset_tilt is None or reset_tilt > args.fall_reset_tilt_deg:
+                            print("[terrain] FALL reset blocked. Hold the robot upright, then press E/T again.")
+                            previous_reset = reset
+                            continue
                     enabled = False
                     fault = ""
                     backend.send(STANDING, duration_ms=700, force=True)
                     time.sleep(0.7)
                     reference = _capture_reference(sensor_hub, args)
                     balance = _make_balance(reference, args) if reference is not None else None
+                    fall_detector = (
+                        FallDetector(
+                            FallConfig(
+                                trigger_tilt_deg=args.fall_trigger_tilt_deg,
+                                trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
+                                hard_tilt_deg=args.fall_hard_tilt_deg,
+                                consecutive_frames=args.fall_trigger_frames,
+                            )
+                        )
+                        if balance is not None and args.fall_detection_enabled
+                        else None
+                    )
                     enabled = balance is not None
                     last_balance_at = time.monotonic()
                 previous_reset = reset
@@ -186,7 +241,17 @@ def run_terrain(args: Config) -> None:
                 now = time.monotonic()
                 dt = now - last_balance_at
                 last_balance_at = now
-                if enabled and ready and balance is not None:
+                fall_active = False
+                if ready and balance is not None and fall_detector is not None:
+                    fall_active = fall_detector.update(-roll_error, -pitch_error, dt)
+                    if fall_active:
+                        enabled = False
+                        fault = f"FALL: {fall_detector.reason}"
+                        pose = extend_arms_forward(
+                            last_pose,
+                            args.fall_arm_forward_pwm,
+                        )
+                if enabled and ready and balance is not None and not fall_active:
                     max_tilt = max(abs(roll_error), abs(pitch_error))
                     if max_tilt >= args.terrain_emergency_tilt_deg:
                         fault = f"TILT {max_tilt:.1f} DEG"
@@ -203,6 +268,7 @@ def run_terrain(args: Config) -> None:
                         )
 
                 backend.send(pose, duration_ms=args.update_ms)
+                last_pose = dict(pose)
                 calibration = (
                     f"{imu.system_cal} / {imu.gyro_cal} / {imu.accel_cal} / {imu.mag_cal}"
                     if imu is not None
@@ -232,10 +298,11 @@ def run_terrain(args: Config) -> None:
                     },
                 )
 
-            backend.send(STANDING, duration_ms=args.stop_ms, force=True)
+            exit_pose = last_pose if fall_detector is not None and fall_detector.triggered else STANDING
+            backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
             time.sleep(args.stop_ms / 1000.0)
     except KeyboardInterrupt:
-        print("\n[terrain] Interrupted. Returning to STANDING.")
+        print("\n[terrain] Interrupted. Stopping control output.")
     finally:
         sensor_hub.close()
         reader.quit()

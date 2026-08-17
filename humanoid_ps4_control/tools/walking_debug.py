@@ -98,6 +98,9 @@ def make_walking_engine(args: argparse.Namespace) -> DynamicWalkingEngine:
         arm_smooth_tau=settings.arm_smooth_tau,
         arm_min_pwm=settings.arm_min_pwm,
         arm_quantum_pwm=settings.arm_quantum_pwm,
+        prepare_hold_s=settings.flat_walk_prepare_hold_s,
+        prepare_step_s=settings.flat_walk_prepare_step_s,
+        prepare_lift_mm=settings.flat_walk_prepare_lift_mm,
     )
 
 

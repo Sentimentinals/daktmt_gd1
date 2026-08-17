@@ -104,11 +104,14 @@ class Config:
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     step_height: float = ROBOT["step_height"]
-    flat_walk_step_length_mm: float = 18.0
-    flat_walk_step_height_mm: float = 18.0
-    flat_walk_lift_start_phase: float = 0.30
+    flat_walk_step_length_mm: float = 42.0
+    flat_walk_step_height_mm: float = 42.0
+    flat_walk_lift_start_phase: float = 0.18
     flat_walk_swing_advance_end_phase: float = 0.60
-    t_step: float = 1.15
+    flat_walk_prepare_hold_s: float = 0.30
+    flat_walk_prepare_step_s: float = 0.55
+    flat_walk_prepare_lift_mm: float = 6.0
+    t_step: float = 1.05
     t_dbl: float = 0.12
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
@@ -211,6 +214,13 @@ class Config:
     push_recovery_counter_lean_s: float = 0.40
     push_recovery_counter_lean_deg: float = 1.5
     push_recovery_lower_rate_pwm_s: float = 300.0
+    fall_detection_enabled: bool = True
+    fall_trigger_tilt_deg: float = 18.0
+    fall_trigger_rate_deg_s: float = 70.0
+    fall_hard_tilt_deg: float = 30.0
+    fall_trigger_frames: int = 2
+    fall_reset_tilt_deg: float = 8.0
+    fall_arm_forward_pwm: int = 600
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True

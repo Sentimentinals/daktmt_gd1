@@ -297,6 +297,9 @@ class DynamicWalkingEngine:
         arm_min_pwm: int | None = None,
         arm_quantum_pwm: int | None = None,
         max_step_elevation: float = 18.0,
+        prepare_hold_s: float = 0.0,
+        prepare_step_s: float = 0.0,
+        prepare_lift_mm: float = 0.0,
     ) -> None:
         self.dt = dt
         self.t_step = t_step
@@ -350,6 +353,9 @@ class DynamicWalkingEngine:
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
         self.command_rate_limit = abs(command_rate_limit)
         self.max_step_elevation = max(0.0, abs(max_step_elevation))
+        self.prepare_hold_s = max(0.0, prepare_hold_s)
+        self.prepare_step_s = max(0.0, prepare_step_s)
+        self.prepare_lift_mm = max(0.0, min(abs(prepare_lift_mm), self.step_height))
         self.reset()
 
     def reset(self) -> None:
@@ -381,6 +387,7 @@ class DynamicWalkingEngine:
         self._com_y = 0.0
         self._com_x = 0.0
         self._ground_z = 0.0
+        self._prepare_pending = self.prepare_step_s > 0.0 and self.prepare_lift_mm > 0.0
 
         for _ in range(self.n_d):
             self.zmp_y_queue.append(0.0)
@@ -396,6 +403,59 @@ class DynamicWalkingEngine:
             self.side_len_queue.append(0.0)
 
         self.prev_pose = dict(self.ready_pose)
+
+    def _enqueue_preparation(self) -> None:
+        base_L = self.last_foot_L.copy()
+        base_R = self.last_foot_R.copy()
+        hold_frames = round(self.prepare_hold_s / self.dt)
+        step_frames = max(2, round(self.prepare_step_s / self.dt))
+
+        for _ in range(hold_frames):
+            self.zmp_y_queue.append(0.0)
+            self.zmp_x_queue.append(0.0)
+            self.zmp_z_queue.append(0.0)
+            self.foot_L_queue.append(base_L.copy())
+            self.foot_R_queue.append(base_R.copy())
+            self.arm_queue.append((0, 0))
+            self.swing_leg_queue.append("none")
+            self.lift_factor_queue.append(0.0)
+            self.landing_progress_queue.append(0.0)
+            self.phase_mode_queue.append("idle")
+            self.side_len_queue.append(0.0)
+
+        support_offset = self.hw * self.zmp_support_ratio
+        lift_scale = self.prepare_lift_mm / max(self.step_height, 1.0)
+        for swing_is_left in (True, False):
+            swing_leg = "left" if swing_is_left else "right"
+            stance_y = support_offset if swing_is_left else -support_offset
+            next_stance_y = -support_offset if swing_is_left else 0.0
+            self.step_count += 1
+
+            for k in range(step_frames):
+                alpha = k / max(step_frames - 1, 1)
+                lift_t = max(0.0, min(1.0, (alpha - 0.38) / 0.50))
+                lift_factor = math.sin(math.pi * lift_t) * lift_scale
+                landing_t = self._phase_progress(alpha, 0.78, 1.0)
+                zmp_y = stance_y + (next_stance_y - stance_y) * landing_t
+
+                foot_L = base_L.copy()
+                foot_R = base_R.copy()
+                if swing_is_left:
+                    foot_L[2] = self.step_height * lift_factor
+                else:
+                    foot_R[2] = self.step_height * lift_factor
+
+                self.zmp_y_queue.append(zmp_y)
+                self.zmp_x_queue.append(0.0)
+                self.zmp_z_queue.append(0.0)
+                self.foot_L_queue.append(foot_L)
+                self.foot_R_queue.append(foot_R)
+                self.arm_queue.append((0, 0))
+                self.swing_leg_queue.append(swing_leg)
+                self.lift_factor_queue.append(lift_factor)
+                self.landing_progress_queue.append(landing_t)
+                self.phase_mode_queue.append("land" if landing_t > 0.0 else "swing")
+                self.side_len_queue.append(0.0)
 
     def is_idle_ready(self, tolerance: float = 0.05) -> bool:
         if (
@@ -694,12 +754,22 @@ class DynamicWalkingEngine:
         self.commanded_side_len += side_delta
 
         if not self.zmp_y_queue:
-            self._enqueue_next_step(
-                self.commanded_step_len,
-                self.commanded_turn_len,
-                self.commanded_side_len,
-                step_elevation_mm if input_active else 0.0,
+            forward_only = (
+                abs(requested_step_len) > 0.1
+                and abs(requested_turn_len) <= 0.1
+                and abs(requested_side_len) <= 0.1
             )
+            if self._prepare_pending:
+                self._prepare_pending = False
+                if forward_only:
+                    self._enqueue_preparation()
+            if not self.zmp_y_queue:
+                self._enqueue_next_step(
+                    self.commanded_step_len,
+                    self.commanded_turn_len,
+                    self.commanded_side_len,
+                    step_elevation_mm if input_active else 0.0,
+                )
 
         zmp_now = self.zmp_y_queue.popleft()
         zmp_x_now = self.zmp_x_queue.popleft()

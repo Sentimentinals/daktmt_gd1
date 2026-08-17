@@ -4,12 +4,21 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional
 
+from .config import STANDING
+
 
 Pose = Dict[int, int]
 
 
 def angle_error_deg(value: float, target: float) -> float:
     return (target - value + 180.0) % 360.0 - 180.0
+
+
+def _angle_rate_deg(value: float, previous: Optional[float], dt: float) -> float:
+    if previous is None:
+        return 0.0
+    delta = (value - previous + 180.0) % 360.0 - 180.0
+    return delta / max(0.005, min(0.10, dt))
 
 
 @dataclass
@@ -108,6 +117,58 @@ class RecoveryDecision:
         return self.state is RecoveryState.SAFE_LOWER
 
 
+@dataclass
+class FallConfig:
+    trigger_tilt_deg: float = 18.0
+    trigger_rate_deg_s: float = 70.0
+    hard_tilt_deg: float = 30.0
+    consecutive_frames: int = 2
+
+
+class FallDetector:
+    def __init__(self, config: Optional[FallConfig] = None) -> None:
+        self.config = config or FallConfig()
+        self.reset()
+
+    def reset(self) -> None:
+        self.triggered = False
+        self.reason = ""
+        self._candidate_frames = 0
+        self._candidate_reason = ""
+        self._previous_roll: Optional[float] = None
+        self._previous_pitch: Optional[float] = None
+
+    def update(self, roll_deg: float, pitch_deg: float, dt: float) -> bool:
+        if self.triggered:
+            return True
+
+        roll_rate = _angle_rate_deg(roll_deg, self._previous_roll, dt)
+        pitch_rate = _angle_rate_deg(pitch_deg, self._previous_pitch, dt)
+        self._previous_roll = roll_deg
+        self._previous_pitch = pitch_deg
+        max_tilt = max(abs(roll_deg), abs(pitch_deg))
+        max_rate = max(abs(roll_rate), abs(pitch_rate))
+        hard_fall = max_tilt >= self.config.hard_tilt_deg
+        dynamic_fall = (
+            max_tilt >= self.config.trigger_tilt_deg
+            and max_rate >= self.config.trigger_rate_deg_s
+        )
+        if hard_fall:
+            self._candidate_reason = f"tilt={max_tilt:.1f} deg"
+        elif dynamic_fall:
+            self._candidate_reason = f"tilt={max_tilt:.1f} deg rate={max_rate:.1f} deg/s"
+        candidate = hard_fall or dynamic_fall or (
+            self._candidate_frames > 0 and max_tilt >= self.config.trigger_tilt_deg
+        )
+        self._candidate_frames = self._candidate_frames + 1 if candidate else 0
+        if not candidate:
+            self._candidate_reason = ""
+        if self._candidate_frames >= max(1, self.config.consecutive_frames):
+            self.triggered = True
+            self.reason = self._candidate_reason
+        return self.triggered
+
+
 class PushRecoveryController:
     """Safety state machine around the bounded ankle/hip stabilizer.
 
@@ -157,8 +218,8 @@ class PushRecoveryController:
     ) -> RecoveryDecision:
         cfg = self.config
         dt = max(0.005, min(0.10, dt))
-        roll_rate = self._rate(roll_deg, self._previous_roll, dt)
-        pitch_rate = self._rate(pitch_deg, self._previous_pitch, dt)
+        roll_rate = _angle_rate_deg(roll_deg, self._previous_roll, dt)
+        pitch_rate = _angle_rate_deg(pitch_deg, self._previous_pitch, dt)
         self._previous_roll = roll_deg
         self._previous_pitch = pitch_deg
         max_tilt = max(abs(roll_deg), abs(pitch_deg))
@@ -239,18 +300,28 @@ class PushRecoveryController:
             )
         return RecoveryDecision(self.state, self.reason)
 
-    @staticmethod
-    def _rate(value: float, previous: Optional[float], dt: float) -> float:
-        if previous is None:
-            return 0.0
-        delta = (value - previous + 180.0) % 360.0 - 180.0
-        return delta / dt
-
     def _fall_command(self, roll_deg: float, pitch_deg: float) -> tuple[float, float]:
         cfg = self.config
         if abs(pitch_deg) >= abs(roll_deg):
             return (cfg.recovery_step_forward_cmd if pitch_deg > 0.0 else -cfg.recovery_step_forward_cmd), 0.0
         return 0.0, (cfg.recovery_step_side_cmd if roll_deg > 0.0 else -cfg.recovery_step_side_cmd)
+
+
+def extend_arms_forward(
+    pose: Pose,
+    forward_pwm: int,
+) -> Pose:
+    targets = {
+        9: STANDING[9],
+        10: STANDING[10],
+        11: max(500, STANDING[11] - abs(forward_pwm)),
+        22: min(2500, STANDING[22] + abs(forward_pwm)),
+        23: STANDING[23],
+        24: STANDING[24],
+    }
+    protected = dict(pose)
+    protected.update(targets)
+    return protected
 
 
 def lower_toward_standing(
