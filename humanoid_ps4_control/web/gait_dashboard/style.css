@@ -80,6 +80,7 @@ button.active {
 
 .brand,
 .connection-row,
+.app-tabs,
 .panel-head,
 .analysis-head,
 .replay-controls,
@@ -134,6 +135,23 @@ h2 {
   font-size: 13px;
 }
 
+.app-tabs {
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #303840;
+  background: #171c22;
+}
+
+.app-tabs button {
+  min-width: 96px;
+  border: 0;
+  background: transparent;
+}
+
+.app-tabs button.active {
+  background: #285f50;
+}
+
 .status-dot {
   width: 9px;
   height: 9px;
@@ -166,9 +184,207 @@ h2 {
   color: #aeb7bf;
 }
 
+.app-section {
+  display: none;
+}
+
+.app-section.active {
+  display: block;
+}
+
+.control-safety {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 66px;
+  margin: 10px 10px 0;
+  padding: 10px 14px;
+}
+
+.control-safety > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.control-safety strong {
+  font: 700 14px Consolas, monospace;
+}
+
+.safety-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.arm-button {
+  min-width: 130px;
+  border-color: #397d66;
+}
+
+.arm-button.active {
+  background: #245d4d;
+}
+
+.emergency-button {
+  min-width: 92px;
+  border-color: #b94d50;
+  background: #7e292d;
+  color: #fff;
+  font-weight: 800;
+}
+
+.control-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(390px, 0.8fr) minmax(420px, 1.2fr);
+  min-height: calc(100vh - 154px);
+  gap: 10px;
+  padding: 10px;
+}
+
+.function-panel,
+.drive-panel,
+.control-camera {
+  min-height: 520px;
+}
+
+.function-panel {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.mode-list {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 10px;
+}
+
+.mode-list button {
+  min-height: 68px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.mode-list strong,
+.mode-list span {
+  display: block;
+}
+
+.mode-list span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.runtime-state {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border-top: 1px solid var(--line);
+  background: #11151a;
+}
+
+.runtime-state span,
+.runtime-state small {
+  color: var(--muted);
+}
+
+.runtime-state strong {
+  font: 700 13px Consolas, monospace;
+}
+
+.drive-panel {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+}
+
+.stop-button {
+  border-color: #a35f39;
+  color: #ffc69f;
+}
+
+.drive-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+  gap: 14px;
+  padding: 20px 14px;
+}
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 70px);
+  grid-template-rows: repeat(3, 62px);
+  gap: 6px;
+}
+
+.dpad button {
+  width: 70px;
+  height: 62px;
+  padding: 0;
+  font-size: 25px;
+  touch-action: none;
+  user-select: none;
+}
+
+.dpad .up { grid-column: 2; grid-row: 1; }
+.dpad .left { grid-column: 1; grid-row: 2; }
+.dpad .center { grid-column: 2; grid-row: 2; }
+.dpad .right { grid-column: 3; grid-row: 2; }
+.dpad .down { grid-column: 2; grid-row: 3; }
+
+.side-control {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.side-control div {
+  display: flex;
+  gap: 8px;
+}
+
+.side-control button {
+  min-width: 104px;
+  touch-action: none;
+}
+
+.action-grid,
+.mode-actions > div {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.action-grid button,
+.mode-actions button {
+  min-height: 42px;
+}
+
+.mode-actions > div {
+  display: none;
+}
+
+.mode-actions > div.active {
+  display: grid;
+}
+
+.control-camera {
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr) auto;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .dashboard {
   display: grid;
-  grid-template-columns: minmax(420px, 1.45fr) minmax(300px, 0.82fr) minmax(270px, 0.62fr);
+  grid-template-columns: minmax(520px, 1.45fr) minmax(290px, 0.62fr);
   grid-template-rows: minmax(470px, calc(100vh - 350px)) 250px;
   gap: 10px;
   padding: 10px;
@@ -542,6 +758,14 @@ h2 {
 }
 
 @media (max-width: 1100px) {
+  .control-layout {
+    grid-template-columns: 220px 1fr;
+  }
+
+  .control-camera {
+    grid-column: 1 / -1;
+  }
+
   .dashboard {
     grid-template-columns: 1.35fr 0.85fr;
     grid-template-rows: 500px auto 250px;
@@ -569,6 +793,45 @@ h2 {
   .analysis-head,
   .replay-controls {
     flex-wrap: wrap;
+  }
+
+  .app-tabs {
+    order: 3;
+    width: 100%;
+  }
+
+  .app-tabs button {
+    flex: 1;
+  }
+
+  .control-safety {
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .control-safety,
+  .safety-actions {
+    flex-direction: column;
+  }
+
+  .control-layout {
+    display: block;
+    padding: 7px;
+  }
+
+  .function-panel,
+  .drive-panel,
+  .control-camera {
+    min-height: 0;
+    margin-bottom: 8px;
+  }
+
+  .drive-panel {
+    min-height: 580px;
+  }
+
+  .action-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .dashboard {

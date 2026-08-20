@@ -1,0 +1,18 @@
+[Unit]
+Description=Humanoid web control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=%h/daktmt_gd1/humanoid_ps4_control
+ExecStart=%h/daktmt_gd1/humanoid_ps4_control/.venv/bin/python -m src.main
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=8
+
+[Install]
+WantedBy=multi-user.target

@@ -6,24 +6,7 @@ from .backends import make_backend
 from .config import Config
 
 
-def run_keyboard(args: Config) -> None:
-    """
-    Real-time walking mode.
-
-    Keyboard:
-      W/S        : walk forward/backward
-      A/D        : turn left/right
-      J/K        : side walk left/right
-      L/M        : toggle standing arm dance
-      X          : toggle single-leg support test
-      G          : run get-up sequence
-      B          : run back get-up sequence
-      C          : stop and hold standing
-      E/T        : reset walking engine
-      O/Escape   : return to menu
-      Q          : quit
-    """
-    from .keyboard_input import KeyboardReader, LiveCameraPreview
+def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     from .walking_engine import (
         DynamicWalkingEngine,
         SingleSupportTestEngine,
@@ -47,22 +30,6 @@ def run_keyboard(args: Config) -> None:
 
     backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
 
-    poll_hz = int(1000 / args.update_ms)
-    reader = KeyboardReader(
-        poll_rate_hz=poll_hz,
-        caption="Humanoid Walking & Recovery",
-        controls=(
-            "Up/Down walk, Left/Right turn, J/K side, X one-foot balance, "
-            "L/M dance, G/B get-up, C stop, E/T reset, O/Esc menu."
-        ),
-    )
-
-    camera_preview = LiveCameraPreview(
-        width=args.vision_camera_width,
-        height=args.vision_camera_height,
-        fps=args.vision_fps,
-        detector=None,
-    )
     obstacle_guard = DepthObstacleGuard(
         stop_distance_mm=args.tof_obstacle_stop_mm,
         clear_margin_mm=args.tof_obstacle_clear_margin_mm,
@@ -137,7 +104,6 @@ def run_keyboard(args: Config) -> None:
     prev_getup_pressed = False
     prev_getup_back_pressed = False
     prev_single_support_pressed = False
-    prev_menu_pressed = False
     next_single_support_leg = "right"
     last_pose = dict(STANDING)
     standing_hold_active = True
@@ -150,7 +116,6 @@ def run_keyboard(args: Config) -> None:
     previous_recovery_status = recovery_status
     sensor_hub = None
     sensor_snapshot = None
-    dashboard = None
     last_balance_t = time.monotonic()
     last_fall_t = time.monotonic()
     balance_has_valid_imu = False
@@ -182,19 +147,13 @@ def run_keyboard(args: Config) -> None:
         )
         try:
             sensor_hub.open(wait_for_connection=False)
-            print("[main] Sensor connection started in background; keyboard control is independent.")
+            print("[main] Sensor connection started in background; web control is independent.")
         except Exception as exc:
             sensor_hub = None
             print(f"[main] Sensors disabled: {exc}. Keyboard control remains available.")
 
     if args.imu_balance and (sensor_hub is None or not args.sensor_use_imu):
         print("[main] IMU balance requested but IMU sensor feedback is disabled.")
-
-    print(
-        "\n[Keyboard Mode - Real-time ZMP] Up/Down walk, Left/Right turn (head leads), J/K side, "
-        "X one-foot balance, L/M dance, G get-up, "
-        "B get-up back, C stop, E/T reset, O/Esc menu, Q quit\n"
-    )
 
     try:
         with backend:
@@ -251,44 +210,18 @@ def run_keyboard(args: Config) -> None:
                         f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
                     )
             elif args.imu_balance:
-                print("[main] IMU unavailable. Manual keyboard control remains enabled without balance.")
-            if not reader.init():
-                raise RuntimeError("pygame keyboard control is unavailable")
-            camera_ready = camera_preview.start()
-            if args.gait_dashboard_enabled:
-                try:
-                    from .gait_dashboard import GaitDashboard
-
-                    dashboard = GaitDashboard(
-                        host=args.gait_dashboard_host,
-                        port=args.gait_dashboard_port,
-                        stream_hz=args.gait_dashboard_stream_hz,
-                        history_seconds=args.gait_dashboard_history_s,
-                        camera=camera_preview,
-                    )
-                    dashboard.start()
-                except Exception as exc:
-                    dashboard = None
-                    print(f"[dashboard] Unavailable: {exc}. Keyboard control remains enabled.")
+                print("[main] IMU unavailable. Manual web control remains enabled without balance.")
             backend.send(engine.ready_pose, duration_ms=600, force=True)
             time.sleep(0.6)
             last_pose = dict(engine.ready_pose)
             standing_hold_active = False
-            camera_preview.render(
-                "WALK READY" if camera_ready else "CAMERA OFF - WALK READY",
-                follow_enabled=False,
-            )
+            dashboard.set_runtime("manual", "Manual control ready")
             try:
-                for state in reader.poll():
-                    if state.quit:
-                        print("[main] Returning to function menu.")
+                while True:
+                    loop_started = time.monotonic()
+                    state = dashboard.control_state()
+                    if not state.armed or state.mode != "manual":
                         break
-
-                    menu_pressed = state.menu
-                    if menu_pressed and not prev_menu_pressed:
-                        print("[main] O/Escape pressed. Returning to function menu.")
-                        break
-                    prev_menu_pressed = menu_pressed
 
                     if sensor_hub is not None:
                         sensor_snapshot = sensor_hub.read()
@@ -335,7 +268,7 @@ def run_keyboard(args: Config) -> None:
                             )
                             backend.send(pose, duration_ms=args.stop_ms, force=True)
                             last_pose = dict(pose)
-                            camera_preview.render("FALL - HOLDING PROTECTIVE POSE", follow_enabled=False)
+                            dashboard.set_runtime("manual", "Fall - holding protective pose")
                             continue
                         if not prev_stop_pressed:
                             print("[main] C pressed. Hard stop to STANDING.")
@@ -357,7 +290,7 @@ def run_keyboard(args: Config) -> None:
                             last_pose = dict(pose)
                         except Exception as exc:
                             print(f"[main] Backend send exception: {exc}")
-                        camera_preview.render("STOP / STANDING", follow_enabled=False)
+                        dashboard.set_runtime("manual", "Stop / standing")
                         continue
                     prev_stop_pressed = False
 
@@ -437,7 +370,7 @@ def run_keyboard(args: Config) -> None:
                                 )
                             if reset_tilt is None or reset_tilt > args.fall_reset_tilt_deg:
                                 print("[main] FALL reset blocked. Hold the robot upright, then press E/T again.")
-                                camera_preview.render("FALL - RESET BLOCKED", follow_enabled=False)
+                                dashboard.set_runtime("manual", "Fall reset blocked")
                                 continue
                         print("[main] E/T pressed. Resetting walking engine and arm dance.")
                         engine.reset()
@@ -692,38 +625,41 @@ def run_keyboard(args: Config) -> None:
                         elif side_cmd < 0.0:
                             directions.append("SIDE RIGHT")
                         camera_status = " + ".join(directions) if directions else "WALK READY"
-                    if dashboard is not None:
-                        gait_state = (
-                            recovery_engine.telemetry_snapshot()
-                            if recovery_step_active
-                            else engine.telemetry_snapshot()
+                    gait_state = (
+                        recovery_engine.telemetry_snapshot()
+                        if recovery_step_active
+                        else engine.telemetry_snapshot()
+                    )
+                    if single_support.active:
+                        gait_state["phase"] = "one-foot"
+                        gait_state["support_leg"] = single_support.support_leg
+                        gait_state["swing_leg"] = (
+                            "right" if single_support.support_leg == "left" else "left"
                         )
-                        if single_support.active:
-                            gait_state["phase"] = "one-foot"
-                            gait_state["support_leg"] = single_support.support_leg
-                            gait_state["swing_leg"] = (
-                                "right" if single_support.support_leg == "left" else "left"
-                            )
-                        dashboard.publish(
-                            pose=last_pose,
-                            gait=gait_state,
-                            sensor_snapshot=sensor_snapshot,
-                            status=camera_status,
-                            active=(
-                                motion_requested
-                                or not engine.is_idle_ready()
-                                or recovery_step_active
-                                or single_support.active
-                                or arm_dance.running
-                                or getup.running
-                                or fall_active
-                            ),
-                            camera_ready=camera_ready,
-                            balance_status=recovery_status,
-                        )
-                    camera_preview.render(camera_status, follow_enabled=False)
+                    dashboard.publish(
+                        pose=last_pose,
+                        gait=gait_state,
+                        sensor_snapshot=sensor_snapshot,
+                        status=camera_status,
+                        active=(
+                            motion_requested
+                            or not engine.is_idle_ready()
+                            or recovery_step_active
+                            or single_support.active
+                            or arm_dance.running
+                            or getup.running
+                            or fall_active
+                        ),
+                        camera_ready=camera_ready,
+                        balance_status=recovery_status,
+                    )
+                    dashboard.set_runtime("manual", camera_status)
+                    remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
+                    if remaining > 0.0:
+                        time.sleep(remaining)
             except KeyboardInterrupt:
                 print("\n[main] Ctrl+C received. Stopping control output.")
+                raise
             finally:
                 try:
                     exit_pose = (
@@ -738,61 +674,72 @@ def run_keyboard(args: Config) -> None:
     finally:
         if sensor_hub is not None:
             sensor_hub.close()
-        if dashboard is not None:
-            dashboard.close()
-        camera_preview.close()
-        reader.quit()
-        print("[main] Keyboard mode exited.")
+        dashboard.set_runtime("idle", "Manual control stopped")
+        print("[main] Manual web control exited.")
 
 
 def main() -> None:
+    from .camera import HeadlessCamera
+    from .gait_dashboard import GaitDashboard, stationary_gait
+    from .walking_engine import STANDING
+
     args = Config()
-    from .menu import run_locomotion_menu, run_menu
+    camera = HeadlessCamera(
+        width=args.vision_camera_width,
+        height=args.vision_camera_height,
+        fps=args.vision_fps,
+    )
+    dashboard = GaitDashboard(
+        host=args.gait_dashboard_host,
+        port=args.gait_dashboard_port,
+        stream_hz=args.gait_dashboard_stream_hz,
+        history_seconds=args.gait_dashboard_history_s,
+        command_timeout_s=args.gait_dashboard_command_timeout_s,
+        camera=camera,
+    )
+    dashboard.start()
+    camera_ready = camera.start()
+    dashboard.publish(
+        pose=STANDING,
+        gait=stationary_gait(),
+        sensor_snapshot=None,
+        status="WEB CONTROL READY",
+        active=False,
+        camera_ready=camera_ready,
+        balance_status="IDLE",
+    )
+    print("[main] Open the dashboard from a laptop on the same LAN, then enable control.")
 
-    while True:
-        choice = run_menu()
-        if choice in ("quit", "back"):
-            print("[main] Exiting function menu.")
-            return
-        if choice == "locomotion":
-            locomotion_choice = run_locomotion_menu()
-            if locomotion_choice == "back":
+    try:
+        while True:
+            state = dashboard.control_state()
+            if not state.armed:
+                time.sleep(0.05)
                 continue
-            if locomotion_choice == "quit":
-                print("[main] Exiting function menu.")
-                return
-            choice = locomotion_choice
-
-        if choice == "walking":
             try:
-                run_keyboard(args)
-            except Exception as exc:
-                print(f"[main] Walking mode unavailable: {exc}")
-                time.sleep(1.5)
-        elif choice == "terrain":
-            try:
-                from .terrain_main import run_terrain
+                if state.mode == "manual":
+                    run_manual(args, dashboard, camera_ready)
+                elif state.mode == "terrain":
+                    from .terrain_main import run_terrain
 
-                run_terrain(args)
-            except Exception as exc:
-                print(f"[main] Terrain Balance unavailable: {exc}")
-                time.sleep(1.5)
-        elif choice == "follow":
-            try:
-                from .follow_main import run_follow
+                    run_terrain(args, dashboard, camera_ready)
+                elif state.mode == "follow":
+                    from .follow_main import run_follow
 
-                run_follow(args)
-            except Exception as exc:
-                print(f"[main] Person Follow unavailable: {exc}")
-                time.sleep(1.5)
-        elif choice == "pickup":
-            try:
-                from .pickup_main import run_pickup
+                    run_follow(args, dashboard, camera, camera_ready)
+                elif state.mode == "pickup":
+                    from .pickup_main import run_pickup
 
-                run_pickup(args)
+                    run_pickup(args, dashboard, camera_ready)
             except Exception as exc:
-                print(f"[main] Pick Up Positioning unavailable: {exc}")
-                time.sleep(1.5)
+                dashboard.disarm(f"{state.mode} unavailable: {exc}")
+                print(f"[main] {state.mode} unavailable: {exc}")
+    except KeyboardInterrupt:
+        print("\n[main] Ctrl+C received. Stopping web control.")
+    finally:
+        dashboard.disarm("Server stopped")
+        camera.close()
+        dashboard.close()
 
 if __name__ == "__main__":
     main()

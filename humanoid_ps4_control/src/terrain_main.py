@@ -12,6 +12,7 @@ from .balance import (
     extend_arms_forward,
 )
 from .config import Config, STANDING
+from .gait_dashboard import stationary_gait
 from .sensors import RobotSensorHub
 
 
@@ -46,63 +47,7 @@ def _make_balance(reference: tuple[float, float], args: Config) -> IMUBalanceCon
     )
 
 
-def _draw_dashboard(screen, pygame, title_font, font, small_font, state: dict[str, object]) -> None:
-    screen.fill((18, 22, 28))
-    screen.blit(title_font.render("Terrain IMU Balance", True, (238, 242, 246)), (36, 26))
-
-    enabled = bool(state["enabled"])
-    ready = bool(state["ready"])
-    fault = str(state["fault"])
-    if fault:
-        mode_text = f"FAULT: {fault}"
-        mode_color = (245, 100, 100)
-    elif enabled and ready:
-        mode_text = "BALANCE ON"
-        mode_color = (90, 225, 170)
-    elif enabled:
-        mode_text = "IMU WAIT"
-        mode_color = (245, 190, 90)
-    else:
-        mode_text = "BALANCE OFF"
-        mode_color = (170, 180, 192)
-    screen.blit(font.render(mode_text, True, mode_color), (38, 78))
-
-    rows = (
-        ("Roll", f"{state['roll']:+7.2f} deg", f"target {state['target_roll']:+.2f}", f"error {state['roll_error']:+.2f}"),
-        ("Pitch", f"{state['pitch']:+7.2f} deg", f"target {state['target_pitch']:+.2f}", f"error {state['pitch_error']:+.2f}"),
-        ("Calibration", str(state["calibration"]), "S / G / A / M", ""),
-        ("Ankle roll", str(state["ankle_roll"]), "PWM L / R", ""),
-        ("Ankle pitch", str(state["ankle_pitch"]), "PWM L / R", ""),
-        ("Hip roll", str(state["hip_roll"]), "PWM L / R", ""),
-        ("Hip pitch", str(state["hip_pitch"]), "PWM L / R", ""),
-    )
-    for index, (label, value, detail, extra) in enumerate(rows):
-        y = 128 + index * 46
-        screen.blit(small_font.render(label, True, (150, 163, 178)), (42, y))
-        screen.blit(font.render(value, True, (238, 242, 246)), (190, y - 5))
-        screen.blit(small_font.render(detail, True, (150, 163, 178)), (400, y))
-        if extra:
-            screen.blit(small_font.render(extra, True, (150, 163, 178)), (540, y))
-    pygame.display.flip()
-
-
-def run_terrain(args: Config) -> None:
-    try:
-        import pygame
-    except ImportError as exc:
-        raise RuntimeError("Terrain IMU Balance requires pygame.") from exc
-
-    from .keyboard_input import KeyboardReader
-
-    control_hz = max(10, round(1000.0 / args.update_ms))
-    reader = KeyboardReader(poll_rate_hz=control_hz)
-    reader.init()
-    screen = pygame.display.set_mode((700, 490))
-    pygame.display.set_caption("Terrain IMU Balance")
-    title_font = pygame.font.Font(None, 40)
-    font = pygame.font.Font(None, 28)
-    small_font = pygame.font.Font(None, 21)
-
+def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
     sensor_hub = RobotSensorHub(
         port=args.sensor_port,
         baudrate=args.sensor_baudrate,
@@ -149,11 +94,14 @@ def run_terrain(args: Config) -> None:
                 enabled = True
                 print("[terrain] IMU balance ON. V toggles, E/T recalibrates, C stops, O/Escape exits.")
 
-            for keyboard in reader.poll():
-                if keyboard.quit or keyboard.menu:
+            dashboard.set_runtime("terrain", "Terrain balance ready")
+            while True:
+                loop_started = time.monotonic()
+                control = dashboard.control_state()
+                if not control.armed or control.mode != "terrain":
                     break
 
-                toggle = keyboard.auto_toggle
+                toggle = control.auto_toggle
                 if toggle and not previous_toggle:
                     if fault:
                         print("[terrain] Clear the fault with E/T while the robot is upright on flat ground.")
@@ -165,7 +113,7 @@ def run_terrain(args: Config) -> None:
                         print(f"[terrain] IMU balance {'ON' if enabled else 'OFF'}.")
                 previous_toggle = toggle
 
-                stop = keyboard.stop
+                stop = control.stop
                 if stop and not previous_stop:
                     if fall_detector is not None and fall_detector.triggered:
                         print("[terrain] FALL latched. Holding protective pose; use E/T only when safe.")
@@ -184,7 +132,7 @@ def run_terrain(args: Config) -> None:
                     print("[terrain] Balance OFF. Holding STANDING.")
                 previous_stop = stop
 
-                reset = keyboard.reset
+                reset = control.reset
                 if reset and not previous_reset:
                     if fall_detector is not None and fall_detector.triggered:
                         snapshot = sensor_hub.read()
@@ -269,40 +217,27 @@ def run_terrain(args: Config) -> None:
 
                 backend.send(pose, duration_ms=args.update_ms)
                 last_pose = dict(pose)
-                calibration = (
-                    f"{imu.system_cal} / {imu.gyro_cal} / {imu.accel_cal} / {imu.mag_cal}"
-                    if imu is not None
-                    else "-- / -- / -- / --"
+                status = fault or ("BALANCE ON" if enabled and ready else "IMU WAIT" if enabled else "BALANCE OFF")
+                dashboard.publish(
+                    pose=pose,
+                    gait=stationary_gait("terrain-balance" if enabled else "idle"),
+                    sensor_snapshot=snapshot,
+                    status=status,
+                    active=enabled,
+                    camera_ready=camera_ready,
+                    balance_status=status,
                 )
-                _draw_dashboard(
-                    screen,
-                    pygame,
-                    title_font,
-                    font,
-                    small_font,
-                    {
-                        "enabled": enabled,
-                        "ready": ready,
-                        "fault": fault,
-                        "roll": roll,
-                        "pitch": pitch,
-                        "target_roll": target_roll,
-                        "target_pitch": target_pitch,
-                        "roll_error": roll_error,
-                        "pitch_error": pitch_error,
-                        "calibration": calibration,
-                        "ankle_roll": f"{pose[16] - STANDING[16]:+d} / {pose[17] - STANDING[17]:+d}",
-                        "ankle_pitch": f"{pose[15] - STANDING[15]:+d} / {pose[18] - STANDING[18]:+d}",
-                        "hip_roll": f"{pose[12] - STANDING[12]:+d} / {pose[21] - STANDING[21]:+d}",
-                        "hip_pitch": f"{pose[13] - STANDING[13]:+d} / {pose[20] - STANDING[20]:+d}",
-                    },
-                )
+                dashboard.set_runtime("terrain", status)
+                remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
+                if remaining > 0.0:
+                    time.sleep(remaining)
 
             exit_pose = last_pose if fall_detector is not None and fall_detector.triggered else STANDING
             backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
             time.sleep(args.stop_ms / 1000.0)
     except KeyboardInterrupt:
         print("\n[terrain] Interrupted. Stopping control output.")
+        raise
     finally:
         sensor_hub.close()
-        reader.quit()
+        dashboard.set_runtime("idle", "Terrain balance stopped")

@@ -5,19 +5,12 @@ from pathlib import Path
 
 from .backends import make_backend
 from .config import Config, STANDING
-from .keyboard_input import KeyboardReader, LiveCameraPreview
 from .person_follow import PersonDetector, PersonFollowController, PersonFrame
 from .sensors import DepthObstacleGuard, RobotSensorHub
 from .walking_engine import DynamicWalkingEngine
 
 
-def run_follow(args: Config) -> None:
-    poll_hz = max(10, round(1000.0 / args.update_ms))
-    reader = KeyboardReader(
-        poll_rate_hz=poll_hz,
-        caption="Humanoid Person Follow",
-        controls="Y follow, N ignore/stop, C stop, O/Esc menu, Q quit.",
-    )
+def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
     package_root = Path(__file__).resolve().parent.parent
     detector = PersonDetector(
         prototxt_path=str((package_root / args.person_detect_prototxt).resolve()),
@@ -25,13 +18,7 @@ def run_follow(args: Config) -> None:
         confidence=args.person_detect_confidence,
         detect_every_frames=args.person_detect_every_frames,
     )
-    camera = LiveCameraPreview(
-        width=args.vision_camera_width,
-        height=args.vision_camera_height,
-        fps=args.vision_fps,
-        detector=detector,
-        stable_frames=args.person_detect_stable_frames,
-    )
+    camera.set_detector(detector, stable_frames=args.person_detect_stable_frames)
     follow = PersonFollowController(
         turn_deadband=args.person_follow_turn_deadband,
         stop_height_ratio=args.person_follow_stop_height_ratio,
@@ -105,15 +92,14 @@ def run_follow(args: Config) -> None:
             backend.send(STANDING, duration_ms=900, force=True)
             time.sleep(0.9)
             try:
-                if not reader.init():
-                    raise RuntimeError("pygame keyboard control is unavailable")
-                camera.start()
-                camera.render("FOLLOW READY")
-                for keyboard in reader.poll():
-                    if keyboard.quit or keyboard.menu:
+                dashboard.set_runtime("follow", "Follow ready")
+                while True:
+                    loop_started = time.monotonic()
+                    control = dashboard.control_state()
+                    if not control.armed or control.mode != "follow":
                         break
 
-                    follow_pressed = keyboard.follow
+                    follow_pressed = control.follow
                     if follow_pressed and not previous_follow:
                         if camera.person_ready():
                             follow.enable()
@@ -123,7 +109,7 @@ def run_follow(args: Config) -> None:
                             print("[follow] Follow rejected: one stable person is required.")
                     previous_follow = follow_pressed
 
-                    ignore_pressed = keyboard.ignore_person
+                    ignore_pressed = control.ignore_person
                     if ignore_pressed and not previous_ignore:
                         if follow.enabled:
                             follow.disable()
@@ -134,7 +120,7 @@ def run_follow(args: Config) -> None:
                             print("[follow] Detected person ignored.")
                     previous_ignore = ignore_pressed
 
-                    stop_pressed = keyboard.stop
+                    stop_pressed = control.stop
                     if stop_pressed and not previous_stop:
                         follow.disable()
                         engine.reset()
@@ -183,7 +169,19 @@ def run_follow(args: Config) -> None:
                     last_head_at = now
                     pose[25] = max(500, min(2500, round(head_pwm)))
                     backend.send(pose, duration_ms=args.update_ms)
-                    camera.render(status, follow_enabled=follow.enabled)
+                    dashboard.publish(
+                        pose=pose,
+                        gait=engine.telemetry_snapshot(),
+                        sensor_snapshot=snapshot,
+                        status=status,
+                        active=follow.enabled or not engine.is_idle_ready(),
+                        camera_ready=camera_ready,
+                        balance_status="FOLLOW ON" if follow.enabled else "FOLLOW READY",
+                    )
+                    dashboard.set_runtime("follow", status)
+                    remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
+                    if remaining > 0.0:
+                        time.sleep(remaining)
             finally:
                 try:
                     backend.send(STANDING, duration_ms=args.stop_ms, force=True)
@@ -193,6 +191,6 @@ def run_follow(args: Config) -> None:
     finally:
         if sensor_hub is not None:
             sensor_hub.close()
-        camera.close()
-        reader.quit()
+        camera.set_detector(None)
+        dashboard.set_runtime("idle", "Person follow stopped")
         print("[follow] Person Follow exited.")

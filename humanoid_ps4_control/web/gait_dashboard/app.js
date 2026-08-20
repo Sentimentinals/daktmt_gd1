@@ -13,6 +13,115 @@ let replayPlaying = false;
 let replayIndex = 0;
 let lastEventAt = 0;
 let lastChartAt = 0;
+let activeSection = "control";
+
+const control = {
+  clientId: globalThis.crypto?.randomUUID?.() || `browser-${Date.now()}-${Math.random()}`,
+  sequence: 0,
+  armed: false,
+  mode: "manual",
+  axes: { forward: 0, turn: 0, side: 0 },
+  held: new Set(),
+  actions: new Set(),
+  sending: false,
+};
+
+function releaseMotion() {
+  control.axes.forward = 0;
+  control.axes.turn = 0;
+  control.axes.side = 0;
+  control.held.clear();
+  document.querySelectorAll("[data-axis].active, [data-hold].active").forEach((button) => {
+    button.classList.remove("active");
+  });
+}
+
+function updateControlUI(state = {}) {
+  if (typeof state.armed === "boolean") control.armed = state.armed;
+  if (state.mode) control.mode = state.mode;
+  $("armButton").classList.toggle("active", control.armed);
+  $("armButton").textContent = control.armed ? "Disable control" : "Enable control";
+  $("controlStatus").textContent = control.armed ? "ARMED" : "Disabled";
+  $("controlStatus").style.color = control.armed ? "#45d09a" : "#aeb7bf";
+  $("runtimeMode").textContent = String(state.runtime_mode || "idle").toUpperCase();
+  $("runtimeStatus").textContent = state.runtime_status || "Waiting for control";
+  document.querySelectorAll("[data-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.mode === control.mode);
+  });
+  document.querySelectorAll("[data-mode-actions]").forEach((group) => {
+    group.classList.toggle("active", group.dataset.modeActions === control.mode);
+  });
+  document.querySelectorAll("[data-axis], [data-action], [data-hold]").forEach((button) => {
+    const manualOnly = button.closest(".action-grid") || button.hasAttribute("data-axis");
+    const modeGroup = button.closest("[data-mode-actions]");
+    const modeAllowed = manualOnly ? control.mode === "manual" : !modeGroup || modeGroup.dataset.modeActions === control.mode;
+    button.disabled = !control.armed || !modeAllowed;
+  });
+}
+
+async function sendControl(emergencyStop = false) {
+  if (control.sending && !emergencyStop) return;
+  const sentActions = [...control.actions];
+  const payload = {
+    client_id: control.clientId,
+    sequence: ++control.sequence,
+    armed: control.armed,
+    mode: control.mode,
+    axes: control.axes,
+    held: [...control.held],
+    actions: sentActions,
+    emergency_stop: emergencyStop,
+  };
+  control.sending = true;
+  try {
+    const response = await fetch("/api/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+    const state = await response.json();
+    if (!response.ok) throw new Error(state.error || `Control HTTP ${response.status}`);
+    sentActions.forEach((action) => control.actions.delete(action));
+    updateControlUI(state);
+  } catch (error) {
+    releaseMotion();
+    control.armed = false;
+    updateControlUI({ runtime_status: error.message });
+  } finally {
+    control.sending = false;
+  }
+}
+
+function queueAction(action) {
+  if (!control.armed) return;
+  control.actions.add(action);
+  sendControl();
+}
+
+function setAxis(name, value, button) {
+  if (!control.armed || control.mode !== "manual") return;
+  control.axes[name] = Number(value);
+  button?.classList.toggle("active", Number(value) !== 0);
+  sendControl();
+}
+
+function setHeld(name, enabled, button) {
+  if (!control.armed) return;
+  if (enabled) control.held.add(name);
+  else control.held.delete(name);
+  button?.classList.toggle("active", enabled);
+  sendControl();
+}
+
+function setCameraStreaming(enabled) {
+  const feed = $("cameraFeed");
+  if (enabled && !feed.getAttribute("src")) {
+    feed.src = `/camera.mjpg?t=${Date.now()}`;
+  } else if (!enabled) {
+    feed.removeAttribute("src");
+  }
+}
 
 function fixed(value, digits = 1, suffix = "") {
   return Number.isFinite(Number(value)) ? `${Number(value).toFixed(digits)}${suffix}` : "--";
@@ -596,6 +705,150 @@ function connectStream() {
   };
 }
 
+function bindWebControl() {
+  document.querySelectorAll("[data-section]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeSection = button.dataset.section;
+      releaseMotion();
+      sendControl();
+      document.querySelectorAll("[data-section]").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      $("controlSection").classList.toggle("active", activeSection === "control");
+      $("analysisSection").classList.toggle("active", activeSection === "analysis");
+      setCameraStreaming(activeSection === "control");
+    });
+  });
+
+  $("armButton").addEventListener("click", () => {
+    releaseMotion();
+    control.armed = !control.armed;
+    updateControlUI();
+    sendControl();
+  });
+  $("emergencyButton").addEventListener("click", () => {
+    releaseMotion();
+    control.armed = false;
+    updateControlUI({ runtime_status: "Emergency stop requested" });
+    sendControl(true);
+  });
+
+  document.querySelectorAll("[data-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      releaseMotion();
+      control.mode = button.dataset.mode;
+      updateControlUI();
+      sendControl();
+    });
+  });
+  document.querySelectorAll("[data-action]").forEach((button) => {
+    button.addEventListener("click", () => queueAction(button.dataset.action));
+  });
+  document.querySelectorAll("[data-axis]").forEach((button) => {
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      setAxis(button.dataset.axis, button.dataset.value, button);
+    });
+    button.addEventListener("pointerup", () => {
+      setAxis(button.dataset.axis, 0, button);
+    });
+    button.addEventListener("pointercancel", () => {
+      setAxis(button.dataset.axis, 0, button);
+    });
+  });
+  document.querySelectorAll("[data-hold]").forEach((button) => {
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      setHeld(button.dataset.hold, true, button);
+    });
+    button.addEventListener("pointerup", () => setHeld(button.dataset.hold, false, button));
+    button.addEventListener("pointercancel", () => setHeld(button.dataset.hold, false, button));
+  });
+
+  const axisKeys = {
+    ArrowUp: ["forward", 1],
+    ArrowDown: ["forward", -1],
+    ArrowLeft: ["turn", 1],
+    ArrowRight: ["turn", -1],
+    j: ["side", 1],
+    k: ["side", -1],
+  };
+  const actionKeys = {
+    x: "one_foot",
+    l: "dance",
+    g: "getup_front",
+    b: "getup_back",
+    c: "stop",
+    e: "reset",
+    t: "reset",
+    v: "terrain_toggle",
+    y: "follow",
+    n: "ignore_person",
+  };
+  window.addEventListener("keydown", (event) => {
+    if (activeSection !== "control" || event.target.matches("input, select")) return;
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    if (axisKeys[key]) {
+      event.preventDefault();
+      const [axis, value] = axisKeys[key];
+      const button = document.querySelector(`[data-axis="${axis}"][data-value="${value}"]`);
+      setAxis(axis, value, button);
+    } else if (key === "r" && control.mode === "pickup") {
+      event.preventDefault();
+      setHeld("squat", true, document.querySelector('[data-hold="squat"]'));
+    } else if (actionKeys[key] && !event.repeat) {
+      event.preventDefault();
+      queueAction(actionKeys[key]);
+    } else if (key === "Escape") {
+      event.preventDefault();
+      releaseMotion();
+      control.armed = false;
+      updateControlUI({ runtime_status: "Emergency stop requested" });
+      sendControl(true);
+    }
+  });
+  window.addEventListener("keyup", (event) => {
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    if (axisKeys[key]) {
+      const [axis] = axisKeys[key];
+      const button = document.querySelector(`[data-axis="${axis}"][data-value="${axisKeys[key][1]}"]`);
+      setAxis(axis, 0, button);
+    } else if (key === "r") {
+      setHeld("squat", false, document.querySelector('[data-hold="squat"]'));
+    }
+  });
+  window.addEventListener("blur", () => {
+    releaseMotion();
+    sendControl();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      releaseMotion();
+      sendControl();
+    }
+  });
+  window.addEventListener("beforeunload", () => {
+    const payload = JSON.stringify({
+      client_id: control.clientId,
+      sequence: ++control.sequence,
+      armed: false,
+      mode: control.mode,
+      axes: { forward: 0, turn: 0, side: 0 },
+      held: [],
+      actions: [],
+    });
+    navigator.sendBeacon("/api/control", payload);
+  });
+  $("cameraFeed").addEventListener("error", () => {
+    $("cameraFeed").style.display = "none";
+    $("cameraOffline").classList.remove("hidden");
+  });
+  updateControlUI();
+  setInterval(() => sendControl(), 100);
+}
+
 function bindControls() {
   $("liveButton").addEventListener("click", setLive);
   $("playButton").addEventListener("click", () => {
@@ -620,6 +873,7 @@ function bindControls() {
 async function start() {
   model = await fetch("/api/model", { cache: "no-store" }).then((response) => response.json());
   initScene(model);
+  bindWebControl();
   bindControls();
   try {
     liveFrames = await fetch("/api/history", { cache: "no-store" }).then((response) => response.json());
