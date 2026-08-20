@@ -31,8 +31,21 @@ function releaseMotion() {
   control.axes.turn = 0;
   control.axes.side = 0;
   control.held.clear();
-  document.querySelectorAll("[data-axis].active, [data-hold].active").forEach((button) => {
+  document.querySelectorAll("[data-axis].active, [data-hold].active, [data-action].active").forEach((button) => {
     button.classList.remove("active");
+    button.setAttribute("aria-pressed", "false");
+  });
+}
+
+function setButtonActive(button, enabled) {
+  if (!button) return;
+  button.classList.toggle("active", enabled);
+  button.setAttribute("aria-pressed", String(enabled));
+}
+
+function setActionActive(action, enabled) {
+  document.querySelectorAll(`[data-action="${action}"]`).forEach((button) => {
+    if (!button.disabled || !enabled) setButtonActive(button, enabled);
   });
 }
 
@@ -94,7 +107,9 @@ async function sendControl(emergencyStop = false) {
 }
 
 function queueAction(action) {
-  if (!control.armed) return;
+  const available = [...document.querySelectorAll(`[data-action="${action}"]`)]
+    .some((button) => !button.disabled);
+  if (!control.armed || !available) return;
   control.actions.add(action);
   sendControl();
 }
@@ -102,7 +117,7 @@ function queueAction(action) {
 function setAxis(name, value, button) {
   if (!control.armed || control.mode !== "manual") return;
   control.axes[name] = Number(value);
-  button?.classList.toggle("active", Number(value) !== 0);
+  setButtonActive(button, Number(value) !== 0);
   sendControl();
 }
 
@@ -110,7 +125,7 @@ function setHeld(name, enabled, button) {
   if (!control.armed) return;
   if (enabled) control.held.add(name);
   else control.held.delete(name);
-  button?.classList.toggle("active", enabled);
+  setButtonActive(button, enabled);
   sendControl();
 }
 
@@ -792,14 +807,17 @@ function bindWebControl() {
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if (axisKeys[key]) {
       event.preventDefault();
+      if (event.repeat) return;
       const [axis, value] = axisKeys[key];
       const button = document.querySelector(`[data-axis="${axis}"][data-value="${value}"]`);
       setAxis(axis, value, button);
     } else if (key === "r" && control.mode === "pickup") {
       event.preventDefault();
+      if (event.repeat) return;
       setHeld("squat", true, document.querySelector('[data-hold="squat"]'));
     } else if (actionKeys[key] && !event.repeat) {
       event.preventDefault();
+      setActionActive(actionKeys[key], true);
       queueAction(actionKeys[key]);
     } else if (key === "Escape") {
       event.preventDefault();
@@ -817,6 +835,8 @@ function bindWebControl() {
       setAxis(axis, 0, button);
     } else if (key === "r") {
       setHeld("squat", false, document.querySelector('[data-hold="squat"]'));
+    } else if (actionKeys[key]) {
+      setActionActive(actionKeys[key], false);
     }
   });
   window.addEventListener("blur", () => {
