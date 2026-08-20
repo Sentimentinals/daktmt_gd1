@@ -232,6 +232,16 @@ h2 {
   font-weight: 800;
 }
 
+.emergency-button.active {
+  border-color: #ff8a8d;
+  background: #a8383d;
+}
+
+.emergency-button.active kbd {
+  border-color: #ffb4b6;
+  background: #5f1f22;
+}
+
 .control-layout {
   display: grid;
   grid-template-columns: 240px minmax(390px, 0.8fr) minmax(420px, 1.2fr);
@@ -297,11 +307,6 @@ h2 {
   grid-template-rows: auto 1fr auto auto;
 }
 
-.stop-button {
-  border-color: #a35f39;
-  color: #ffc69f;
-}
-
 .drive-body {
   display: grid;
   grid-template-columns: 1fr;
@@ -350,13 +355,52 @@ h2 {
   touch-action: none;
 }
 
+.dpad .center,
+.side-control button,
+.action-grid button,
+.mode-actions button,
+.emergency-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dpad .center {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  font-size: 17px;
+}
+
+kbd {
+  min-width: 24px;
+  padding: 2px 5px;
+  border: 1px solid #5c6872;
+  border-radius: 3px;
+  background: #11171c;
+  color: #dce3e8;
+  font: 700 10px Consolas, monospace;
+  line-height: 1.2;
+  text-align: center;
+}
+
+button.active kbd {
+  border-color: #5ee1ae;
+  background: #17372e;
+}
+
 .action-grid,
 .mode-actions > div {
-  display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   padding: 10px;
   border-top: 1px solid var(--line);
+}
+
+.action-grid,
+.mode-actions > div {
+  display: none;
 }
 
 .action-grid button,
@@ -364,10 +408,7 @@ h2 {
   min-height: 42px;
 }
 
-.mode-actions > div {
-  display: none;
-}
-
+.action-grid.active,
 .mode-actions > div.active {
   display: grid;
 }

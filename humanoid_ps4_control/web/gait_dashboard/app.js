@@ -35,6 +35,7 @@ function releaseMotion() {
     button.classList.remove("active");
     button.setAttribute("aria-pressed", "false");
   });
+  setButtonActive($("emergencyButton"), false);
 }
 
 function setButtonActive(button, enabled) {
@@ -791,13 +792,12 @@ function bindWebControl() {
     k: ["side", -1],
   };
   const actionKeys = {
+    " ": "stop",
     x: "one_foot",
     l: "dance",
     g: "getup_front",
     b: "getup_back",
-    c: "stop",
-    e: "reset",
-    t: "reset",
+    c: "reset",
     v: "terrain_toggle",
     y: "follow",
     n: "ignore_person",
@@ -822,6 +822,7 @@ function bindWebControl() {
     } else if (key === "Escape") {
       event.preventDefault();
       releaseMotion();
+      setButtonActive($("emergencyButton"), true);
       control.armed = false;
       updateControlUI({ runtime_status: "Emergency stop requested" });
       sendControl(true);
@@ -837,6 +838,8 @@ function bindWebControl() {
       setHeld("squat", false, document.querySelector('[data-hold="squat"]'));
     } else if (actionKeys[key]) {
       setActionActive(actionKeys[key], false);
+    } else if (key === "Escape") {
+      setButtonActive($("emergencyButton"), false);
     }
   });
   window.addEventListener("blur", () => {

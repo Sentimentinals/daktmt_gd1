@@ -35,7 +35,7 @@
         </div>
         <div class="safety-actions">
           <button id="armButton" type="button" class="arm-button">Enable control</button>
-          <button id="emergencyButton" type="button" class="emergency-button">STOP</button>
+          <button id="emergencyButton" type="button" class="emergency-button"><span>STOP</span><kbd>Esc</kbd></button>
         </div>
       </div>
 
@@ -60,42 +60,41 @@
         <section class="drive-panel panel">
           <div class="panel-head">
             <div><span class="eyebrow">MANUAL CONTROL</span><h2>Locomotion</h2></div>
-            <button type="button" data-action="stop" class="stop-button">Hold standing</button>
           </div>
           <div class="drive-body">
             <div class="dpad" aria-label="Walking direction">
               <button type="button" class="up" data-axis="forward" data-value="1" title="Forward">&uarr;</button>
               <button type="button" class="left" data-axis="turn" data-value="1" title="Turn left">&larr;</button>
-              <button type="button" class="center" data-action="stop" title="Stop">&#9632;</button>
+              <button type="button" class="center" data-action="stop" title="Stop"><span>&#9632;</span><kbd>Space</kbd></button>
               <button type="button" class="right" data-axis="turn" data-value="-1" title="Turn right">&rarr;</button>
               <button type="button" class="down" data-axis="forward" data-value="-1" title="Backward">&darr;</button>
             </div>
             <div class="side-control">
               <span>Side walk</span>
               <div>
-                <button type="button" data-axis="side" data-value="1" title="Side left">J &larr;</button>
-                <button type="button" data-axis="side" data-value="-1" title="Side right">K &rarr;</button>
+                <button type="button" data-axis="side" data-value="1" title="Side left"><span>&larr;</span><kbd>J</kbd></button>
+                <button type="button" data-axis="side" data-value="-1" title="Side right"><span>&rarr;</span><kbd>K</kbd></button>
               </div>
             </div>
           </div>
-          <div class="action-grid">
-            <button type="button" data-action="one_foot">One-foot</button>
-            <button type="button" data-action="dance">Arm dance</button>
-            <button type="button" data-action="getup_front">Get up front</button>
-            <button type="button" data-action="getup_back">Get up back</button>
-            <button type="button" data-action="reset">Reset</button>
+          <div class="action-grid active" data-mode-actions="manual">
+            <button type="button" data-action="one_foot"><span>One-foot</span><kbd>X</kbd></button>
+            <button type="button" data-action="dance"><span>Arm dance</span><kbd>L</kbd></button>
+            <button type="button" data-action="getup_front"><span>Get up front</span><kbd>G</kbd></button>
+            <button type="button" data-action="getup_back"><span>Get up back</span><kbd>B</kbd></button>
+            <button type="button" data-action="reset"><span>Reset</span><kbd>C</kbd></button>
           </div>
           <div class="mode-actions">
             <div data-mode-actions="terrain">
-              <button type="button" data-action="terrain_toggle">Balance on/off</button>
-              <button type="button" data-action="reset">Recalibrate IMU</button>
+              <button type="button" data-action="terrain_toggle"><span>Balance on/off</span><kbd>V</kbd></button>
+              <button type="button" data-action="reset"><span>Recalibrate IMU</span><kbd>C</kbd></button>
             </div>
             <div data-mode-actions="follow">
-              <button type="button" data-action="follow">Follow detected person</button>
-              <button type="button" data-action="ignore_person">Stop / ignore</button>
+              <button type="button" data-action="follow"><span>Follow person</span><kbd>Y</kbd></button>
+              <button type="button" data-action="ignore_person"><span>Stop follow</span><kbd>N</kbd></button>
             </div>
             <div data-mode-actions="pickup">
-              <button type="button" data-hold="squat">Hold squat</button>
+              <button type="button" data-hold="squat"><span>Hold squat</span><kbd>R</kbd></button>
             </div>
           </div>
         </section>
