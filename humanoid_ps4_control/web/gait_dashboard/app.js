@@ -57,8 +57,6 @@ function updateControlUI(state = {}) {
   $("armButton").textContent = control.armed ? "Disable control" : "Enable control";
   $("controlStatus").textContent = control.armed ? "ARMED" : "Disabled";
   $("controlStatus").style.color = control.armed ? "#45d09a" : "#aeb7bf";
-  $("runtimeMode").textContent = String(state.runtime_mode || "idle").toUpperCase();
-  $("runtimeStatus").textContent = state.runtime_status || "Waiting for control";
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === control.mode);
   });

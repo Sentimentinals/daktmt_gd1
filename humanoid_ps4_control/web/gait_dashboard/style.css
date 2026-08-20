@@ -285,23 +285,6 @@ h2 {
   font-size: 11px;
 }
 
-.runtime-state {
-  display: grid;
-  gap: 5px;
-  padding: 13px;
-  border-top: 1px solid var(--line);
-  background: #11151a;
-}
-
-.runtime-state span,
-.runtime-state small {
-  color: var(--muted);
-}
-
-.runtime-state strong {
-  font: 700 13px Consolas, monospace;
-}
-
 .drive-panel {
   display: grid;
   grid-template-rows: auto 1fr auto auto;
