@@ -279,17 +279,18 @@ class DynamicWalkingEngine:
         max_step_len: float = 28.0,
         max_turn_step_len: float | None = None,
         max_side_step_len: float | None = None,
-        step_height: float | None = None,
+        step_height: float = 52.0,
         zmp_support_ratio: float | None = None,
         ankle_roll_gain: float | None = None,
-        step_x_ratio: float | None = None,
+        step_x_ratio: float = 1.0,
         landing_gap_mm: float | None = None,
-        lift_start_phase: float | None = None,
-        swing_advance_end_phase: float | None = None,
-        lift_end_phase: float | None = None,
-        landing_roll_release_start: float | None = None,
+        lift_start_phase: float = 0.24,
+        swing_advance_end_phase: float = 0.60,
+        lift_end_phase: float = 1.0,
+        landing_roll_release_start: float = 0.42,
         command_deadzone: float | None = None,
         command_rate_limit: float = 16.0,
+        max_leg_pwm_per_s: float = 1000.0,
         arm_swing_pwm: int | None = None,
         arm_right_dir: int | None = None,
         arm_left_dir: int | None = None,
@@ -311,23 +312,17 @@ class DynamicWalkingEngine:
 
         self.zc = ROBOT["com_height"]
         self.hw = ROBOT["half_hip"]
-        self.step_height = ROBOT["step_height"] if step_height is None else step_height
+        self.step_height = max(0.0, step_height)
         self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
-        self.step_x_ratio = GAIT["step_x_ratio"] if step_x_ratio is None else step_x_ratio
-        self.landing_gap_mm = abs(GAIT["landing_gap_mm"] if landing_gap_mm is None else landing_gap_mm)
+        self.step_x_ratio = step_x_ratio
+        self.landing_gap_mm = abs(max_step_len if landing_gap_mm is None else landing_gap_mm)
         self.side_lift_scale = 0.45
-        self.lift_start_phase = GAIT["lift_start_phase"] if lift_start_phase is None else lift_start_phase
-        self.swing_advance_end_phase = (
-            GAIT["swing_advance_end_phase"] if swing_advance_end_phase is None else swing_advance_end_phase
-        )
-        self.lift_end_phase = GAIT["lift_end_phase"] if lift_end_phase is None else lift_end_phase
-        self.landing_roll_release_start = (
-            GAIT["landing_roll_release_start"]
-            if landing_roll_release_start is None
-            else landing_roll_release_start
-        )
+        self.lift_start_phase = lift_start_phase
+        self.swing_advance_end_phase = swing_advance_end_phase
+        self.lift_end_phase = lift_end_phase
+        self.landing_roll_release_start = landing_roll_release_start
         self.lift_start_phase = max(0.0, min(0.30, self.lift_start_phase))
         self.lift_end_phase = max(self.lift_start_phase + 0.20, min(1.0, self.lift_end_phase))
         self.swing_advance_end_phase = max(
@@ -347,7 +342,7 @@ class DynamicWalkingEngine:
         self.zmp_ctrl = ZMPPreviewController(dt=dt, zc=self.zc, preview_steps=self.preview_steps)
         self.zmp_ctrl_x = ZMPPreviewController(dt=dt, zc=self.zc, preview_steps=self.preview_steps)
 
-        self.max_pwm_per_frame = 1000.0 * dt
+        self.max_pwm_per_frame = max(1.0, abs(max_leg_pwm_per_s) * dt)
         self.max_step_len = max_step_len
         self.max_turn_step_len = GAIT["max_turn_step_len"] if max_turn_step_len is None else max_turn_step_len
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
@@ -456,6 +451,22 @@ class DynamicWalkingEngine:
                 self.landing_progress_queue.append(landing_t)
                 self.phase_mode_queue.append("land" if landing_t > 0.0 else "swing")
                 self.side_len_queue.append(0.0)
+
+        # The first walking step lifts the left foot, so preparation ends on right support.
+        shift_frames = max(2, round(self.prepare_hold_s / self.dt))
+        for k in range(shift_frames):
+            alpha = self._smooth01((k + 1) / shift_frames)
+            self.zmp_y_queue.append(support_offset * alpha)
+            self.zmp_x_queue.append(0.0)
+            self.zmp_z_queue.append(0.0)
+            self.foot_L_queue.append(base_L.copy())
+            self.foot_R_queue.append(base_R.copy())
+            self.arm_queue.append((0, 0))
+            self.swing_leg_queue.append("none")
+            self.lift_factor_queue.append(0.0)
+            self.landing_progress_queue.append(0.0)
+            self.phase_mode_queue.append("swing")
+            self.side_len_queue.append(0.0)
 
     def is_idle_ready(self, tolerance: float = 0.05) -> bool:
         if (

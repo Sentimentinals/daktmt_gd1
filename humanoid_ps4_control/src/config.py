@@ -14,19 +14,12 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-    "step_height": 48.0,
 }
 
 # --- Default Gait Parameters ---
 GAIT = {
     "zmp_support_ratio": 0.65,
     "ankle_roll_gain": -0.80,
-    "step_x_ratio": 1.60,
-    "landing_gap_mm": 48.0,
-    "lift_start_phase": 0.14,
-    "swing_advance_end_phase": 0.62,
-    "lift_end_phase": 1.0,
-    "landing_roll_release_start": 0.42,
     "command_deadzone": 0.02,
     "arm_swing_pwm": 280,
     "arm_right_dir": 1,
@@ -100,27 +93,22 @@ class Config:
     walk_speed: float = 0.55
     turn_speed: float = 0.25
     side_speed: float = 0.45
-    max_step_len: float = 42.0
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
-    step_height: float = ROBOT["step_height"]
-    flat_walk_step_length_mm: float = 42.0
-    flat_walk_step_height_mm: float = 42.0
-    flat_walk_lift_start_phase: float = 0.18
-    flat_walk_swing_advance_end_phase: float = 0.60
-    flat_walk_prepare_hold_s: float = 0.30
-    flat_walk_prepare_step_s: float = 0.55
-    flat_walk_prepare_lift_mm: float = 6.0
+    walk_step_length_mm: float = 42.0
+    walk_step_height_mm: float = 52.0
+    walk_lift_start_phase: float = 0.24
+    walk_swing_advance_end_phase: float = 0.60
+    walk_lift_end_phase: float = 1.0
+    walk_landing_roll_release_start: float = 0.42
+    walk_prepare_hold_s: float = 0.30
+    walk_prepare_step_s: float = 0.55
+    walk_prepare_lift_mm: float = 6.0
+    walk_max_leg_pwm_per_s: float = 1400.0
     t_step: float = 1.05
     t_dbl: float = 0.12
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
-    step_x_ratio: float = GAIT["step_x_ratio"]
-    landing_gap_mm: float = GAIT["landing_gap_mm"]
-    lift_start_phase: float = GAIT["lift_start_phase"]
-    swing_advance_end_phase: float = GAIT["swing_advance_end_phase"]
-    lift_end_phase: float = GAIT["lift_end_phase"]
-    landing_roll_release_start: float = GAIT["landing_roll_release_start"]
     command_rate_limit: float = 60.0
     one_foot_swing_knee_pwm: int = 700
     one_foot_arm_lift_pwm: int = 950
