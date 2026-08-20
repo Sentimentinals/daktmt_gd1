@@ -128,6 +128,9 @@ class LiveCameraPreview:
         self.screen = None
         self.font = None
         self._frame = None
+        self._frame_sequence = 0
+        self._jpeg_frame = None
+        self._jpeg_sequence = -1
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
@@ -212,6 +215,7 @@ class LiveCameraPreview:
                 break
             with self._lock:
                 self._frame = frame.copy()
+                self._frame_sequence += 1
                 if self._detector is not None:
                     self._detection_frame = self._frame
                     self._detection_sequence += 1
@@ -245,6 +249,30 @@ class LiveCameraPreview:
     def person_frame(self):
         with self._lock:
             return self._person_frame
+
+    def jpeg_frame(self, quality: int = 72) -> bytes | None:
+        if self._cv2 is None:
+            return None
+        with self._lock:
+            if self._jpeg_sequence == self._frame_sequence:
+                return self._jpeg_frame
+            frame = None if self._frame is None else self._frame.copy()
+            sequence = self._frame_sequence
+        if frame is None:
+            return None
+        ok, encoded = self._cv2.imencode(
+            ".jpg",
+            frame,
+            [self._cv2.IMWRITE_JPEG_QUALITY, max(40, min(90, quality))],
+        )
+        if not ok:
+            return None
+        jpeg = encoded.tobytes()
+        with self._lock:
+            if sequence >= self._jpeg_sequence:
+                self._jpeg_frame = jpeg
+                self._jpeg_sequence = sequence
+        return jpeg
 
     def person_ready(self) -> bool:
         with self._lock:
@@ -331,5 +359,9 @@ class LiveCameraPreview:
         self.camera = None
         self._thread = None
         self._detector_thread = None
+        with self._lock:
+            self._frame = None
+            self._jpeg_frame = None
+            self._jpeg_sequence = -1
         if was_running:
             print("[camera] Live preview stopped.")

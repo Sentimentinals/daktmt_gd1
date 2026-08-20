@@ -381,6 +381,8 @@ class DynamicWalkingEngine:
         self._arm_state = [0.0, 0.0]
         self._com_y = 0.0
         self._com_x = 0.0
+        self._zmp_y = 0.0
+        self._zmp_x = 0.0
         self._ground_z = 0.0
         self._prepare_pending = self.prepare_step_s > 0.0 and self.prepare_lift_mm > 0.0
 
@@ -830,6 +832,8 @@ class DynamicWalkingEngine:
         
         self._com_y = com_y_preview
         self._com_x = com_x_preview
+        self._zmp_y = zmp_now
+        self._zmp_x = zmp_x_now
         self._ground_z = zmp_z_now
         com_y = self._com_y
         com_x = self._com_x
@@ -923,3 +927,24 @@ class DynamicWalkingEngine:
         pose = clamp_pose_rate(self.prev_pose, pose, self.max_pwm_per_frame)
         self.prev_pose = pose
         return pose
+
+    def telemetry_snapshot(self) -> dict[str, object]:
+        return {
+            "phase": self.last_phase_mode,
+            "support_leg": self.support_leg,
+            "swing_leg": self.last_swing_leg,
+            "step_count": self.step_count,
+            "lift_factor": self.last_lift_factor,
+            "landing_progress": self.last_landing_progress,
+            "commands": {
+                "forward_mm": self.commanded_step_len,
+                "turn_mm": self.commanded_turn_len,
+                "side_mm": self.commanded_side_len,
+            },
+            "com_mm": [self._com_x, self._com_y, self.zc + self._ground_z],
+            "zmp_mm": [self._zmp_x, self._zmp_y, self._ground_z],
+            "feet_mm": {
+                "left": self.last_foot_L.tolist(),
+                "right": self.last_foot_R.tolist(),
+            },
+        }

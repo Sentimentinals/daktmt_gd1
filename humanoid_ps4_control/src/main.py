@@ -150,6 +150,7 @@ def run_keyboard(args: Config) -> None:
     previous_recovery_status = recovery_status
     sensor_hub = None
     sensor_snapshot = None
+    dashboard = None
     last_balance_t = time.monotonic()
     last_fall_t = time.monotonic()
     balance_has_valid_imu = False
@@ -254,6 +255,21 @@ def run_keyboard(args: Config) -> None:
             if not reader.init():
                 raise RuntimeError("pygame keyboard control is unavailable")
             camera_ready = camera_preview.start()
+            if args.gait_dashboard_enabled:
+                try:
+                    from .gait_dashboard import GaitDashboard
+
+                    dashboard = GaitDashboard(
+                        host=args.gait_dashboard_host,
+                        port=args.gait_dashboard_port,
+                        stream_hz=args.gait_dashboard_stream_hz,
+                        history_seconds=args.gait_dashboard_history_s,
+                        camera=camera_preview,
+                    )
+                    dashboard.start()
+                except Exception as exc:
+                    dashboard = None
+                    print(f"[dashboard] Unavailable: {exc}. Keyboard control remains enabled.")
             backend.send(engine.ready_pose, duration_ms=600, force=True)
             time.sleep(0.6)
             last_pose = dict(engine.ready_pose)
@@ -676,6 +692,35 @@ def run_keyboard(args: Config) -> None:
                         elif side_cmd < 0.0:
                             directions.append("SIDE RIGHT")
                         camera_status = " + ".join(directions) if directions else "WALK READY"
+                    if dashboard is not None:
+                        gait_state = (
+                            recovery_engine.telemetry_snapshot()
+                            if recovery_step_active
+                            else engine.telemetry_snapshot()
+                        )
+                        if single_support.active:
+                            gait_state["phase"] = "one-foot"
+                            gait_state["support_leg"] = single_support.support_leg
+                            gait_state["swing_leg"] = (
+                                "right" if single_support.support_leg == "left" else "left"
+                            )
+                        dashboard.publish(
+                            pose=last_pose,
+                            gait=gait_state,
+                            sensor_snapshot=sensor_snapshot,
+                            status=camera_status,
+                            active=(
+                                motion_requested
+                                or not engine.is_idle_ready()
+                                or recovery_step_active
+                                or single_support.active
+                                or arm_dance.running
+                                or getup.running
+                                or fall_active
+                            ),
+                            camera_ready=camera_ready,
+                            balance_status=recovery_status,
+                        )
                     camera_preview.render(camera_status, follow_enabled=False)
             except KeyboardInterrupt:
                 print("\n[main] Ctrl+C received. Stopping control output.")
@@ -693,6 +738,8 @@ def run_keyboard(args: Config) -> None:
     finally:
         if sensor_hub is not None:
             sensor_hub.close()
+        if dashboard is not None:
+            dashboard.close()
         camera_preview.close()
         reader.quit()
         print("[main] Keyboard mode exited.")

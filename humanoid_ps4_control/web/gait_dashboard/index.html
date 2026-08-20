@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Humanoid Gait Lab</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">H17</span>
+      <div>
+        <h1>Humanoid Gait Lab</h1>
+        <p id="clock">--:--:--</p>
+      </div>
+    </div>
+    <div class="connection-row">
+      <span id="streamState" class="status-dot offline"></span>
+      <span id="streamLabel">Disconnected</span>
+      <span id="modeBadge" class="badge">IDLE</span>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="viewer-panel panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">COMMAND DIGITAL TWIN</span>
+          <h2>17-DOF pose</h2>
+        </div>
+        <div class="view-controls" role="group" aria-label="Camera view">
+          <button type="button" data-view="front">Front</button>
+          <button type="button" data-view="side">Side</button>
+          <button type="button" data-view="top">Top</button>
+          <button type="button" data-view="fit">Fit</button>
+        </div>
+      </div>
+      <div id="robotViewport" class="robot-viewport">
+        <div id="webglFallback" class="fallback hidden">WebGL unavailable</div>
+      </div>
+      <div class="scene-legend">
+        <span><i class="legend-swatch support"></i>Support</span>
+        <span><i class="legend-swatch swing"></i>Swing</span>
+        <span><i class="legend-swatch com"></i>CoM</span>
+        <span><i class="legend-swatch zmp"></i>ZMP</span>
+      </div>
+    </section>
+
+    <section class="camera-panel panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">PI CAMERA</span>
+          <h2>Live view</h2>
+        </div>
+        <span id="cameraBadge" class="badge muted">OFF</span>
+      </div>
+      <div class="camera-frame">
+        <img id="cameraFeed" src="/camera.mjpg" alt="Pi Camera live feed">
+        <div id="cameraOffline" class="camera-offline">CAMERA OFFLINE</div>
+      </div>
+      <div class="mini-grid">
+        <div><span>Status</span><strong id="motionStatus">Waiting</strong></div>
+        <div><span>Balance</span><strong id="balanceStatus">--</strong></div>
+        <div><span>Step</span><strong id="stepCount">0</strong></div>
+        <div><span>Swing</span><strong id="swingLeg">NONE</strong></div>
+      </div>
+    </section>
+
+    <aside class="telemetry-panel panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">GAIT STATE</span>
+          <h2 id="phaseName">IDLE</h2>
+        </div>
+        <span id="supportBadge" class="badge">DOUBLE</span>
+      </div>
+
+      <div class="metric-section">
+        <div class="section-title">Body orientation</div>
+        <div class="metric-row"><span>Roll</span><strong id="rollValue">--</strong></div>
+        <div class="meter"><i id="rollMeter"></i></div>
+        <div class="metric-row"><span>Pitch</span><strong id="pitchValue">--</strong></div>
+        <div class="meter"><i id="pitchMeter"></i></div>
+        <div class="metric-row"><span>Yaw</span><strong id="yawValue">--</strong></div>
+      </div>
+
+      <div class="metric-section">
+        <div class="section-title">Foot contact</div>
+        <div class="force-row">
+          <div><span>LEFT</span><strong id="leftForce">--</strong><i><b id="leftForceBar"></b></i></div>
+          <div><span>RIGHT</span><strong id="rightForce">--</strong><i><b id="rightForceBar"></b></i></div>
+        </div>
+      </div>
+
+      <div class="metric-section">
+        <div class="section-title">Trajectory</div>
+        <div class="metric-row"><span>CoM X / Y</span><strong id="comValue">--</strong></div>
+        <div class="metric-row"><span>ZMP X / Y</span><strong id="zmpValue">--</strong></div>
+        <div class="metric-row"><span>Left foot Z</span><strong id="leftFootZ">--</strong></div>
+        <div class="metric-row"><span>Right foot Z</span><strong id="rightFootZ">--</strong></div>
+      </div>
+
+      <div class="metric-section command-section">
+        <div class="section-title">Step command</div>
+        <div class="command-values">
+          <div><span>Forward</span><strong id="forwardCommand">0.0</strong></div>
+          <div><span>Turn</span><strong id="turnCommand">0.0</strong></div>
+          <div><span>Side</span><strong id="sideCommand">0.0</strong></div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="analysis-panel panel">
+      <div class="analysis-head">
+        <div>
+          <span class="eyebrow">GAIT TIMELINE</span>
+          <h2>Balance and foot clearance</h2>
+        </div>
+        <div class="replay-controls">
+          <button id="liveButton" type="button" class="active">Live</button>
+          <button id="playButton" type="button">Pause</button>
+          <select id="sessionSelect" aria-label="Recorded session">
+            <option value="">Recorded sessions</option>
+          </select>
+          <button id="loadSessionButton" type="button">Load</button>
+          <button id="exportButton" type="button">Export</button>
+        </div>
+      </div>
+      <div class="chart-grid">
+        <div class="chart-box">
+          <div class="chart-label"><span>IMU tilt</span><span class="chart-key"><i class="roll-key"></i>Roll <i class="pitch-key"></i>Pitch</span></div>
+          <canvas id="imuChart"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="chart-label"><span>Foot Z</span><span class="chart-key"><i class="left-key"></i>Left <i class="right-key"></i>Right</span></div>
+          <canvas id="footChart"></canvas>
+        </div>
+      </div>
+      <div class="scrubber-row">
+        <span id="replayTime">LIVE</span>
+        <input id="replaySlider" type="range" min="0" max="0" value="0" aria-label="Replay position">
+        <span id="frameCounter">0 frames</span>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

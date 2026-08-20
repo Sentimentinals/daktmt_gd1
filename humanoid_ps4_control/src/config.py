@@ -131,6 +131,13 @@ class Config:
     head_turn_lead_s: float = 0.30
     head_pan_direction: float = 1.0
 
+    # --- Local Gait Dashboard ---
+    gait_dashboard_enabled: bool = True
+    gait_dashboard_host: str = "127.0.0.1"
+    gait_dashboard_port: int = 8765
+    gait_dashboard_stream_hz: int = 12
+    gait_dashboard_history_s: int = 120
+
     # --- Person Detection & Follow ---
     person_detect_prototxt: str = "../person_detect/MobileNetSSD_deploy.prototxt"
     person_detect_model: str = "../person_detect/MobileNetSSD_deploy.caffemodel"
