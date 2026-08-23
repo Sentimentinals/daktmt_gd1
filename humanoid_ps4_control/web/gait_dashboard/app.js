@@ -206,92 +206,157 @@ function updateReadouts(frame) {
   $("cameraOffline").classList.toggle("hidden", cameraOn);
 }
 
-function createLink(length, radius, material) {
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, length, 12),
-    material,
-  );
-  mesh.position.y = -length / 2;
-  return mesh;
-}
-
 function makeRobot(robotModel, scene) {
   const dimensions = robotModel.dimensions_mm;
   const upper = dimensions.upper_leg;
   const lower = dimensions.lower_leg;
   const hipHalf = dimensions.half_hip;
   const hipHeight = upper + lower - 2;
-  const neutral = new THREE.MeshStandardMaterial({ color: 0xcfd6dc, roughness: 0.72 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x313941, roughness: 0.8 });
-  const leftMaterial = new THREE.MeshStandardMaterial({ color: 0x7f8b94, roughness: 0.72 });
-  const rightMaterial = leftMaterial.clone();
+  const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x23282d, metalness: 0.78, roughness: 0.34 });
+  const edgeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b4249, metalness: 0.72, roughness: 0.30 });
+  const servoMaterial = new THREE.MeshStandardMaterial({ color: 0x30363b, metalness: 0.48, roughness: 0.42 });
+  const metalMaterial = new THREE.MeshStandardMaterial({ color: 0xb8c0c5, metalness: 0.92, roughness: 0.22 });
+  const holeMaterial = new THREE.MeshStandardMaterial({ color: 0x080a0c, metalness: 0.15, roughness: 0.58 });
+  const orangeMaterial = new THREE.MeshStandardMaterial({ color: 0xf06a22, emissive: 0x4a1605, roughness: 0.54 });
+  const redMaterial = new THREE.MeshStandardMaterial({ color: 0xc53b32, emissive: 0x310706, roughness: 0.58 });
+  const leftMaterial = new THREE.MeshBasicMaterial({ color: 0x45d09a });
+  const rightMaterial = new THREE.MeshBasicMaterial({ color: 0xf4b84a });
   const root = new THREE.Group();
   scene.add(root);
 
-  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(78, 28, 42), dark);
-  pelvis.position.y = hipHeight + 7;
+  function addBox(parent, size, position, material) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+    mesh.position.set(...position);
+    parent.add(mesh);
+    return mesh;
+  }
+
+  function addJoint(parent, radius = 8, z = 17) {
+    const axle = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 5, 20), metalMaterial);
+    axle.rotation.x = Math.PI / 2;
+    axle.position.z = z;
+    parent.add(axle);
+    const center = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.38, radius * 0.38, 5.6, 16), holeMaterial);
+    center.rotation.x = Math.PI / 2;
+    center.position.z = z + 0.4;
+    parent.add(center);
+  }
+
+  function addScrews(parent, width, height, z, centerY = 0) {
+    for (const x of [-width * 0.38, width * 0.38]) {
+      for (const y of [-height * 0.38, height * 0.38]) {
+        const screw = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 1.4, 12), metalMaterial);
+        screw.rotation.x = Math.PI / 2;
+        screw.position.set(x, centerY + y, z);
+        parent.add(screw);
+      }
+    }
+  }
+
+  function addCable(parent, points, material = orangeMaterial) {
+    const curve = new THREE.CatmullRomCurve3(points.map((point) => new THREE.Vector3(...point)));
+    parent.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 1.15, 6, false), material));
+  }
+
+  function addServo(parent, size = [25, 38, 28], z = 0) {
+    addBox(parent, size, [0, 0, z], servoMaterial);
+    addBox(parent, [size[0] - 5, size[1] - 5, 2], [0, 0, z + size[2] / 2 + 1], edgeMaterial);
+    addScrews(parent, size[0] - 5, size[1] - 5, z + size[2] / 2 + 2.2);
+    addJoint(parent, Math.min(size[0], size[1]) * 0.25, z + size[2] / 2 + 4);
+  }
+
+  const pelvis = new THREE.Group();
+  pelvis.position.y = hipHeight + 9;
   root.add(pelvis);
+  addBox(pelvis, [92, 25, 24], [0, 0, 0], frameMaterial);
+  addBox(pelvis, [62, 8, 28], [0, 0, 0], edgeMaterial);
+  addScrews(pelvis, 82, 17, 13);
 
   const torsoPivot = new THREE.Group();
-  torsoPivot.position.y = hipHeight + 18;
+  torsoPivot.position.y = hipHeight + 20;
   root.add(torsoPivot);
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(118, 92, 46), neutral);
-  torso.position.y = 46;
-  torsoPivot.add(torso);
+  addBox(torsoPivot, [118, 24, 22], [0, 16, 0], frameMaterial);
+  addBox(torsoPivot, [28, 72, 22], [0, 52, 0], frameMaterial);
+  addBox(torsoPivot, [132, 18, 20], [0, 82, 0], edgeMaterial);
+  addScrews(torsoPivot, 108, 16, 12, 16);
+  for (const x of [-45, 45]) {
+    const chestServo = new THREE.Group();
+    chestServo.position.set(x, 56, 0);
+    torsoPivot.add(chestServo);
+    addServo(chestServo, [30, 44, 28]);
+  }
+  addCable(torsoPivot, [[-52, 70, 15], [-20, 84, 17], [20, 84, 17], [52, 70, 15]]);
+  addCable(torsoPivot, [[-9, 18, 14], [-13, 48, 16], [-8, 80, 14]], redMaterial);
 
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(13, 13, 18, 12), dark);
-  neck.position.y = 102;
-  torsoPivot.add(neck);
   const headPivot = new THREE.Group();
-  headPivot.position.y = 112;
+  headPivot.position.y = 102;
   torsoPivot.add(headPivot);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(48, 42, 44), neutral);
-  head.position.y = 20;
-  headPivot.add(head);
+  addBox(headPivot, [18, 15, 22], [0, 0, 0], edgeMaterial);
+  const headBody = new THREE.Group();
+  headBody.position.y = 23;
+  headPivot.add(headBody);
+  addServo(headBody, [29, 42, 30], 0);
   const cameraEye = new THREE.Mesh(
-    new THREE.BoxGeometry(26, 9, 5),
-    new THREE.MeshStandardMaterial({ color: 0x51b9d4, emissive: 0x15333b }),
+    new THREE.CylinderGeometry(5.5, 5.5, 4, 18),
+    new THREE.MeshStandardMaterial({ color: 0x111820, emissive: 0x123647, metalness: 0.6 }),
   );
-  cameraEye.position.set(0, 23, 24);
-  headPivot.add(cameraEye);
+  cameraEye.rotation.x = Math.PI / 2;
+  cameraEye.position.set(0, 2, 20);
+  headBody.add(cameraEye);
 
   function buildLeg(side, material) {
     const hipRoll = new THREE.Group();
     hipRoll.position.set(side * hipHalf, hipHeight, 0);
     root.add(hipRoll);
+    addServo(hipRoll, [28, 36, 28]);
     const hipPitch = new THREE.Group();
     hipRoll.add(hipPitch);
-    hipPitch.add(createLink(upper, 11, material));
+    addBox(hipPitch, [26, upper - 17, 16], [0, -upper / 2, 0], frameMaterial);
+    addBox(hipPitch, [5, upper - 13, 22], [side * 12, -upper / 2, 0], edgeMaterial);
+    addScrews(hipPitch, 20, upper - 28, 9, -upper / 2);
+    addCable(hipPitch, [[side * 15, -7, 15], [side * 19, -upper * 0.48, 17], [side * 14, -upper + 4, 15]]);
     const knee = new THREE.Group();
     knee.position.y = -upper;
     hipPitch.add(knee);
-    knee.add(createLink(lower, 10, material));
+    addServo(knee, [28, 38, 30]);
+    addBox(knee, [6, lower - 18, 18], [-9, -lower / 2, 0], edgeMaterial);
+    addBox(knee, [6, lower - 18, 18], [9, -lower / 2, 0], edgeMaterial);
+    addBox(knee, [24, 12, 18], [0, -lower * 0.52, 0], frameMaterial);
+    addCable(knee, [[side * 14, -8, 16], [side * 18, -lower * 0.50, 18], [side * 13, -lower + 5, 16]], redMaterial);
     const anklePitch = new THREE.Group();
     anklePitch.position.y = -lower;
     knee.add(anklePitch);
+    addServo(anklePitch, [29, 35, 30]);
     const ankleRoll = new THREE.Group();
     anklePitch.add(ankleRoll);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(34, 12, 68), material);
-    foot.position.set(0, -8, 14);
-    ankleRoll.add(foot);
+    addJoint(ankleRoll, 8, 18);
+    addBox(ankleRoll, [42, 10, 72], [0, -11, 17], frameMaterial);
+    addBox(ankleRoll, [46, 4, 35], [0, -15, 37], edgeMaterial);
+    addScrews(ankleRoll, 32, 7, 54, -11);
+    addBox(knee, [2.5, lower - 28, 3], [side * 15, -lower / 2, 12], material);
     return { hipRoll, hipPitch, knee, anklePitch, ankleRoll, material };
   }
 
   function buildArm(side) {
-    const material = neutral.clone();
     const shoulderSwing = new THREE.Group();
-    shoulderSwing.position.set(side * 70, 83, 0);
+    shoulderSwing.position.set(side * 73, 80, 0);
     torsoPivot.add(shoulderSwing);
+    addServo(shoulderSwing, [30, 40, 28]);
     const upperArm = new THREE.Group();
     shoulderSwing.add(upperArm);
-    upperArm.add(createLink(62, 8, material));
+    addBox(upperArm, [21, 52, 15], [0, -31, 0], frameMaterial);
+    addBox(upperArm, [5, 56, 21], [side * 11, -31, 0], edgeMaterial);
+    addScrews(upperArm, 15, 42, 9, -31);
+    addCable(upperArm, [[side * 14, -6, 14], [side * 17, -30, 16], [side * 13, -58, 14]]);
     const elbow = new THREE.Group();
     elbow.position.y = -62;
     upperArm.add(elbow);
-    elbow.add(createLink(55, 7, material));
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(16, 25, 22), dark);
-    hand.position.y = -62;
-    elbow.add(hand);
+    addServo(elbow, [27, 37, 28]);
+    addBox(elbow, [18, 48, 14], [0, -30, 0], frameMaterial);
+    addBox(elbow, [5, 51, 20], [side * 10, -30, 0], edgeMaterial);
+    addCable(elbow, [[side * 13, -6, 14], [side * 16, -28, 16], [side * 11, -54, 13]], redMaterial);
+    addBox(elbow, [15, 24, 18], [0, -65, 2], edgeMaterial);
+    addJoint(elbow, 6, 16);
     return { shoulderSwing, upperArm, elbow };
   }
 
@@ -350,28 +415,35 @@ function initScene(robotModel) {
   const container = $("robotViewport");
   try {
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x090b0e);
-    scene.fog = new THREE.Fog(0x090b0e, 420, 800);
+    scene.background = new THREE.Color(0x0b0e11);
+    scene.fog = new THREE.Fog(0x0b0e11, 440, 820);
     const camera = new THREE.PerspectiveCamera(42, 1, 1, 1500);
-    camera.position.set(0, 170, 470);
+    camera.position.set(0, 200, 560);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.prepend(renderer.domElement);
 
     scene.add(new THREE.HemisphereLight(0xe8f0f4, 0x20252a, 2.1));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.58));
     const keyLight = new THREE.DirectionalLight(0xffffff, 2.3);
     keyLight.position.set(170, 300, 220);
     scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0x91b7cf, 1.35);
+    fillLight.position.set(-190, 190, 260);
+    scene.add(fillLight);
+    const rimLight = new THREE.DirectionalLight(0xb8d5e4, 1.05);
+    rimLight.position.set(230, 170, -140);
+    scene.add(rimLight);
     const grid = new THREE.GridHelper(520, 26, 0x3d474f, 0x232a30);
     scene.add(grid);
 
     const robot = makeRobot(robotModel, scene);
-    const cameraTarget = new THREE.Vector3(0, 120, 0);
-    let desiredCamera = new THREE.Vector3(0, 170, 470);
+    const cameraTarget = new THREE.Vector3(0, 145, 0);
+    let desiredCamera = new THREE.Vector3(0, 200, 560);
     let orbitTheta = 0;
     let orbitPhi = 1.46;
-    let orbitRadius = 470;
+    let orbitRadius = 560;
     let dragging = false;
     let pointerX = 0;
     let pointerY = 0;
@@ -388,11 +460,11 @@ function initScene(robotModel) {
       if (view === "front" || view === "fit") {
         orbitTheta = 0;
         orbitPhi = 1.46;
-        orbitRadius = 470;
+        orbitRadius = 560;
       } else if (view === "side") {
         orbitTheta = Math.PI / 2;
         orbitPhi = 1.46;
-        orbitRadius = 470;
+        orbitRadius = 560;
       } else if (view === "top") {
         orbitTheta = 0;
         orbitPhi = 0.12;
