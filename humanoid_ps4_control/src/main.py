@@ -61,9 +61,7 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
         arm_smooth_tau=args.arm_smooth_tau,
         arm_min_pwm=args.arm_min_pwm,
         arm_quantum_pwm=args.arm_quantum_pwm,
-        prepare_hold_s=args.walk_prepare_hold_s,
-        prepare_step_s=args.walk_prepare_step_s,
-        prepare_lift_mm=args.walk_prepare_lift_mm,
+        crouch_transition_s=args.walk_crouch_transition_s,
     )
     single_support = SingleSupportTestEngine(
         dt=args.update_ms / 1000.0,
