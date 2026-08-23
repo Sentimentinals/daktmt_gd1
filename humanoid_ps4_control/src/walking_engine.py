@@ -98,8 +98,7 @@ def compute_pose(
     left_hip_abduct = STAND_ANG["L_hip_abduct"]
     if phase_mode == "shift" and support_leg in ("left", "right"):
         support_y = hw * (GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio)
-        signed_support_y = support_y if support_leg == "right" else -support_y
-        shift_ankle_roll = math.degrees(math.atan2(signed_support_y, roll_height)) * ankle_gain
+        shift_ankle_roll = math.degrees(math.atan2(support_y, roll_height)) * ankle_gain
         right_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "right" else 0.0)
         left_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "left" else 0.0)
     else:
@@ -280,6 +279,7 @@ class DynamicWalkingEngine:
         max_turn_step_len: float | None = None,
         max_side_step_len: float | None = None,
         step_height: float = 52.0,
+        crouch_depth_mm: float = 0.0,
         zmp_support_ratio: float | None = None,
         ankle_roll_gain: float | None = None,
         step_x_ratio: float = 1.0,
@@ -313,6 +313,7 @@ class DynamicWalkingEngine:
         self.zc = ROBOT["com_height"]
         self.hw = ROBOT["half_hip"]
         self.step_height = max(0.0, step_height)
+        self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
         self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
@@ -360,6 +361,7 @@ class DynamicWalkingEngine:
         self.zmp_y_queue: Deque[float] = deque()
         self.zmp_x_queue: Deque[float] = deque()
         self.zmp_z_queue: Deque[float] = deque()
+        self.body_drop_queue: Deque[float] = deque()
         self.foot_L_queue: Deque[np.ndarray] = deque()
         self.foot_R_queue: Deque[np.ndarray] = deque()
         self.arm_queue: Deque[tuple[int, int]] = deque()
@@ -378,6 +380,7 @@ class DynamicWalkingEngine:
         self.last_lift_factor = 0.0
         self.last_landing_progress = 0.0
         self.last_phase_mode = "idle"
+        self.last_body_drop = 0.0
         self._arm_state = [0.0, 0.0]
         self._com_y = 0.0
         self._com_x = 0.0
@@ -390,6 +393,7 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(0.0)
             self.zmp_x_queue.append(0.0)
             self.zmp_z_queue.append(0.0)
+            self.body_drop_queue.append(0.0)
             self.foot_L_queue.append(np.array([0.0, -self.hw, 0.0]))
             self.foot_R_queue.append(np.array([0.0, self.hw, 0.0]))
             self.arm_queue.append((0, 0))
@@ -407,10 +411,12 @@ class DynamicWalkingEngine:
         hold_frames = round(self.prepare_hold_s / self.dt)
         step_frames = max(2, round(self.prepare_step_s / self.dt))
 
-        for _ in range(hold_frames):
+        for frame in range(hold_frames):
+            drop_t = self._smooth01((frame + 1) / max(hold_frames, 1))
             self.zmp_y_queue.append(0.0)
             self.zmp_x_queue.append(0.0)
             self.zmp_z_queue.append(0.0)
+            self.body_drop_queue.append(self.crouch_depth_mm * drop_t)
             self.foot_L_queue.append(base_L.copy())
             self.foot_R_queue.append(base_R.copy())
             self.arm_queue.append((0, 0))
@@ -445,6 +451,7 @@ class DynamicWalkingEngine:
                 self.zmp_y_queue.append(zmp_y)
                 self.zmp_x_queue.append(0.0)
                 self.zmp_z_queue.append(0.0)
+                self.body_drop_queue.append(self.crouch_depth_mm)
                 self.foot_L_queue.append(foot_L)
                 self.foot_R_queue.append(foot_R)
                 self.arm_queue.append((0, 0))
@@ -461,6 +468,7 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(support_offset * alpha)
             self.zmp_x_queue.append(0.0)
             self.zmp_z_queue.append(0.0)
+            self.body_drop_queue.append(self.crouch_depth_mm)
             self.foot_L_queue.append(base_L.copy())
             self.foot_R_queue.append(base_R.copy())
             self.arm_queue.append((0, 0))
@@ -479,6 +487,8 @@ class DynamicWalkingEngine:
             return False
 
         if any(abs(zmp_y) > tolerance for zmp_y in self.zmp_y_queue):
+            return False
+        if any(depth > tolerance for depth in self.body_drop_queue) or self.last_body_drop > tolerance:
             return False
         if any(delta != (0, 0) for delta in self.arm_queue):
             return False
@@ -512,10 +522,13 @@ class DynamicWalkingEngine:
             settle_frames = self.n_s + self.n_d
             stance_center_x = (base_L[0] + base_R[0]) / 2.0
             stance_center_z = (base_L[2] + base_R[2]) / 2.0
-            for _ in range(settle_frames):
+            drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
+            for frame in range(settle_frames):
+                stand_t = self._smooth01((frame + 1) / settle_frames)
                 self.zmp_x_queue.append(stance_center_x)
                 self.zmp_y_queue.append(0.0)
                 self.zmp_z_queue.append(stance_center_z)
+                self.body_drop_queue.append(drop_start * (1.0 - stand_t))
                 self.foot_L_queue.append(base_L.copy())
                 self.foot_R_queue.append(base_R.copy())
                 self.arm_queue.append((0, 0))
@@ -527,6 +540,8 @@ class DynamicWalkingEngine:
             return
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
+        drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
+        drop_target = self.crouch_depth_mm if abs(step_len) > 0.1 and not side_dominant else 0.0
         side_step_len = side_len * 1.80 if side_dominant else side_len
         next_step_count = self.step_count + 1
         if side_dominant and side_len > 0.0:
@@ -598,6 +613,8 @@ class DynamicWalkingEngine:
                 zmp_y = stance_y
             self.zmp_y_queue.append(zmp_y)
             self.zmp_z_queue.append(support_z + (swing_target_z - support_z) * release_t)
+            drop_t = self._smooth01((k + 1) / step_n_s)
+            self.body_drop_queue.append(drop_start + (drop_target - drop_start) * drop_t)
 
             lift_height_scale = self.side_lift_scale if side_dominant else 1.0
             swing_base_z = swing_start_z + (swing_target_z - swing_start_z) * swing_t
@@ -787,6 +804,7 @@ class DynamicWalkingEngine:
         zmp_now = self.zmp_y_queue.popleft()
         zmp_x_now = self.zmp_x_queue.popleft()
         zmp_z_now = self.zmp_z_queue.popleft()
+        body_drop_now = self.body_drop_queue.popleft()
         foot_L_now = self.foot_L_queue.popleft()
         foot_R_now = self.foot_R_queue.popleft()
         arm_delta_now = self.arm_queue.popleft()
@@ -801,6 +819,7 @@ class DynamicWalkingEngine:
         self.last_lift_factor = lift_factor_now
         self.last_landing_progress = landing_t_now
         self.last_phase_mode = phase_mode_now
+        self.last_body_drop = body_drop_now
 
         lateral_origin_y = 0.5 * (float(foot_L_now[1]) + float(foot_R_now[1]))
         zmp_rel_y = zmp_now - lateral_origin_y
@@ -870,7 +889,16 @@ class DynamicWalkingEngine:
         side_support_roll = round(26.0 * side_strength)
         side_swing_roll = round(max(side_support_roll * 2.15, 155.0 * max(0.82, side_strength)) * side_swing_scale)
         side_hip_roll = round(175.0 * max(0.82, side_strength) * side_swing_scale) if side_active else 0
-        if phase_mode_now == "idle":
+        if phase_mode_now == "idle" and body_drop_now > 0.01:
+            pose = compute_pose(
+                0.0,
+                0.0,
+                neutral_l,
+                neutral_r,
+                com_z=self.zc - body_drop_now,
+                support_leg="double",
+            )
+        elif phase_mode_now == "idle":
             pose = {
                 sid: STANDING[sid]
                 if abs(self.prev_pose.get(sid, STANDING[sid]) - STANDING[sid]) <= 3
@@ -883,7 +911,7 @@ class DynamicWalkingEngine:
                 pose_com_y,
                 pose_foot_L,
                 pose_foot_R,
-                com_z=self.zc + self._ground_z,
+                com_z=self.zc + self._ground_z - body_drop_now,
                 support_leg=support_leg_for_pose,
                 phase_mode="shift",
                 zmp_support_ratio=self.zmp_support_ratio,
@@ -936,12 +964,13 @@ class DynamicWalkingEngine:
             "step_count": self.step_count,
             "lift_factor": self.last_lift_factor,
             "landing_progress": self.last_landing_progress,
+            "crouch_mm": self.last_body_drop,
             "commands": {
                 "forward_mm": self.commanded_step_len,
                 "turn_mm": self.commanded_turn_len,
                 "side_mm": self.commanded_side_len,
             },
-            "com_mm": [self._com_x, self._com_y, self.zc + self._ground_z],
+            "com_mm": [self._com_x, self._com_y, self.zc + self._ground_z - self.last_body_drop],
             "zmp_mm": [self._zmp_x, self._zmp_y, self._ground_z],
             "feet_mm": {
                 "left": self.last_foot_L.tolist(),
