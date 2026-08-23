@@ -5,10 +5,11 @@ import time
 from .backends import make_backend
 from .config import Config, STANDING
 from .gait_dashboard import stationary_gait
+from .object_detection import SimpleObjectDetector
 from .walking_engine import AdaptiveSquatEngine
 
 
-def run_pickup(args: Config, dashboard, camera_ready: bool) -> None:
+def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
     squat = AdaptiveSquatEngine(
         dt=args.update_ms / 1000.0,
         min_depth_mm=args.squat_min_depth_mm,
@@ -16,6 +17,14 @@ def run_pickup(args: Config, dashboard, camera_ready: bool) -> None:
         depth_rate_mm_s=args.squat_depth_rate_mm_s,
         max_pwm_per_frame=args.squat_max_pwm_per_frame,
     )
+    detector = None
+    if camera_ready:
+        detector = SimpleObjectDetector(
+            min_area_ratio=args.pickup_object_min_area_ratio,
+            max_area_ratio=args.pickup_object_max_area_ratio,
+            detect_every_frames=args.pickup_detect_every_frames,
+        )
+        camera.set_detector(detector)
     backend = make_backend(
         mode=args.backend,
         port=args.port,
@@ -48,19 +57,30 @@ def run_pickup(args: Config, dashboard, camera_ready: bool) -> None:
                     pose = squat.update(ratio)
                     backend.send(pose, duration_ms=args.update_ms)
                     depth_ratio = squat.depth_mm / max(1.0, args.squat_max_depth_mm)
-                    status = (
-                        f"PICK-UP POSITION {round(depth_ratio * 100)}%"
-                        if ratio > 0.0 or not squat.is_idle()
-                        else "PICK-UP READY"
+                    object_frame = camera.object_frame() if detector is not None else None
+                    detected = object_frame.primary_object if object_frame is not None else None
+                    if detected is not None and time.monotonic() - object_frame.captured_at > 0.8:
+                        detected = None
+                    object_name = f"{detected.color} {detected.label}" if detected is not None else ""
+                    object_status = (
+                        f"{object_name} {detected.confidence:.2f}" if detected is not None else ""
                     )
+                    if ratio > 0.0 or not squat.is_idle():
+                        status = f"PICK-UP POSITION {round(depth_ratio * 100)}%"
+                        if object_status:
+                            status += f" | {object_status}"
+                    elif object_status:
+                        status = f"DETECTED {object_status}"
+                    else:
+                        status = "SHOW CAN, BALL OR RUBIK CUBE" if camera_ready else "PICK-UP CAMERA OFFLINE"
                     dashboard.publish(
                         pose=pose,
                         gait=stationary_gait("squat" if not squat.is_idle() else "idle"),
                         sensor_snapshot=None,
                         status=status,
-                        active=not squat.is_idle(),
+                        active=detected is not None or not squat.is_idle(),
                         camera_ready=camera_ready,
-                        balance_status="PICKUP",
+                        balance_status=object_name or "PICKUP",
                     )
                     dashboard.set_runtime("pickup", status)
                     remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
@@ -73,5 +93,6 @@ def run_pickup(args: Config, dashboard, camera_ready: bool) -> None:
                 except Exception as exc:
                     print(f"[pickup] Failed to return to STANDING: {exc}")
     finally:
+        camera.set_detector(None)
         dashboard.set_runtime("idle", "Pickup positioning stopped")
         print("[pickup] Pick Up Positioning exited.")

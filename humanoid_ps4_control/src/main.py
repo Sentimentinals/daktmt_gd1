@@ -749,7 +749,7 @@ def main() -> None:
                 elif state.mode == "pickup":
                     from .pickup_main import run_pickup
 
-                    run_pickup(args, dashboard, camera_ready)
+                    run_pickup(args, dashboard, camera, camera_ready)
             except Exception as exc:
                 dashboard.disarm(f"{state.mode} unavailable: {exc}")
                 print(f"[main] {state.mode} unavailable: {exc}")

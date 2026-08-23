@@ -158,6 +158,9 @@ class Config:
     squat_max_depth_mm: float = 40.0
     squat_depth_rate_mm_s: float = 35.0
     squat_max_pwm_per_frame: float = 28.0
+    pickup_detect_every_frames: int = 2
+    pickup_object_min_area_ratio: float = 0.01
+    pickup_object_max_area_ratio: float = 0.72
 
     # --- Terrain IMU Balance ---
     terrain_emergency_tilt_deg: float = 18.0

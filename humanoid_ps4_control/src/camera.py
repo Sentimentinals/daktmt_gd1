@@ -29,6 +29,7 @@ class HeadlessCamera:
         self._detector = detector
         self.stable_frames = max(1, stable_frames)
         self._person_frame = None
+        self._object_frame = None
         self._person_stable_frames = 0
         self._last_person_timestamp = None
         self._person_ignored = False
@@ -74,7 +75,7 @@ class HeadlessCamera:
         )
         self._detector_thread = threading.Thread(
             target=self._detect_loop,
-            name="person-detector",
+            name="vision-detector",
             daemon=True,
         )
         self._capture_thread.start()
@@ -88,6 +89,7 @@ class HeadlessCamera:
             if stable_frames is not None:
                 self.stable_frames = max(1, stable_frames)
             self._person_frame = None
+            self._object_frame = None
             self._person_stable_frames = 0
             self._last_person_timestamp = None
             self._person_ignored = False
@@ -119,27 +121,36 @@ class HeadlessCamera:
                 continue
             observed_sequence = sequence
             try:
-                person_frame = detector.detect(frame)
+                detection = detector.detect(frame)
             except Exception as exc:
-                print(f"[camera] Person detection stopped: {exc}")
+                print(f"[camera] Detection stopped: {exc}")
                 self.set_detector(None)
                 continue
             with self._lock:
                 if detector is not self._detector:
                     continue
-                self._person_frame = person_frame
-                is_new = person_frame.captured_at != self._last_person_timestamp
-                if person_frame.single_person is not None and is_new:
-                    self._person_stable_frames += 1
-                elif person_frame.single_person is None and is_new:
-                    self._person_stable_frames = 0
-                    self._person_ignored = False
-                self._last_person_timestamp = person_frame.captured_at
+                if hasattr(detection, "people"):
+                    self._person_frame = detection
+                    self._object_frame = None
+                    is_new = detection.captured_at != self._last_person_timestamp
+                    if detection.single_person is not None and is_new:
+                        self._person_stable_frames += 1
+                    elif detection.single_person is None and is_new:
+                        self._person_stable_frames = 0
+                        self._person_ignored = False
+                    self._last_person_timestamp = detection.captured_at
+                elif hasattr(detection, "objects"):
+                    self._person_frame = None
+                    self._object_frame = detection
                 self._jpeg_sequence = -1
 
     def person_frame(self):
         with self._lock:
             return self._person_frame
+
+    def object_frame(self):
+        with self._lock:
+            return self._object_frame
 
     def jpeg_frame(self, quality: int = 68) -> bytes | None:
         if self._cv2 is None:
@@ -149,6 +160,7 @@ class HeadlessCamera:
                 return self._jpeg_frame
             frame = None if self._frame is None else self._frame.copy()
             person_frame = self._person_frame
+            object_frame = self._object_frame
             sequence = self._frame_sequence
         if frame is None:
             return None
@@ -163,6 +175,20 @@ class HeadlessCamera:
                     self._cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (69, 208, 154),
+                    1,
+                    self._cv2.LINE_AA,
+                )
+        if object_frame is not None:
+            for detected in object_frame.objects:
+                x1, y1, x2, y2 = detected.box
+                self._cv2.rectangle(frame, (x1, y1), (x2, y2), (244, 184, 74), 2)
+                self._cv2.putText(
+                    frame,
+                    f"{detected.color} {detected.label} {detected.confidence:.2f}",
+                    (x1, max(18, y1 - 7)),
+                    self._cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (244, 184, 74),
                     1,
                     self._cv2.LINE_AA,
                 )
@@ -214,6 +240,8 @@ class HeadlessCamera:
         self._detector_thread = None
         with self._lock:
             self._frame = None
+            self._person_frame = None
+            self._object_frame = None
             self._jpeg_frame = None
             self._jpeg_sequence = -1
         if was_running:
