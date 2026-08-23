@@ -161,22 +161,20 @@ class FallDetector:
                 self._reset_frames = 0
             return self.triggered
 
+        unsafe_tilt = max_tilt >= self.config.trigger_tilt_deg
         hard_fall = max_tilt >= self.config.hard_tilt_deg
-        dynamic_fall = (
-            max_tilt >= self.config.trigger_tilt_deg
-            and max_rate >= self.config.trigger_rate_deg_s
-        )
+        dynamic_fall = unsafe_tilt and max_rate >= self.config.trigger_rate_deg_s
         if hard_fall:
             self._candidate_reason = f"tilt={max_tilt:.1f} deg"
         elif dynamic_fall:
             self._candidate_reason = f"tilt={max_tilt:.1f} deg rate={max_rate:.1f} deg/s"
-        candidate = hard_fall or dynamic_fall or (
-            self._candidate_frames > 0 and max_tilt >= self.config.trigger_tilt_deg
-        )
-        self._candidate_frames = self._candidate_frames + 1 if candidate else 0
-        if not candidate:
+        elif unsafe_tilt:
+            self._candidate_reason = f"tilt={max_tilt:.1f} deg"
+        self._candidate_frames = self._candidate_frames + 1 if unsafe_tilt else 0
+        if not unsafe_tilt:
             self._candidate_reason = ""
-        if self._candidate_frames >= max(1, self.config.consecutive_frames):
+        required_frames = 1 if hard_fall or dynamic_fall else max(1, self.config.consecutive_frames)
+        if self._candidate_frames >= required_frames:
             self.triggered = True
             self.reason = self._candidate_reason
             self._reset_frames = 0
@@ -203,10 +201,7 @@ def update_fall_detector(
     dt: float,
     args: Config,
 ) -> bool:
-    if reference is not None and reading is not None and reading.balance_ready(
-        args.imu_min_gyro_cal,
-        args.imu_min_accel_cal,
-    ):
+    if reference is not None and reading is not None:
         detector.update(
             -angle_error_deg(reading.roll_deg, reference[0]),
             -angle_error_deg(reading.pitch_deg, reference[1]),

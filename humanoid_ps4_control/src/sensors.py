@@ -408,6 +408,7 @@ class RobotSensorHub:
         deadline = time.monotonic() + max(sample_seconds, timeout_s)
         started_at: Optional[float] = None
         samples: list[IMUReading] = []
+        calibrated_samples: list[IMUReading] = []
         last_sensor_time: Optional[int] = None
         self._gravity_basis = None
 
@@ -415,7 +416,6 @@ class RobotSensorHub:
             reading = self.read().imu
             if (
                 reading is None
-                or not reading.balance_ready(min_gyro_cal, min_accel_cal)
                 or reading.sensor_time_ms == last_sensor_time
             ):
                 time.sleep(0.01)
@@ -423,6 +423,8 @@ class RobotSensorHub:
 
             last_sensor_time = reading.sensor_time_ms
             samples.append(reading)
+            if reading.balance_ready(min_gyro_cal, min_accel_cal):
+                calibrated_samples.append(reading)
             if started_at is None:
                 started_at = time.monotonic()
             if time.monotonic() - started_at >= sample_seconds and len(samples) >= min_samples:
@@ -431,23 +433,24 @@ class RobotSensorHub:
 
         if len(samples) < min_samples:
             return None
+        reference_samples = calibrated_samples if len(calibrated_samples) >= min_samples else samples
 
         if self.imu_vertical_mount:
-            vertical_reference = self._build_vertical_reference(samples, max_rms_deg)
+            vertical_reference = self._build_vertical_reference(reference_samples, max_rms_deg)
             if vertical_reference is None:
                 return None
             self._gravity_basis = vertical_reference
             return (0.0, 0.0)
 
-        roll = self._circular_mean_deg(value.roll_deg for value in samples)
-        pitch = self._circular_mean_deg(value.pitch_deg for value in samples)
+        roll = self._circular_mean_deg(value.roll_deg for value in reference_samples)
+        pitch = self._circular_mean_deg(value.pitch_deg for value in reference_samples)
         rms = math.sqrt(
             sum(
                 self._angle_delta_deg(sample.roll_deg, roll) ** 2
                 + self._angle_delta_deg(sample.pitch_deg, pitch) ** 2
-                for sample in samples
+                for sample in reference_samples
             )
-            / (2.0 * len(samples))
+            / (2.0 * len(reference_samples))
         )
         return (roll, pitch) if rms <= max_rms_deg else None
 
