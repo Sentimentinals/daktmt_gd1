@@ -225,7 +225,11 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
 
                 backend.send(pose, duration_ms=args.update_ms)
                 last_pose = dict(pose)
-                status = fault or ("BALANCE ON" if enabled and ready else "IMU WAIT" if enabled else "BALANCE OFF")
+                status = fault or (
+                    f"BALANCE ON | R {roll_error:+.1f} P {pitch_error:+.1f}"
+                    if enabled and ready
+                    else "IMU WAIT" if enabled else "BALANCE OFF"
+                )
                 dashboard.publish(
                     pose=pose,
                     gait=stationary_gait("terrain-balance" if enabled else "idle"),

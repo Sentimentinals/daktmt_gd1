@@ -160,9 +160,9 @@ class Config:
     squat_max_pwm_per_frame: float = 28.0
 
     # --- Terrain IMU Balance ---
-    terrain_emergency_tilt_deg: float = 12.0
-    terrain_balance_limit_deg: float = 5.0
-    terrain_balance_deadband_deg: float = 0.6
+    terrain_emergency_tilt_deg: float = 18.0
+    terrain_balance_limit_deg: float = 8.0
+    terrain_balance_deadband_deg: float = 0.35
 
     # --- ToF Obstacle Guard ---
     tof_obstacle_stop_mm: int = 350

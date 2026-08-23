@@ -378,8 +378,8 @@ class IMUBalanceController:
     def __init__(self, config: Optional[BalanceConfig] = None) -> None:
         self.config = config or BalanceConfig()
         limit = self.config.max_correction_deg
-        self.roll_pid = PID(kp=0.45, ki=0.0, kd=0.025, output_limit=limit)
-        self.pitch_pid = PID(kp=0.45, ki=0.0, kd=0.025, output_limit=limit)
+        self.roll_pid = PID(kp=0.85, ki=0.0, kd=0.035, output_limit=limit)
+        self.pitch_pid = PID(kp=0.85, ki=0.0, kd=0.035, output_limit=limit)
 
     def reset(self) -> None:
         self.roll_pid.reset()
