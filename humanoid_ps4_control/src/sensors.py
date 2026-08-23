@@ -44,6 +44,10 @@ class DepthReading:
         return self.region_median_mm(2, 6, 2, 6)
 
     @property
+    def tracking_distance_mm(self) -> Optional[int]:
+        return self.region_median_mm(2, 6, 3, 5)
+
+    @property
     def obstacle_distance_mm(self) -> Optional[int]:
         blocks = [
             self.region_median_mm(row, row + 2, col, col + 2)

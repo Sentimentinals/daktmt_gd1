@@ -108,26 +108,42 @@ class PersonFollowController:
         lost_timeout_s: float,
         forward_speed: float,
         turn_speed: float,
+        target_distance_mm: int = 700,
+        distance_deadband_mm: int = 100,
+        slow_range_mm: int = 700,
+        tof_filter_alpha: float = 0.30,
     ) -> None:
         self.turn_deadband = max(0.02, min(0.4, turn_deadband))
         self.stop_height_ratio = max(0.2, min(0.9, stop_height_ratio))
         self.lost_timeout_s = max(0.2, lost_timeout_s)
         self.forward_speed = max(0.0, min(1.0, forward_speed))
         self.turn_speed = max(0.0, min(1.0, turn_speed))
+        self.target_distance_mm = max(250, target_distance_mm)
+        self.distance_deadband_mm = max(30, distance_deadband_mm)
+        self.slow_range_mm = max(100, slow_range_mm)
+        self.tof_filter_alpha = max(0.05, min(1.0, tof_filter_alpha))
         self.enabled = False
         self._last_seen_s = None
+        self._filtered_distance_mm = None
+        self._last_distance_sample_id = None
 
     def enable(self) -> None:
         self.enabled = True
         self._last_seen_s = None
+        self._filtered_distance_mm = None
+        self._last_distance_sample_id = None
 
     def disable(self) -> None:
         self.enabled = False
         self._last_seen_s = None
+        self._filtered_distance_mm = None
+        self._last_distance_sample_id = None
 
     def command(
         self,
         frame: PersonFrame,
+        distance_mm: Optional[int] = None,
+        distance_sample_id: Optional[int] = None,
         now_s: Optional[float] = None,
     ) -> tuple[float, float, str]:
         if not self.enabled:
@@ -146,10 +162,44 @@ class PersonFollowController:
         horizontal_error = 0.5 - person.center_x_ratio
         turn = 0.0
         if abs(horizontal_error) > self.turn_deadband:
-            turn = self.turn_speed if horizontal_error > 0.0 else -self.turn_speed
+            scale = min(
+                1.0,
+                (abs(horizontal_error) - self.turn_deadband) / max(0.01, 0.5 - self.turn_deadband),
+            )
+            turn = (self.turn_speed * (0.25 + 0.75 * scale)) * (
+                1.0 if horizontal_error > 0.0 else -1.0
+            )
 
-        forward = 0.0
-        if person.height_ratio < self.stop_height_ratio:
-            forward = self.forward_speed
-        status = "FOLLOWING" if forward or turn else "FOLLOW DISTANCE"
+        if distance_mm is None:
+            self._filtered_distance_mm = None
+            self._last_distance_sample_id = None
+        elif distance_sample_id is None or distance_sample_id != self._last_distance_sample_id:
+            sample = float(distance_mm)
+            self._filtered_distance_mm = (
+                sample
+                if self._filtered_distance_mm is None
+                else min(
+                    sample,
+                    self._filtered_distance_mm
+                    + self.tof_filter_alpha * (sample - self._filtered_distance_mm),
+                )
+            )
+            self._last_distance_sample_id = distance_sample_id
+
+        if turn:
+            return 0.0, turn, "ALIGNING PERSON"
+        if person.height_ratio >= self.stop_height_ratio:
+            return 0.0, 0.0, "CAMERA CLOSE"
+        if self._filtered_distance_mm is None:
+            return 0.0, 0.0, "TOF WAIT"
+
+        distance = round(self._filtered_distance_mm)
+        excess = distance - self.target_distance_mm - self.distance_deadband_mm
+        if excess <= 0:
+            return 0.0, 0.0, f"FOLLOW DISTANCE {distance} MM"
+
+        scale = min(1.0, excess / self.slow_range_mm)
+        scale = scale * scale * (3.0 - 2.0 * scale)
+        forward = self.forward_speed * (0.45 + 0.55 * scale)
+        status = f"FOLLOWING {distance} MM"
         return forward, turn, status

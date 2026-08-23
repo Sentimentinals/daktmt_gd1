@@ -21,12 +21,12 @@ GAIT = {
     "zmp_support_ratio": 0.65,
     "ankle_roll_gain": -0.80,
     "command_deadzone": 0.02,
-    "arm_swing_pwm": 280,
+    "arm_swing_pwm": 240,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
-    "arm_smooth_tau": 0.08,
-    "arm_min_pwm": 30,
-    "arm_quantum_pwm": 10,
+    "arm_smooth_tau": 0.12,
+    "arm_min_pwm": 18,
+    "arm_quantum_pwm": 6,
     "max_side_step_len": 38.0,
     "max_turn_step_len": 7.0,
 }
@@ -90,9 +90,9 @@ class Config:
     stop_ms: int = 250
 
     # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.55
-    turn_speed: float = 0.25
-    side_speed: float = 0.45
+    walk_speed: float = 0.45
+    turn_speed: float = 0.20
+    side_speed: float = 0.35
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     walk_step_length_mm: float = 42.0
@@ -104,12 +104,12 @@ class Config:
     walk_prepare_hold_s: float = 0.30
     walk_prepare_step_s: float = 0.55
     walk_prepare_lift_mm: float = 6.0
-    walk_max_leg_pwm_per_s: float = 1400.0
-    t_step: float = 1.05
+    walk_max_leg_pwm_per_s: float = 1100.0
+    t_step: float = 1.15
     t_dbl: float = 0.12
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
-    command_rate_limit: float = 60.0
+    command_rate_limit: float = 40.0
     one_foot_swing_knee_pwm: int = 700
     one_foot_arm_lift_pwm: int = 950
     one_foot_ramp_s: float = 0.75
@@ -147,8 +147,12 @@ class Config:
     person_follow_lost_timeout_s: float = 1.0
     person_follow_turn_deadband: float = 0.10
     person_follow_stop_height_ratio: float = 0.58
-    person_follow_speed: float = 0.22
-    person_follow_turn_speed: float = 0.16
+    person_follow_speed: float = 0.18
+    person_follow_turn_speed: float = 0.12
+    person_follow_target_distance_mm: int = 700
+    person_follow_distance_deadband_mm: int = 100
+    person_follow_slow_range_mm: int = 700
+    person_follow_tof_filter_alpha: float = 0.30
 
     # --- Adaptive Squat ---
     squat_min_depth_mm: float = 12.0

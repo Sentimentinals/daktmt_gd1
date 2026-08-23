@@ -25,6 +25,10 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
         lost_timeout_s=args.person_follow_lost_timeout_s,
         forward_speed=args.person_follow_speed,
         turn_speed=args.person_follow_turn_speed,
+        target_distance_mm=args.person_follow_target_distance_mm,
+        distance_deadband_mm=args.person_follow_distance_deadband_mm,
+        slow_range_mm=args.person_follow_slow_range_mm,
+        tof_filter_alpha=args.person_follow_tof_filter_alpha,
     )
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
@@ -131,29 +135,28 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     snapshot = sensor_hub.read() if sensor_hub is not None else None
                     depth = snapshot.depth if snapshot is not None else None
                     obstacle_blocked, obstacle_mm = obstacle_guard.update(depth)
-                    depth_missing = bool(
-                        args.sensor_feedback and args.sensor_use_depth and depth is None
-                    )
 
                     forward = 0.0
                     turn = 0.0
                     status = "FOLLOW READY"
                     if follow.enabled:
                         frame = camera.person_frame() or PersonFrame()
-                        forward, turn, status = follow.command(frame)
+                        distance_mm = depth.tracking_distance_mm if depth is not None else None
+                        distance_sample_id = depth.sensor_time_ms if depth is not None else None
+                        forward, turn, status = follow.command(
+                            frame,
+                            distance_mm=distance_mm,
+                            distance_sample_id=distance_sample_id,
+                        )
                         if status in ("TARGET LOST", "MULTIPLE PEOPLE"):
                             follow.disable()
                             engine.reset()
                             forward = 0.0
                             turn = 0.0
                             print(f"[follow] Stopped: {status.lower()}.")
-                        elif forward > 0.0 and (obstacle_blocked or depth_missing):
+                        elif forward > 0.0 and obstacle_blocked:
                             forward = 0.0
-                            status = (
-                                f"OBJECT {obstacle_mm} MM"
-                                if obstacle_blocked and obstacle_mm is not None
-                                else "TOF WAIT"
-                            )
+                            status = f"OBJECT {obstacle_mm} MM" if obstacle_mm is not None else "OBJECT"
 
                     if follow.enabled or not engine.is_idle_ready():
                         pose = engine.update(forward, turn_cmd=turn)
