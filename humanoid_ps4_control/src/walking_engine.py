@@ -318,7 +318,7 @@ class DynamicWalkingEngine:
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
         self.step_x_ratio = step_x_ratio
         self.landing_gap_mm = abs(max_step_len if landing_gap_mm is None else landing_gap_mm)
-        self.side_lift_scale = 0.45
+        self.side_lift_scale = 0.55
         self.lift_start_phase = lift_start_phase
         self.swing_advance_end_phase = swing_advance_end_phase
         self.lift_end_phase = lift_end_phase
@@ -629,7 +629,7 @@ class DynamicWalkingEngine:
             self.lift_factor_queue.append(lift_factor)
             self.landing_progress_queue.append(landing_t if phase_mode == "land" else 0.0)
             self.phase_mode_queue.append(phase_mode)
-            self.side_len_queue.append(side_step_len)
+            self.side_len_queue.append(side_len)
 
     def _landing_reach(self, planned_reach: float, sagittal_cmd: float) -> float:
         if abs(sagittal_cmd) < 0.1:
