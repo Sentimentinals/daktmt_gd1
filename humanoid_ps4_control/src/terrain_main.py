@@ -89,6 +89,8 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
                             trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
                             hard_tilt_deg=args.fall_hard_tilt_deg,
                             consecutive_frames=args.fall_trigger_frames,
+                            reset_tilt_deg=args.fall_reset_tilt_deg,
+                            reset_frames=args.fall_reset_frames,
                         )
                     )
                 enabled = True
@@ -163,6 +165,8 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
                                 trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
                                 hard_tilt_deg=args.fall_hard_tilt_deg,
                                 consecutive_frames=args.fall_trigger_frames,
+                                reset_tilt_deg=args.fall_reset_tilt_deg,
+                                reset_frames=args.fall_reset_frames,
                             )
                         )
                         if balance is not None and args.fall_detection_enabled
@@ -191,6 +195,7 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
                 last_balance_at = now
                 fall_active = False
                 if ready and balance is not None and fall_detector is not None:
+                    was_triggered = fall_detector.triggered
                     fall_active = fall_detector.update(-roll_error, -pitch_error, dt)
                     if fall_active:
                         enabled = False
@@ -199,6 +204,9 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
                             last_pose,
                             args.fall_arm_forward_pwm,
                         )
+                    elif was_triggered:
+                        pose = dict(STANDING)
+                        print("[terrain] IMU upright again. Arms returned to STANDING.")
                 if enabled and ready and balance is not None and not fall_active:
                     max_tilt = max(abs(roll_error), abs(pitch_error))
                     if max_tilt >= args.terrain_emergency_tilt_deg:

@@ -218,7 +218,8 @@ class Config:
     fall_hard_tilt_deg: float = 30.0
     fall_trigger_frames: int = 2
     fall_reset_tilt_deg: float = 8.0
-    fall_arm_forward_pwm: int = 600
+    fall_reset_frames: int = 12
+    fall_arm_forward_pwm: int = 700
 
     # --- Sensor Feedback ---
     sensor_feedback: bool = True

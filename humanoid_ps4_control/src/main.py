@@ -203,6 +203,8 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                 trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
                                 hard_tilt_deg=args.fall_hard_tilt_deg,
                                 consecutive_frames=args.fall_trigger_frames,
+                                reset_tilt_deg=args.fall_reset_tilt_deg,
+                                reset_frames=args.fall_reset_frames,
                             )
                         )
                     print(
@@ -463,6 +465,10 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                 last_pose,
                                 args.fall_arm_forward_pwm,
                             )
+                        elif was_triggered:
+                            standing_hold_active = True
+                            pose = dict(STANDING)
+                            print("[main] IMU upright again. Arms returned to STANDING.")
 
                     if balance is not None and not pose_from_getup and not fall_active:
                         now = time.monotonic()

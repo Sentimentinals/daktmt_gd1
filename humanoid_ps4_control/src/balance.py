@@ -123,6 +123,8 @@ class FallConfig:
     trigger_rate_deg_s: float = 70.0
     hard_tilt_deg: float = 30.0
     consecutive_frames: int = 2
+    reset_tilt_deg: float = 8.0
+    reset_frames: int = 12
 
 
 class FallDetector:
@@ -135,19 +137,29 @@ class FallDetector:
         self.reason = ""
         self._candidate_frames = 0
         self._candidate_reason = ""
+        self._reset_frames = 0
         self._previous_roll: Optional[float] = None
         self._previous_pitch: Optional[float] = None
 
     def update(self, roll_deg: float, pitch_deg: float, dt: float) -> bool:
-        if self.triggered:
-            return True
-
         roll_rate = _angle_rate_deg(roll_deg, self._previous_roll, dt)
         pitch_rate = _angle_rate_deg(pitch_deg, self._previous_pitch, dt)
         self._previous_roll = roll_deg
         self._previous_pitch = pitch_deg
         max_tilt = max(abs(roll_deg), abs(pitch_deg))
         max_rate = max(abs(roll_rate), abs(pitch_rate))
+
+        if self.triggered:
+            upright = max_tilt <= self.config.reset_tilt_deg
+            self._reset_frames = self._reset_frames + 1 if upright else 0
+            if self._reset_frames >= max(1, self.config.reset_frames):
+                self.triggered = False
+                self.reason = ""
+                self._candidate_frames = 0
+                self._candidate_reason = ""
+                self._reset_frames = 0
+            return self.triggered
+
         hard_fall = max_tilt >= self.config.hard_tilt_deg
         dynamic_fall = (
             max_tilt >= self.config.trigger_tilt_deg
@@ -166,6 +178,7 @@ class FallDetector:
         if self._candidate_frames >= max(1, self.config.consecutive_frames):
             self.triggered = True
             self.reason = self._candidate_reason
+            self._reset_frames = 0
         return self.triggered
 
 
