@@ -17,15 +17,15 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     from .getup import GetupEngine
     from .balance import (
         BalanceConfig,
-        FallConfig,
-        FallDetector,
         IMUBalanceController,
         PushRecoveryConfig,
         PushRecoveryController,
         RecoveryState,
         angle_error_deg,
+        configured_fall_detector,
         extend_arms_forward,
         lower_toward_standing,
+        update_fall_detector,
     )
     from .sensors import DepthObstacleGuard, RobotSensorHub
 
@@ -110,6 +110,7 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
 
     balance = None
     fall_detector = None
+    imu_reference = None
     recovery = None
     recovery_step_active = False
     recovery_status = "STABLE"
@@ -126,13 +127,14 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     head_turn_sign = 0
     head_turn_lead_until = 0.0
     last_head_update_t = time.monotonic()
-    if args.sensor_feedback:
+    sensor_required = args.sensor_feedback or args.fall_detection_enabled
+    if sensor_required:
         sensor_hub = RobotSensorHub(
             port=args.sensor_port,
             baudrate=args.sensor_baudrate,
             timeout_s=args.sensor_timeout_s,
             depth_timeout_s=args.sensor_depth_timeout_s,
-            use_imu=args.sensor_use_imu,
+            use_imu=args.sensor_use_imu or args.fall_detection_enabled,
             use_foot_fsr=args.sensor_use_foot_fsr,
             use_depth=args.sensor_use_depth,
             imu_roll_sign=args.imu_roll_sign,
@@ -152,14 +154,14 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
             sensor_hub = None
             print(f"[main] Sensors disabled: {exc}. Keyboard control remains available.")
 
-    if args.imu_balance and (sensor_hub is None or not args.sensor_use_imu):
-        print("[main] IMU balance requested but IMU sensor feedback is disabled.")
+    if (args.imu_balance or args.fall_detection_enabled) and sensor_hub is None:
+        print("[main] IMU unavailable. Control remains active without balance/fall protection.")
 
     try:
         with backend:
             backend.send(STANDING, duration_ms=1200, force=True)
             time.sleep(1.2)
-            if args.imu_balance and sensor_hub is not None and args.sensor_use_imu:
+            if (args.imu_balance or args.fall_detection_enabled) and sensor_hub is not None:
                 print("[main] Keep the robot upright and still while IMU reference is captured.")
                 imu_reference = sensor_hub.capture_imu_reference(
                     sample_seconds=args.imu_reference_seconds,
@@ -169,19 +171,20 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                     max_rms_deg=args.imu_reference_max_rms_deg,
                 )
                 if imu_reference is None:
-                    print("[main] IMU reference failed or robot moved. Balance remains disabled.")
+                    print("[main] IMU reference failed. Balance and fall protection remain disabled.")
                 else:
                     target_roll, target_pitch = imu_reference
-                    balance = IMUBalanceController(
-                        BalanceConfig(
-                            target_roll_deg=target_roll,
-                            target_pitch_deg=target_pitch,
-                            max_correction_deg=args.balance_limit_deg,
-                            roll_deadband_deg=args.balance_deadband_deg,
-                            pitch_deadband_deg=args.balance_deadband_deg,
+                    if args.imu_balance:
+                        balance = IMUBalanceController(
+                            BalanceConfig(
+                                target_roll_deg=target_roll,
+                                target_pitch_deg=target_pitch,
+                                max_correction_deg=args.balance_limit_deg,
+                                roll_deadband_deg=args.balance_deadband_deg,
+                                pitch_deadband_deg=args.balance_deadband_deg,
+                            )
                         )
-                    )
-                    if args.push_recovery_enabled:
+                    if args.imu_balance and args.push_recovery_enabled:
                         recovery = PushRecoveryController(
                             PushRecoveryConfig(
                                 warning_tilt_deg=args.push_recovery_warning_tilt_deg,
@@ -197,22 +200,12 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             )
                         )
                     if args.fall_detection_enabled:
-                        fall_detector = FallDetector(
-                            FallConfig(
-                                trigger_tilt_deg=args.fall_trigger_tilt_deg,
-                                trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
-                                hard_tilt_deg=args.fall_hard_tilt_deg,
-                                consecutive_frames=args.fall_trigger_frames,
-                                reset_tilt_deg=args.fall_reset_tilt_deg,
-                                reset_frames=args.fall_reset_frames,
-                            )
-                        )
+                        fall_detector = configured_fall_detector(args)
                     print(
-                        f"[main] IMU balance enabled: reference roll={target_roll:.2f}, "
-                        f"pitch={target_pitch:.2f}, limit={args.balance_limit_deg:.1f} deg."
+                        f"[main] IMU reference roll={target_roll:.2f}, pitch={target_pitch:.2f}; "
+                        f"balance={'ON' if balance is not None else 'OFF'}, "
+                        f"fall protection={'ON' if fall_detector is not None else 'OFF'}."
                     )
-            elif args.imu_balance:
-                print("[main] IMU unavailable. Manual web control remains enabled without balance.")
             backend.send(engine.ready_pose, duration_ms=600, force=True)
             time.sleep(0.6)
             last_pose = dict(engine.ready_pose)
@@ -362,13 +355,13 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         if fall_detector is not None and fall_detector.triggered:
                             reading = sensor_snapshot.imu if sensor_snapshot is not None else None
                             reset_tilt = None
-                            if reading is not None and reading.balance_ready(
+                            if imu_reference is not None and reading is not None and reading.balance_ready(
                                 args.imu_min_gyro_cal,
                                 args.imu_min_accel_cal,
                             ):
                                 reset_tilt = max(
-                                    abs(angle_error_deg(reading.roll_deg, balance.config.target_roll_deg)),
-                                    abs(angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg)),
+                                    abs(angle_error_deg(reading.roll_deg, imu_reference[0])),
+                                    abs(angle_error_deg(reading.pitch_deg, imu_reference[1])),
                                 )
                             if reset_tilt is None or reset_tilt > args.fall_reset_tilt_deg:
                                 print("[main] FALL reset blocked. Hold the robot upright, then press E/T again.")
@@ -435,15 +428,13 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                     if fall_detector is not None and not getup.running:
                         reading = sensor_snapshot.imu if sensor_snapshot is not None else None
                         was_triggered = fall_detector.triggered
-                        if reading is not None and reading.balance_ready(
-                            args.imu_min_gyro_cal,
-                            args.imu_min_accel_cal,
-                        ):
-                            fall_detector.update(
-                                -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
-                                -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
-                                fall_dt,
-                            )
+                        update_fall_detector(
+                            fall_detector,
+                            reading,
+                            imu_reference,
+                            fall_dt,
+                            args,
+                        )
                         if fall_detector.triggered:
                             fall_active = True
                             vy = 0.0
@@ -458,7 +449,8 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                 recovery_step_active = False
                                 if recovery is not None:
                                     recovery.reset()
-                                balance.reset()
+                                if balance is not None:
+                                    balance.reset()
                                 standing_hold_active = False
                                 print(f"[main] FALL detected: {fall_detector.reason}. Arms moving forward.")
                             pose = extend_arms_forward(
@@ -670,7 +662,12 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             or fall_active
                         ),
                         camera_ready=camera_ready,
-                        balance_status=recovery_status,
+                        balance_status=(
+                            "FALL ACTIVE"
+                            if fall_active
+                            else f"{recovery_status} | "
+                            f"{'FALL READY' if fall_detector is not None else 'FALL IMU WAIT'}"
+                        ),
                     )
                     dashboard.set_runtime("manual", camera_status)
                     remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)

@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from .backends import make_backend
+from .balance import configured_fall_detector, extend_arms_forward, update_fall_detector
 from .config import Config, STANDING
 from .person_follow import PersonDetector, PersonFollowController, PersonFrame
 from .sensors import DepthObstacleGuard, RobotSensorHub
@@ -60,21 +61,28 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
         stable_frames=args.tof_obstacle_stable_frames,
     )
     sensor_hub = None
-    if args.sensor_feedback and args.sensor_use_depth:
+    need_imu = args.fall_detection_enabled
+    need_depth = args.sensor_feedback and args.sensor_use_depth
+    if need_imu or need_depth:
         sensor_hub = RobotSensorHub(
             port=args.sensor_port,
             baudrate=args.sensor_baudrate,
             timeout_s=args.sensor_timeout_s,
             depth_timeout_s=args.sensor_depth_timeout_s,
-            use_imu=False,
+            use_imu=need_imu,
             use_foot_fsr=False,
-            use_depth=True,
+            use_depth=need_depth,
+            imu_roll_sign=args.imu_roll_sign,
+            imu_pitch_sign=args.imu_pitch_sign,
+            imu_yaw_sign=args.imu_yaw_sign,
+            imu_vertical_mount=args.imu_vertical_mount,
+            imu_board_face_sign=args.imu_board_face_sign,
         )
         try:
             sensor_hub.open(wait_for_connection=False)
         except Exception as exc:
             sensor_hub = None
-            print(f"[follow] ToF unavailable: {exc}")
+            print(f"[follow] Sensors unavailable: {exc}. Follow remains available without ToF/fall protection.")
 
     backend = make_backend(
         mode=args.backend,
@@ -87,11 +95,28 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
     previous_stop = False
     head_pwm = float(STANDING[25])
     last_head_at = time.monotonic()
+    last_fall_at = time.monotonic()
+    last_pose = dict(STANDING)
+    imu_reference = None
+    fall_detector = None
 
     try:
         with backend:
             backend.send(STANDING, duration_ms=900, force=True)
             time.sleep(0.9)
+            if need_imu and sensor_hub is not None:
+                print("[follow] Keep the robot upright and still while fall protection calibrates.")
+                imu_reference = sensor_hub.capture_imu_reference(
+                    sample_seconds=args.imu_reference_seconds,
+                    timeout_s=args.imu_reference_timeout_s,
+                    min_gyro_cal=args.imu_min_gyro_cal,
+                    min_accel_cal=args.imu_min_accel_cal,
+                    max_rms_deg=args.imu_reference_max_rms_deg,
+                )
+                if imu_reference is not None:
+                    fall_detector = configured_fall_detector(args)
+                else:
+                    print("[follow] IMU reference failed. Follow remains available without fall protection.")
             try:
                 dashboard.set_runtime("follow", "Follow ready")
                 while True:
@@ -125,8 +150,10 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     if stop_pressed and not previous_stop:
                         follow.disable()
                         engine.reset()
-                        backend.send(STANDING, duration_ms=args.stop_ms, force=True)
-                        print("[follow] Stopped at STANDING.")
+                        if fall_detector is None or not fall_detector.triggered:
+                            backend.send(STANDING, duration_ms=args.stop_ms, force=True)
+                            last_pose = dict(STANDING)
+                            print("[follow] Stopped at STANDING.")
                     previous_stop = stop_pressed
 
                     snapshot = sensor_hub.read() if sensor_hub is not None else None
@@ -168,15 +195,46 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     head_pwm += max(-max_head_delta, min(max_head_delta, head_target - head_pwm))
                     last_head_at = now
                     pose[25] = max(500, min(2500, round(head_pwm)))
+
+                    fall_active = False
+                    was_triggered = fall_detector.triggered if fall_detector is not None else False
+                    now = time.monotonic()
+                    if fall_detector is not None:
+                        imu = snapshot.imu if snapshot is not None else None
+                        fall_active = update_fall_detector(
+                            fall_detector,
+                            imu,
+                            imu_reference,
+                            now - last_fall_at,
+                            args,
+                        )
+                        if fall_active:
+                            follow.disable()
+                            engine.reset()
+                            pose = extend_arms_forward(last_pose, args.fall_arm_forward_pwm)
+                            status = f"FALL: {fall_detector.reason}"
+                            if not was_triggered:
+                                print(f"[follow] {status}. Arms moving forward.")
+                        elif was_triggered:
+                            pose = dict(STANDING)
+                            head_pwm = float(STANDING[25])
+                            status = "UPRIGHT - ARMS RETURNED"
+                            print("[follow] IMU upright again. Arms returned to STANDING.")
+                    last_fall_at = now
                     backend.send(pose, duration_ms=args.update_ms)
+                    last_pose = dict(pose)
                     dashboard.publish(
                         pose=pose,
                         gait=engine.telemetry_snapshot(),
                         sensor_snapshot=snapshot,
                         status=status,
-                        active=follow.enabled or not engine.is_idle_ready(),
+                        active=fall_active or follow.enabled or not engine.is_idle_ready(),
                         camera_ready=camera_ready,
-                        balance_status="FOLLOW ON" if follow.enabled else "FOLLOW READY",
+                        balance_status=(
+                            "FALL ACTIVE"
+                            if fall_active
+                            else "FALL READY" if fall_detector is not None else "FALL IMU WAIT"
+                        ),
                     )
                     dashboard.set_runtime("follow", status)
                     remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
@@ -184,7 +242,12 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
                         time.sleep(remaining)
             finally:
                 try:
-                    backend.send(STANDING, duration_ms=args.stop_ms, force=True)
+                    exit_pose = (
+                        last_pose
+                        if fall_detector is not None and fall_detector.triggered
+                        else STANDING
+                    )
+                    backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
                     time.sleep(args.stop_ms / 1000.0)
                 except Exception as exc:
                     print(f"[follow] Failed to return to STANDING: {exc}")

@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional
 
-from .config import STANDING
+from .config import Config, STANDING
+from .imu_bno055 import IMUReading
 
 
 Pose = Dict[int, int]
@@ -180,6 +181,38 @@ class FallDetector:
             self.reason = self._candidate_reason
             self._reset_frames = 0
         return self.triggered
+
+
+def configured_fall_detector(args: Config) -> FallDetector:
+    return FallDetector(
+        FallConfig(
+            trigger_tilt_deg=args.fall_trigger_tilt_deg,
+            trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
+            hard_tilt_deg=args.fall_hard_tilt_deg,
+            consecutive_frames=args.fall_trigger_frames,
+            reset_tilt_deg=args.fall_reset_tilt_deg,
+            reset_frames=args.fall_reset_frames,
+        )
+    )
+
+
+def update_fall_detector(
+    detector: FallDetector,
+    reading: Optional[IMUReading],
+    reference: tuple[float, float] | None,
+    dt: float,
+    args: Config,
+) -> bool:
+    if reference is not None and reading is not None and reading.balance_ready(
+        args.imu_min_gyro_cal,
+        args.imu_min_accel_cal,
+    ):
+        detector.update(
+            -angle_error_deg(reading.roll_deg, reference[0]),
+            -angle_error_deg(reading.pitch_deg, reference[1]),
+            dt,
+        )
+    return detector.triggered
 
 
 class PushRecoveryController:

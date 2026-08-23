@@ -5,11 +5,12 @@ import time
 from .backends import make_backend
 from .balance import (
     BalanceConfig,
-    FallConfig,
     FallDetector,
     IMUBalanceController,
     angle_error_deg,
+    configured_fall_detector,
     extend_arms_forward,
+    update_fall_detector,
 )
 from .config import Config, STANDING
 from .gait_dashboard import stationary_gait
@@ -83,16 +84,7 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
             if reference is not None:
                 balance = _make_balance(reference, args)
                 if args.fall_detection_enabled:
-                    fall_detector = FallDetector(
-                        FallConfig(
-                            trigger_tilt_deg=args.fall_trigger_tilt_deg,
-                            trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
-                            hard_tilt_deg=args.fall_hard_tilt_deg,
-                            consecutive_frames=args.fall_trigger_frames,
-                            reset_tilt_deg=args.fall_reset_tilt_deg,
-                            reset_frames=args.fall_reset_frames,
-                        )
-                    )
+                    fall_detector = configured_fall_detector(args)
                 enabled = True
                 print("[terrain] IMU balance ON. V toggles, E/T recalibrates, C stops, O/Escape exits.")
 
@@ -159,16 +151,7 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
                     reference = _capture_reference(sensor_hub, args)
                     balance = _make_balance(reference, args) if reference is not None else None
                     fall_detector = (
-                        FallDetector(
-                            FallConfig(
-                                trigger_tilt_deg=args.fall_trigger_tilt_deg,
-                                trigger_rate_deg_s=args.fall_trigger_rate_deg_s,
-                                hard_tilt_deg=args.fall_hard_tilt_deg,
-                                consecutive_frames=args.fall_trigger_frames,
-                                reset_tilt_deg=args.fall_reset_tilt_deg,
-                                reset_frames=args.fall_reset_frames,
-                            )
-                        )
+                        configured_fall_detector(args)
                         if balance is not None and args.fall_detection_enabled
                         else None
                     )
@@ -196,7 +179,13 @@ def run_terrain(args: Config, dashboard, camera_ready: bool) -> None:
                 fall_active = False
                 if ready and balance is not None and fall_detector is not None:
                     was_triggered = fall_detector.triggered
-                    fall_active = fall_detector.update(-roll_error, -pitch_error, dt)
+                    fall_active = update_fall_detector(
+                        fall_detector,
+                        imu,
+                        reference,
+                        dt,
+                        args,
+                    )
                     if fall_active:
                         enabled = False
                         fault = f"FALL: {fall_detector.reason}"
