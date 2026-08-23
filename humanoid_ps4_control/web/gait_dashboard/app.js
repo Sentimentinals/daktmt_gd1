@@ -3,6 +3,7 @@ import * as THREE from "/vendor/three.module.min.js";
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
 const liveLimit = 3600;
+const CONTROL_REQUEST_TIMEOUT_MS = 350;
 
 let model = null;
 let sceneState = null;
@@ -84,6 +85,8 @@ async function sendControl(emergencyStop = false) {
     actions: sentActions,
     emergency_stop: emergencyStop,
   };
+  const requestController = new AbortController();
+  const requestTimeout = setTimeout(() => requestController.abort(), CONTROL_REQUEST_TIMEOUT_MS);
   control.sending = true;
   try {
     const response = await fetch("/api/control", {
@@ -91,16 +94,25 @@ async function sendControl(emergencyStop = false) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       cache: "no-store",
+      signal: requestController.signal,
     });
     const state = await response.json();
-    if (!response.ok) throw new Error(state.error || `Control HTTP ${response.status}`);
+    if (!response.ok) {
+      const message = state.error || `Control HTTP ${response.status}`;
+      if (response.status === 400 || response.status === 409) {
+        releaseMotion();
+        control.armed = false;
+        updateControlUI({ runtime_status: message });
+      }
+      console.warn(message);
+      return;
+    }
     sentActions.forEach((action) => control.actions.delete(action));
     updateControlUI(state);
   } catch (error) {
-    releaseMotion();
-    control.armed = false;
-    updateControlUI({ runtime_status: error.message });
+    if (error.name !== "AbortError") console.warn("Control heartbeat failed", error);
   } finally {
+    clearTimeout(requestTimeout);
     control.sending = false;
   }
 }

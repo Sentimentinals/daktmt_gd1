@@ -611,7 +611,7 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         if path.suffix == ".js":
             content_type = "text/javascript"
-        self._send_bytes(path.read_bytes(), content_type, cache=path.name != "index.html")
+        self._send_bytes(path.read_bytes(), content_type, cache=relative.startswith("vendor/"))
 
     def _send_json(self, value: object, status: int = 200) -> None:
         payload = json.dumps(value, separators=(",", ":"), allow_nan=False).encode("utf-8")
