@@ -9,7 +9,6 @@ from .config import Config
 def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     from .walking_engine import (
         DynamicWalkingEngine,
-        SingleSupportTestEngine,
         STANDING,
         clamp_pose_rate,
     )
@@ -63,14 +62,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
         arm_quantum_pwm=args.arm_quantum_pwm,
         crouch_transition_s=args.walk_crouch_transition_s,
     )
-    single_support = SingleSupportTestEngine(
-        dt=args.update_ms / 1000.0,
-        zmp_support_ratio=args.zmp_support_ratio,
-        ankle_roll_gain=args.ankle_roll_gain,
-        swing_knee_pwm=args.one_foot_swing_knee_pwm,
-        arm_lift_pwm=args.one_foot_arm_lift_pwm,
-        ramp_s=args.one_foot_ramp_s,
-    )
     recovery_engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
         t_step=args.push_recovery_step_time_s,
@@ -103,8 +94,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     prev_stop_pressed = False
     prev_getup_pressed = False
     prev_getup_back_pressed = False
-    prev_single_support_pressed = False
-    next_single_support_leg = "right"
     last_pose = dict(STANDING)
     standing_hold_active = True
 
@@ -271,7 +260,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
-                        single_support.reset()
                         recovery_engine.reset()
                         recovery_step_active = False
                         if recovery is not None:
@@ -295,7 +283,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             fall_detector.reset()
                         engine.reset()
                         arm_dance.reset()
-                        single_support.reset()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode=args.getup_mode)
                         print(f"[main] G pressed. Running {args.getup_mode} get-up sequence from step {label}.")
@@ -307,7 +294,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             fall_detector.reset()
                         engine.reset()
                         arm_dance.reset()
-                        single_support.reset()
                         standing_hold_active = False
                         label = getup.start(last_pose, mode="back")
                         print(f"[main] B pressed. Running back get-up sequence from step {label}.")
@@ -321,36 +307,10 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                     ):
                         enabled = arm_dance.toggle()
                         engine.reset()
-                        single_support.reset()
                         standing_hold_active = not enabled
                         print("[main] L/M arm dance ON." if enabled else "[main] L/M arm dance OFF - returning to STANDING.")
                     prev_dance_pressed = dance_pressed
 
-                    single_support_pressed = state.single_support
-                    if (
-                        single_support_pressed
-                        and not prev_single_support_pressed
-                        and not getup.running
-                    ):
-                        engine.reset()
-                        arm_dance.reset()
-                        if single_support.active:
-                            single_support.stop()
-                            standing_hold_active = True
-                            print("[main] X one-foot balance OFF - returning to STANDING.")
-                        else:
-                            recovery_engine.reset()
-                            recovery_step_active = False
-                            if recovery is not None:
-                                recovery.reset()
-                                recovery_status = "STABLE"
-                            single_support.start(next_single_support_leg, current_pose=last_pose)
-                            standing_hold_active = False
-                            free_leg = "left" if next_single_support_leg == "right" else "right"
-                            print(f"[main] X one-foot balance ON: support={next_single_support_leg}, free_leg={free_leg}.")
-                            next_single_support_leg = "left" if next_single_support_leg == "right" else "right"
-                    prev_single_support_pressed = single_support_pressed
-    
                     if state.reset:
                         if fall_detector is not None and fall_detector.triggered:
                             reading = sensor_snapshot.imu if sensor_snapshot is not None else None
@@ -371,7 +331,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
-                        single_support.reset()
                         recovery_engine.reset()
                         recovery_step_active = False
                         if recovery is not None:
@@ -403,12 +362,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         side_cmd = 0.0
                         motion_requested = False
                         pose = arm_dance.update()
-                    elif single_support.active:
-                        vy = 0.0
-                        turn_cmd = 0.0
-                        side_cmd = 0.0
-                        motion_requested = False
-                        pose = single_support.update()
                     elif standing_hold_active and not motion_requested:
                         pose = dict(STANDING)
                     elif not motion_requested and engine.is_idle_ready():
@@ -444,7 +397,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             if not was_triggered:
                                 engine.reset()
                                 arm_dance.reset()
-                                single_support.reset()
                                 recovery_engine.reset()
                                 recovery_step_active = False
                                 if recovery is not None:
@@ -471,30 +423,23 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             args.imu_min_gyro_cal,
                             args.imu_min_accel_cal,
                         ):
-                            if recovery_step_active:
-                                support_leg = recovery_engine.support_leg
-                            elif single_support.active:
-                                support_leg = single_support.support_leg
-                            else:
-                                support_leg = engine.support_leg
+                            support_leg = (
+                                recovery_engine.support_leg
+                                if recovery_step_active
+                                else engine.support_leg
+                            )
                             recovery_roll_offset = 0.0
                             recovery_pitch_offset = 0.0
                             walking_active = (
                                 not recovery_step_active
-                                and not single_support.active
                                 and (motion_requested or not engine.is_idle_ready())
                             )
-                            recovery_allowed = (
-                                recovery_step_active
-                                or single_support.active
-                                or not arm_dance.running
-                            )
+                            recovery_allowed = recovery_step_active or not arm_dance.running
                             if recovery is not None and recovery_allowed:
                                 decision = recovery.update(
                                     -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
                                     -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
                                     balance_dt,
-                                    single_support=single_support.active,
                                     walking=walking_active,
                                     now=now,
                                 )
@@ -508,7 +453,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                     standing_hold_active = False
                                     print("[main] Push recovery: starting near-in-place stomp.")
                                 if decision.safe_lower:
-                                    single_support.reset()
                                     recovery_step_active = False
                                     recovery_engine.reset()
                                     engine.reset()
@@ -538,7 +482,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             balance_pose_enabled = (
                                 not walking_active
                                 or recovery_step_active
-                                or single_support.active
                             )
                             if balance_pose_enabled:
                                 pose = balance.apply(
@@ -561,7 +504,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         else:
                             sensor_safe_lower = (
                                 recovery_step_active
-                                or single_support.active
                                 or (
                                     recovery is not None
                                     and recovery.state is RecoveryState.SAFE_LOWER
@@ -571,7 +513,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                 if recovery is not None:
                                     recovery.force_safe_lower("IMU stream lost")
                                 recovery_status = "safe-lower: IMU stream lost"
-                                single_support.reset()
                                 recovery_step_active = False
                                 recovery_engine.reset()
                                 engine.reset()
@@ -619,8 +560,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         camera_status = "ARM DANCE"
                     elif recovery is not None and recovery.state is not RecoveryState.STABLE:
                         camera_status = f"BALANCE: {recovery_status.upper()}"
-                    elif single_support.active:
-                        camera_status = f"ONE-FOOT BALANCE: {single_support.support_leg.upper()}"
                     else:
                         directions = []
                         if vy > 0.0:
@@ -641,12 +580,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         if recovery_step_active
                         else engine.telemetry_snapshot()
                     )
-                    if single_support.active:
-                        gait_state["phase"] = "one-foot"
-                        gait_state["support_leg"] = single_support.support_leg
-                        gait_state["swing_leg"] = (
-                            "right" if single_support.support_leg == "left" else "left"
-                        )
                     dashboard.publish(
                         pose=last_pose,
                         gait=gait_state,
@@ -656,7 +589,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             motion_requested
                             or not engine.is_idle_ready()
                             or recovery_step_active
-                            or single_support.active
                             or arm_dance.running
                             or getup.running
                             or fall_active

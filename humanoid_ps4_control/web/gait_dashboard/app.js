@@ -890,7 +890,6 @@ function bindWebControl() {
   };
   const actionKeys = {
     " ": "stop",
-    x: "one_foot",
     l: "dance",
     g: "getup_front",
     b: "getup_back",

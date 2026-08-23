@@ -258,7 +258,6 @@ class PushRecoveryController:
         roll_deg: float,
         pitch_deg: float,
         dt: float,
-        single_support: bool = False,
         walking: bool = False,
         now: float = 0.0,
     ) -> RecoveryDecision:
@@ -290,9 +289,6 @@ class PushRecoveryController:
                 self._counter_pitch_deg = 0.0
             return self._decision()
 
-        if single_support and max_tilt >= cfg.recovery_tilt_deg:
-            return self.force_safe_lower("single-support tilt")
-
         step_triggered = max_tilt >= cfg.recovery_tilt_deg and (
             max_rate >= cfg.recovery_rate_deg_s or max_tilt >= cfg.recovery_tilt_deg + 1.0
         )
@@ -300,7 +296,7 @@ class PushRecoveryController:
             self.state = RecoveryState.ANKLE_HIP
             self.reason = "walking ankle/hip correction"
             return self._decision()
-        if step_triggered and not single_support:
+        if step_triggered:
             self.state = RecoveryState.STOMP
             self.reason = "stomp recovery"
             self._started_at = now

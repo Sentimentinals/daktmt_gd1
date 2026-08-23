@@ -109,10 +109,6 @@ class Config:
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
     command_rate_limit: float = 40.0
-    one_foot_swing_knee_pwm: int = 700
-    one_foot_arm_lift_pwm: int = 950
-    one_foot_ramp_s: float = 0.75
-
     # --- Arms (Linked to GAIT values by default) ---
     arm_swing_pwm: int = GAIT["arm_swing_pwm"]
     arm_right_dir: int = GAIT["arm_right_dir"]

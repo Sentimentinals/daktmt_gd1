@@ -43,7 +43,6 @@ CONTROL_MODES = {"manual", "terrain", "follow", "pickup"}
 CONTROL_ACTIONS = {
     "stop",
     "reset",
-    "one_foot",
     "dance",
     "getup_front",
     "getup_back",
@@ -62,7 +61,6 @@ class WebControlState:
     forward: float = 0.0
     turn: float = 0.0
     side: float = 0.0
-    single_support: bool = False
     dance: bool = False
     getup: bool = False
     getup_back: bool = False
@@ -318,7 +316,6 @@ class GaitDashboard:
                 forward=self._control_axes["forward"] if self._control_armed else 0.0,
                 turn=self._control_axes["turn"] if self._control_armed else 0.0,
                 side=self._control_axes["side"] if self._control_armed else 0.0,
-                single_support="one_foot" in actions,
                 dance="dance" in actions,
                 getup="getup_front" in actions,
                 getup_back="getup_back" in actions,
