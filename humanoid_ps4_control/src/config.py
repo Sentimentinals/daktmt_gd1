@@ -155,7 +155,7 @@ class Config:
 
     # --- Adaptive Squat ---
     squat_min_depth_mm: float = 12.0
-    squat_max_depth_mm: float = 40.0
+    squat_max_depth_mm: float = 60.0
     squat_depth_rate_mm_s: float = 35.0
     squat_max_pwm_per_frame: float = 28.0
     pickup_detect_every_frames: int = 2
