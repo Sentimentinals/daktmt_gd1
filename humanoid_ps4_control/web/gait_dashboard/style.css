@@ -409,7 +409,7 @@ button:disabled {
 .dashboard {
   display: grid;
   grid-template-columns: minmax(520px, 1.45fr) minmax(290px, 0.62fr);
-  grid-template-rows: minmax(470px, calc(100vh - 350px)) 250px;
+  grid-template-rows: minmax(470px, calc(100vh - 490px)) 390px;
   gap: 10px;
   padding: 10px;
 }
@@ -703,6 +703,76 @@ button:disabled {
   min-height: 58px;
 }
 
+.walking-debug {
+  display: grid;
+  grid-template-columns: minmax(460px, 1fr) minmax(430px, 1.15fr);
+  border-bottom: 1px solid #2b3239;
+}
+
+.debug-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(84px, 1fr));
+  align-content: stretch;
+  border-right: 1px solid #2b3239;
+}
+
+.debug-summary div {
+  min-width: 0;
+  padding: 10px;
+  border-right: 1px solid #2b3239;
+}
+
+.debug-summary div:last-child {
+  border-right: 0;
+}
+
+.debug-summary span,
+.debug-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.debug-summary strong,
+.debug-row strong {
+  display: block;
+  margin-top: 5px;
+  color: #e9eef1;
+  font: 700 11px Consolas, monospace;
+  white-space: nowrap;
+}
+
+.debug-joints {
+  display: grid;
+}
+
+.debug-row {
+  display: grid;
+  grid-template-columns: minmax(145px, 1.2fr) repeat(2, minmax(105px, 1fr));
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-bottom: 1px solid #252c33;
+}
+
+.debug-row:last-child {
+  border-bottom: 0;
+}
+
+.debug-row strong {
+  margin-top: 0;
+}
+
+.debug-head {
+  background: #101419;
+}
+
+.debug-head span {
+  color: #aeb8c0;
+  font: 700 9px Consolas, monospace;
+  text-transform: uppercase;
+}
+
 .replay-controls {
   gap: 6px;
 }
@@ -792,7 +862,16 @@ button:disabled {
 
   .dashboard {
     grid-template-columns: 1.35fr 0.85fr;
-    grid-template-rows: 500px auto 250px;
+    grid-template-rows: 500px auto 440px;
+  }
+
+  .walking-debug {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-summary {
+    border-right: 0;
+    border-bottom: 1px solid #2b3239;
   }
 
   .telemetry-panel {
@@ -877,7 +956,15 @@ button:disabled {
   }
 
   .analysis-panel {
-    min-height: 390px;
+    min-height: 660px;
+  }
+
+  .debug-summary {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .debug-summary div {
+    border-bottom: 1px solid #2b3239;
   }
 
   .chart-grid {

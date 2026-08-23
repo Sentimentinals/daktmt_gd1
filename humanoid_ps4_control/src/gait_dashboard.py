@@ -119,6 +119,7 @@ def stationary_gait(phase: str = "idle") -> dict[str, object]:
         "step_count": 0,
         "lift_factor": 0.0,
         "landing_progress": 0.0,
+        "crouch_mm": 0.0,
         "commands": {"forward_mm": 0.0, "turn_mm": 0.0, "side_mm": 0.0},
         "com_mm": [0.0, 0.0, 0.0],
         "zmp_mm": [0.0, 0.0, 0.0],

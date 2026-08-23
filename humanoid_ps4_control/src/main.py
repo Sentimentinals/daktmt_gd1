@@ -11,6 +11,7 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
         DynamicWalkingEngine,
         SingleSupportTestEngine,
         STANDING,
+        clamp_pose_rate,
     )
     from .arm_dance import ArmDanceEngine
     from .getup import GetupEngine
@@ -538,15 +539,28 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                         recovery_roll_offset = completed.target_roll_offset_deg
                                         recovery_pitch_offset = completed.target_pitch_offset_deg
                                         recovery_step_active = False
-                            pose = balance.apply(
-                                pose,
-                                roll_deg=reading.roll_deg,
-                                pitch_deg=reading.pitch_deg,
-                                dt=balance_dt,
-                                support_leg=support_leg,
-                                target_roll_offset_deg=recovery_roll_offset,
-                                target_pitch_offset_deg=recovery_pitch_offset,
+                            balance_pose_enabled = (
+                                not walking_active
+                                or recovery_step_active
+                                or single_support.active
                             )
+                            if balance_pose_enabled:
+                                pose = balance.apply(
+                                    pose,
+                                    roll_deg=reading.roll_deg,
+                                    pitch_deg=reading.pitch_deg,
+                                    dt=balance_dt,
+                                    support_leg=support_leg,
+                                    target_roll_offset_deg=recovery_roll_offset,
+                                    target_pitch_offset_deg=recovery_pitch_offset,
+                                )
+                                pose = clamp_pose_rate(
+                                    last_pose,
+                                    pose,
+                                    engine.max_pwm_per_frame,
+                                )
+                            else:
+                                balance.reset()
                             balance_has_valid_imu = True
                         else:
                             sensor_safe_lower = (

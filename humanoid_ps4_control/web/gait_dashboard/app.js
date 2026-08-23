@@ -145,6 +145,19 @@ function vectorPair(value) {
   return Array.isArray(value) ? `${fixed(value[0])} / ${fixed(value[1])} mm` : "--";
 }
 
+function posePwm(frame, servoId) {
+  const pose = frame?.pose_pwm || {};
+  const standing = model?.standing_pwm || {};
+  return Number(pose[String(servoId)] ?? standing[String(servoId)] ?? 1500);
+}
+
+function debugPwm(frame, servoId) {
+  const value = posePwm(frame, servoId);
+  const base = Number(model?.standing_pwm?.[String(servoId)] ?? 1500);
+  const delta = Math.round(value - base);
+  return `${Math.round(value)} (${delta >= 0 ? "+" : ""}${delta})`;
+}
+
 function setMeter(element, value, limit = 12) {
   const normalized = Math.max(-1, Math.min(1, Number(value) / limit));
   element.style.left = normalized < 0 ? `${50 + normalized * 50}%` : "50%";
@@ -198,6 +211,20 @@ function updateReadouts(frame) {
   $("forwardCommand").textContent = fixed(commands.forward_mm);
   $("turnCommand").textContent = fixed(commands.turn_mm);
   $("sideCommand").textContent = fixed(commands.side_mm);
+
+  $("debugLift").textContent = fixed(gait.lift_factor, 2);
+  $("debugLanding").textContent = fixed(gait.landing_progress, 2);
+  $("debugCrouch").textContent = fixed(gait.crouch_mm, 1, " mm");
+  const supportAnkle = support === "LEFT" ? 16 : support === "RIGHT" ? 17 : null;
+  const swingAnkle = swing === "LEFT" ? 16 : swing === "RIGHT" ? 17 : null;
+  $("debugSupportAnkle").textContent = supportAnkle ? `S${supportAnkle} ${debugPwm(frame, supportAnkle)}` : "--";
+  $("debugSwingAnkle").textContent = swingAnkle ? `S${swingAnkle} ${debugPwm(frame, swingAnkle)}` : "--";
+  [12, 13, 14, 15, 16].forEach((servoId) => {
+    $(`debugL${servoId}`).textContent = debugPwm(frame, servoId);
+  });
+  [17, 18, 19, 20, 21].forEach((servoId) => {
+    $(`debugR${servoId}`).textContent = debugPwm(frame, servoId);
+  });
 
   const cameraOn = Boolean(frame.camera_ready);
   $("cameraBadge").textContent = cameraOn ? "LIVE" : "OFF";
@@ -873,7 +900,7 @@ function bindWebControl() {
     n: "ignore_person",
   };
   window.addEventListener("keydown", (event) => {
-    if (activeSection !== "control" || event.target.matches("input, select")) return;
+    if (event.target.matches("input, select")) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if (axisKeys[key]) {
       event.preventDefault();
@@ -967,6 +994,7 @@ async function start() {
   model = await fetch("/api/model", { cache: "no-store" }).then((response) => response.json());
   initScene(model);
   bindWebControl();
+  if (location.hash === "#analysis") document.querySelector('[data-section="analysis"]').click();
   bindControls();
   try {
     liveFrames = await fetch("/api/history", { cache: "no-store" }).then((response) => response.json());

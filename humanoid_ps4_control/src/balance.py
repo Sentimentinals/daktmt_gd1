@@ -76,7 +76,7 @@ class BalanceConfig:
     roll_ankle_gain: float = 0.70
     roll_hip_gain: float = 0.25
 
-    swing_leg_gain: float = 0.35
+    swing_leg_gain: float = 0.0
     double_support_gain: float = 0.70
 
 
