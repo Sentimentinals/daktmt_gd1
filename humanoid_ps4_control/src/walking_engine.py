@@ -425,21 +425,19 @@ class DynamicWalkingEngine:
         stance_y = current_center_y + support_sign * support_y_offset
         next_stance_y = next_center_y - support_sign * support_y_offset
 
-        # Positive turn command means turn left: left step shorter, right step longer.
-        sagittal_cmd = 0.0 if side_dominant else step_len + (-turn_len if swing_is_left else turn_len)
-        effective_step_len = sagittal_cmd * self.step_x_ratio
-
         current_arm_delta = self._side_arm_offsets() if side_dominant else self._arm_offsets(swing_is_left)
         if side_dominant:
             swing_distance = 0.0
-        elif swing_is_left:
-            overstep = self._landing_reach(effective_step_len, sagittal_cmd)
-            target_x = stance_x + overstep
-            swing_distance = target_x - base_L[0]
         else:
-            overstep = self._landing_reach(effective_step_len, sagittal_cmd)
+            if abs(step_len) > 0.1:
+                base_reach = self._landing_reach(step_len * self.step_x_ratio, step_len)
+            else:
+                base_reach = abs(turn_len) * self.step_x_ratio
+            turn_reach = (-turn_len if swing_is_left else turn_len) * self.step_x_ratio
+            overstep = base_reach + turn_reach
             target_x = stance_x + overstep
-            swing_distance = target_x - base_R[0]
+            swing_start_x = base_L[0] if swing_is_left else base_R[0]
+            swing_distance = target_x - swing_start_x
 
         step_n_s = self.n_s
         for k in range(step_n_s):

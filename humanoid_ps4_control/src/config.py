@@ -91,7 +91,7 @@ class Config:
 
     # --- Walking Engine (Linked to GAIT values by default) ---
     walk_speed: float = 0.45
-    turn_speed: float = 0.20
+    turn_speed: float = 0.50
     side_speed: float = 0.50
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
