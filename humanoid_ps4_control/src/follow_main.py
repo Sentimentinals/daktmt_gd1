@@ -93,8 +93,6 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
     previous_follow = False
     previous_ignore = False
     previous_stop = False
-    head_pwm = float(STANDING[25])
-    last_head_at = time.monotonic()
     last_fall_at = time.monotonic()
     last_pose = dict(STANDING)
     imu_reference = None
@@ -187,15 +185,6 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     else:
                         pose = dict(STANDING)
 
-                    head_target = STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
-                        1 if turn > 0.0 else -1 if turn < 0.0 else 0
-                    )
-                    now = time.monotonic()
-                    max_head_delta = args.head_pan_rate_pwm_s * max(0.0, now - last_head_at)
-                    head_pwm += max(-max_head_delta, min(max_head_delta, head_target - head_pwm))
-                    last_head_at = now
-                    pose[25] = max(500, min(2500, round(head_pwm)))
-
                     fall_active = False
                     was_triggered = fall_detector.triggered if fall_detector is not None else False
                     now = time.monotonic()
@@ -217,10 +206,10 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
                                 print(f"[follow] {status}. Arms moving forward.")
                         elif was_triggered:
                             pose = dict(STANDING)
-                            head_pwm = float(STANDING[25])
                             status = "UPRIGHT - ARMS RETURNED"
                             print("[follow] IMU upright again. Arms returned to STANDING.")
                     last_fall_at = now
+                    pose[25] = STANDING[25]
                     backend.send(pose, duration_ms=args.update_ms)
                     last_pose = dict(pose)
                     dashboard.publish(
