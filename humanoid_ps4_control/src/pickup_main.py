@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from .backends import make_backend
 from .balance import configured_fall_detector, extend_arms_forward, update_fall_detector
 from .config import Config, STANDING
 from .gait_dashboard import stationary_gait
-from .object_detection import SimpleObjectDetector
+from .object_detection import PickupObjectDetector
 from .sensors import RobotSensorHub
 from .walking_engine import AdaptiveSquatEngine
 
@@ -21,12 +22,19 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
     )
     detector = None
     if camera_ready:
-        detector = SimpleObjectDetector(
-            min_area_ratio=args.pickup_object_min_area_ratio,
-            max_area_ratio=args.pickup_object_max_area_ratio,
-            detect_every_frames=args.pickup_detect_every_frames,
-        )
-        camera.set_detector(detector)
+        package_root = Path(__file__).resolve().parent.parent
+        model_path = package_root / args.pickup_object_model
+        try:
+            detector = PickupObjectDetector(
+                model_path=str(model_path),
+                confidence=args.pickup_object_confidence,
+                iou_threshold=args.pickup_object_iou_threshold,
+                input_size=args.pickup_object_input_size,
+                detect_every_frames=args.pickup_detect_every_frames,
+            )
+            camera.set_detector(detector)
+        except Exception as exc:
+            print(f"[pickup] Object detector unavailable: {exc}")
     backend = make_backend(
         mode=args.backend,
         port=args.port,
@@ -102,7 +110,11 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     detected = object_frame.primary_object if object_frame is not None else None
                     if detected is not None and time.monotonic() - object_frame.captured_at > 0.8:
                         detected = None
-                    object_name = f"{detected.color} {detected.label}" if detected is not None else ""
+                    object_name = (
+                        " ".join(part for part in (detected.color, detected.label) if part)
+                        if detected is not None
+                        else ""
+                    )
                     object_status = (
                         f"{object_name} {detected.confidence:.2f}" if detected is not None else ""
                     )
@@ -113,7 +125,11 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     elif object_status:
                         status = f"DETECTED {object_status}"
                     else:
-                        status = "SHOW CAN, BALL OR RUBIK CUBE" if camera_ready else "PICK-UP CAMERA OFFLINE"
+                        status = (
+                            "SHOW CAN, BALL OR RUBIK CUBE"
+                            if detector is not None
+                            else "PICK-UP DETECTOR OFFLINE" if camera_ready else "PICK-UP CAMERA OFFLINE"
+                        )
 
                     fall_active = False
                     was_triggered = fall_detector.triggered if fall_detector is not None else False

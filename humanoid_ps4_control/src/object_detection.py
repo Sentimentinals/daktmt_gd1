@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import math
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 
@@ -25,7 +25,8 @@ class ObjectFrame:
         return self.objects[0] if self.objects else None
 
 
-class SimpleObjectDetector:
+class PickupObjectDetector:
+    CLASS_NAMES = ("CAN", "BALL", "RUBIK CUBE")
     COLOR_RANGES = {
         "RED": (((0, 90, 55), (8, 255, 255)), ((170, 90, 55), (179, 255, 255))),
         "ORANGE": (((9, 90, 55), (21, 255, 255)),),
@@ -37,15 +38,22 @@ class SimpleObjectDetector:
 
     def __init__(
         self,
-        min_area_ratio: float = 0.01,
-        max_area_ratio: float = 0.72,
-        detect_every_frames: int = 2,
+        model_path: str,
+        confidence: float = 0.55,
+        iou_threshold: float = 0.45,
+        input_size: int = 416,
+        detect_every_frames: int = 3,
     ) -> None:
         import cv2
 
+        model = Path(model_path)
+        if not model.is_file():
+            raise FileNotFoundError(f"Pickup detector model missing: {model}")
         self._cv2 = cv2
-        self.min_area_ratio = max(0.002, min(0.20, min_area_ratio))
-        self.max_area_ratio = max(self.min_area_ratio, min(0.95, max_area_ratio))
+        self._net = cv2.dnn.readNetFromONNX(str(model))
+        self.confidence = max(0.05, min(0.95, confidence))
+        self.iou_threshold = max(0.1, min(0.9, iou_threshold))
+        self.input_size = max(160, int(input_size) // 32 * 32)
         self.detect_every_frames = max(1, detect_every_frames)
         self._frame_count = 0
         self._last = ObjectFrame()
@@ -54,80 +62,103 @@ class SimpleObjectDetector:
         self._frame_count += 1
         if self._frame_count % self.detect_every_frames:
             return self._last
+        if frame is None or frame.ndim != 3 or frame.shape[2] != 3:
+            raise ValueError("Pickup detector expects a three-channel BGR frame")
 
         cv2 = self._cv2
         height, width = frame.shape[:2]
-        frame_area = float(max(1, width * height))
-        hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
-        masks = {}
-        combined = None
-        for color, ranges in self.COLOR_RANGES.items():
-            mask = None
-            for lower, upper in ranges:
-                part = cv2.inRange(hsv, lower, upper)
-                mask = part if mask is None else cv2.bitwise_or(mask, part)
-            masks[color] = mask
-            combined = mask.copy() if combined is None else cv2.bitwise_or(combined, mask)
+        scale = min(self.input_size / width, self.input_size / height)
+        resized_width = max(1, round(width * scale))
+        resized_height = max(1, round(height * scale))
+        resized = cv2.resize(frame, (resized_width, resized_height))
+        pad_x = (self.input_size - resized_width) // 2
+        pad_y = (self.input_size - resized_height) // 2
+        padded = cv2.copyMakeBorder(
+            resized,
+            pad_y,
+            self.input_size - resized_height - pad_y,
+            pad_x,
+            self.input_size - resized_width - pad_x,
+            cv2.BORDER_CONSTANT,
+            value=(114, 114, 114),
+        )
+        blob = cv2.dnn.blobFromImage(
+            padded,
+            scalefactor=1.0 / 255.0,
+            size=(self.input_size, self.input_size),
+            swapRB=True,
+            crop=False,
+        )
+        self._net.setInput(blob)
+        raw = self._net.forward()
+        rows = raw[0]
+        expected_columns = 4 + len(self.CLASS_NAMES)
+        if rows.ndim != 2:
+            raise RuntimeError(f"Unsupported pickup model output shape: {raw.shape}")
+        if rows.shape[0] == expected_columns:
+            rows = rows.T
+        if rows.shape[1] != expected_columns:
+            raise RuntimeError(f"Unsupported pickup model output shape: {raw.shape}")
 
-        join_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
-        clean_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, join_kernel)
-        combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, clean_kernel)
-        contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        boxes = []
+        scores = []
+        class_ids = []
+        for row in rows:
+            class_scores = row[4:]
+            class_id = int(class_scores.argmax())
+            confidence = float(class_scores[class_id])
+            if confidence < self.confidence:
+                continue
+            center_x, center_y, box_width, box_height = (float(value) for value in row[:4])
+            x = round((center_x - box_width * 0.5 - pad_x) / scale)
+            y = round((center_y - box_height * 0.5 - pad_y) / scale)
+            box_width = round(box_width / scale)
+            box_height = round(box_height / scale)
+            x1 = max(0, min(width - 1, x))
+            y1 = max(0, min(height - 1, y))
+            x2 = max(0, min(width, x + box_width))
+            y2 = max(0, min(height, y + box_height))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            boxes.append([x1, y1, x2 - x1, y2 - y1])
+            scores.append(confidence)
+            class_ids.append(class_id)
 
         objects = []
-        for contour in contours:
-            area = float(cv2.contourArea(contour))
-            area_ratio = area / frame_area
-            if not self.min_area_ratio <= area_ratio <= self.max_area_ratio:
-                continue
-
-            x, y, box_width, box_height = cv2.boundingRect(contour)
-            if box_width < 8 or box_height < 8:
-                continue
-            perimeter = float(cv2.arcLength(contour, True))
-            if perimeter <= 0.0:
-                continue
-
-            aspect = box_width / float(box_height)
-            elongation = max(aspect, 1.0 / max(0.01, aspect))
-            circularity = 4.0 * math.pi * area / (perimeter * perimeter)
-            box_area = float(box_width * box_height)
-            color_pixels = {
-                color: cv2.countNonZero(mask[y : y + box_height, x : x + box_width])
-                for color, mask in masks.items()
-            }
-            present_colors = [
-                color for color, count in color_pixels.items()
-                if count >= max(30, round(box_area * 0.035))
-            ]
-            dominant_color = max(color_pixels, key=color_pixels.get)
-
-            label = None
-            confidence = 0.0
-            if len(present_colors) >= 3 and 0.65 <= aspect <= 1.55:
-                label = "RUBIK CUBE"
-                dominant_color = "MULTI"
-                confidence = min(0.98, 0.62 + 0.07 * len(present_colors))
-            elif 0.72 <= aspect <= 1.38 and circularity >= 0.68:
-                label = "BALL"
-                confidence = min(0.96, 0.52 + 0.50 * circularity)
-            elif elongation >= 1.25:
-                label = "CAN"
-                confidence = min(0.92, 0.58 + 0.10 * min(3.0, elongation - 1.0))
-            if label is None:
-                continue
-
+        indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence, self.iou_threshold)
+        for raw_index in indices:
+            index = int(raw_index[0]) if hasattr(raw_index, "__len__") else int(raw_index)
+            x, y, box_width, box_height = boxes[index]
+            box = (x, y, x + box_width, y + box_height)
             objects.append(
                 ObjectDetection(
-                    label=label,
-                    color=dominant_color,
-                    box=(x, y, x + box_width, y + box_height),
-                    confidence=confidence,
-                    area_ratio=area_ratio,
+                    label=self.CLASS_NAMES[class_ids[index]],
+                    color=self._dominant_color(frame, box),
+                    box=box,
+                    confidence=scores[index],
+                    area_ratio=(box_width * box_height) / float(max(1, width * height)),
                 )
             )
 
-        objects.sort(key=lambda item: (item.area_ratio, item.confidence), reverse=True)
+        objects.sort(key=lambda item: (item.confidence, item.area_ratio), reverse=True)
         self._last = ObjectFrame(tuple(objects[:4]), time.monotonic())
         return self._last
+
+    def _dominant_color(self, frame, box: tuple[int, int, int, int]) -> str:
+        x1, y1, x2, y2 = box
+        roi = frame[y1:y2, x1:x2]
+        if roi.size == 0:
+            return ""
+        hsv = self._cv2.cvtColor(roi, self._cv2.COLOR_BGR2HSV)
+        counts = {}
+        for color, ranges in self.COLOR_RANGES.items():
+            count = 0
+            for lower, upper in ranges:
+                count += self._cv2.countNonZero(self._cv2.inRange(hsv, lower, upper))
+            counts[color] = count
+        min_pixels = roi.shape[0] * roi.shape[1] * 0.08
+        present = [color for color, count in counts.items() if count >= min_pixels]
+        if len(present) >= 3:
+            return "MULTI"
+        color, count = max(counts.items(), key=lambda item: item[1])
+        return color if count >= min_pixels else ""
