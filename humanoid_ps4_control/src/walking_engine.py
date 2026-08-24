@@ -749,7 +749,7 @@ class DynamicWalkingEngine:
             thigh_delta, knee_delta, ankle_delta = self._side_swing_pitch_deltas(lift_factor_now)
             swing_blend = self._smooth01(min(1.0, lift_factor_now / 0.45))
             if support_leg_for_pose == "right":
-                pose[17] = max(500, min(2500, STANDING[17] - side_dir * side_support_roll))
+                pose[17] = max(500, min(2500, STANDING[17] + side_support_roll))
                 pose[18] = self.prev_pose[18]
                 pose[19] = self.prev_pose[19]
                 pose[20] = self.prev_pose[20]
@@ -758,7 +758,7 @@ class DynamicWalkingEngine:
                 pose[14] = STANDING[14] + knee_delta
                 pose[15] = STANDING[15] + ankle_delta
             else:
-                pose[16] = max(500, min(2500, STANDING[16] - side_dir * side_support_roll))
+                pose[16] = max(500, min(2500, STANDING[16] - side_support_roll))
                 pose[13] = self.prev_pose[13]
                 pose[14] = self.prev_pose[14]
                 pose[15] = self.prev_pose[15]
@@ -769,7 +769,8 @@ class DynamicWalkingEngine:
         elif side_active and phase_mode_now == "land":
             target = dict(STANDING)
             support_ankle = 17 if swing_leg_now == "left" else 16
-            target[support_ankle] = STANDING[support_ankle] - side_dir * side_support_roll
+            support_delta = side_support_roll if support_ankle == 17 else -side_support_roll
+            target[support_ankle] = STANDING[support_ankle] + support_delta
             land_blend = self._smooth01(landing_t_now)
             pose = {
                 sid: blend_pwm(self.prev_pose[sid], target[sid], land_blend)
