@@ -161,6 +161,34 @@ class Config:
     pickup_lift_duration_s: float = 1.0
     pickup_reach_pwm: int = 520
 
+    # --- Stair Detection & Climbing ---
+    stair_model: str = "deploy/models/stair_detector.onnx"
+    stair_model_confidence: float = 0.55
+    stair_model_iou_threshold: float = 0.45
+    stair_model_input_size: int = 416
+    stair_detect_every_frames: int = 3
+    stair_detect_stable_frames: int = 4
+    stair_camera_align_deadband: float = 0.12
+    stair_target_edge_mm: int = 280
+    stair_edge_deadband_mm: int = 55
+    stair_approach_speed: float = 0.12
+    stair_turn_speed: float = 0.10
+    stair_default_riser_mm: float = 40.0
+    stair_min_riser_mm: float = 18.0
+    stair_max_riser_mm: float = 50.0
+    stair_step_depth_mm: float = 34.0
+    stair_foot_clearance_mm: float = 24.0
+    stair_phase_shift_s: float = 0.75
+    stair_phase_swing_s: float = 1.20
+    stair_phase_transfer_s: float = 0.85
+    stair_phase_settle_s: float = 0.55
+    stair_step_pause_s: float = 0.70
+    stair_tof_mount_height_mm: float = 220.0
+    stair_tof_pitch_down_deg: float = 16.0
+    stair_tof_vertical_fov_deg: float = 45.0
+    stair_tof_flip_vertical: bool = False
+    stair_tof_direction_delta_mm: float = 90.0
+
     # --- Terrain IMU Balance ---
     terrain_emergency_tilt_deg: float = 18.0
     terrain_balance_limit_deg: float = 8.0

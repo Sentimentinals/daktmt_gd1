@@ -890,6 +890,7 @@ function bindWebControl() {
     b: "getup_back",
     c: "reset",
     v: "terrain_toggle",
+    u: "stair_toggle",
     y: "follow",
     n: "ignore_person",
     r: "pickup_toggle",

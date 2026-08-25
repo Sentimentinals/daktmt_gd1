@@ -39,7 +39,7 @@ JOINT_NAMES = {
     25: "head_yaw",
 }
 
-CONTROL_MODES = {"manual", "terrain", "follow", "pickup"}
+CONTROL_MODES = {"manual", "terrain", "stair", "follow", "pickup"}
 CONTROL_ACTIONS = {
     "stop",
     "reset",
@@ -47,6 +47,7 @@ CONTROL_ACTIONS = {
     "getup_front",
     "getup_back",
     "terrain_toggle",
+    "stair_toggle",
     "follow",
     "ignore_person",
     "pickup_toggle",
@@ -70,6 +71,7 @@ class WebControlState:
     follow: bool = False
     ignore_person: bool = False
     pickup_toggle: bool = False
+    stair_toggle: bool = False
 
 LEG_BASE_ANGLES = {
     12: STAND_ANG["L_hip_abduct"],
@@ -313,6 +315,7 @@ class GaitDashboard:
                 follow="follow" in actions,
                 ignore_person="ignore_person" in actions,
                 pickup_toggle="pickup_toggle" in actions,
+                stair_toggle="stair_toggle" in actions,
             )
 
     def control_payload(self) -> dict[str, object]:

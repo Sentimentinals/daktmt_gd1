@@ -1,0 +1,302 @@
+from __future__ import annotations
+
+import math
+import time
+from pathlib import Path
+
+from .backends import make_backend
+from .balance import (
+    BalanceConfig,
+    IMUBalanceController,
+    configured_fall_detector,
+    extend_arms_forward,
+    update_fall_detector,
+)
+from .config import Config, STANDING
+from .gait_dashboard import stationary_gait
+from .sensors import RobotSensorHub
+from .stair_motion import StairStepEngine
+from .stair_perception import StairDetector, estimate_stair_geometry
+from .walking_engine import DynamicWalkingEngine
+
+
+def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
+    model_path = Path(__file__).resolve().parent.parent / args.stair_model
+    detector = StairDetector(
+        model_path=str(model_path),
+        confidence=args.stair_model_confidence,
+        iou_threshold=args.stair_model_iou_threshold,
+        input_size=args.stair_model_input_size,
+        detect_every_frames=args.stair_detect_every_frames,
+    )
+    if camera_ready:
+        camera.set_detector(detector, stable_frames=args.stair_detect_stable_frames)
+        mode = "ONNX+geometry" if detector.model_ready else "geometry fallback"
+        print(f"[stairs] Camera detector ON ({mode}).")
+    else:
+        print("[stairs] Camera unavailable. Auto stair remains locked.")
+
+    sensor_hub = RobotSensorHub(
+        port=args.sensor_port,
+        baudrate=args.sensor_baudrate,
+        timeout_s=args.sensor_timeout_s,
+        depth_timeout_s=args.sensor_depth_timeout_s,
+        use_imu=args.sensor_use_imu,
+        use_foot_fsr=args.sensor_use_foot_fsr,
+        use_depth=True,
+        imu_roll_sign=args.imu_roll_sign,
+        imu_pitch_sign=args.imu_pitch_sign,
+        imu_yaw_sign=args.imu_yaw_sign,
+        imu_vertical_mount=args.imu_vertical_mount,
+        imu_board_face_sign=args.imu_board_face_sign,
+        foot_fsr_invert=args.foot_fsr_invert,
+        foot_fsr_filter_alpha=args.foot_fsr_filter_alpha,
+        foot_fsr_zero_raw=args.foot_fsr_zero_raw,
+        foot_fsr_full_raw=args.foot_fsr_full_raw,
+    )
+    backend = make_backend(mode=args.backend, port=args.port, baudrate=args.baudrate, csv_path=args.csv)
+    approach = DynamicWalkingEngine(
+        dt=args.update_ms / 1000.0,
+        t_step=max(1.25, args.t_step),
+        t_dbl=args.t_dbl,
+        max_step_len=18.0,
+        max_turn_step_len=4.0,
+        max_side_step_len=0.0,
+        step_height=24.0,
+        crouch_depth_mm=0.0,
+        zmp_support_ratio=args.zmp_support_ratio,
+        ankle_roll_gain=args.ankle_roll_gain,
+        arm_swing_pwm=0,
+    )
+    stepper = StairStepEngine(
+        clearance_mm=args.stair_foot_clearance_mm,
+        shift_s=args.stair_phase_shift_s,
+        swing_s=args.stair_phase_swing_s,
+        transfer_s=args.stair_phase_transfer_s,
+        settle_s=args.stair_phase_settle_s,
+        zmp_support_ratio=args.zmp_support_ratio,
+        ankle_roll_gain=args.ankle_roll_gain,
+    )
+
+    reference = None
+    balance = None
+    fall_detector = None
+    enabled = False
+    previous_toggle = False
+    previous_stop = False
+    stable_frames = 0
+    last_detection_at = 0.0
+    last_stair_timestamp = None
+    last_balance_at = time.monotonic()
+    cooldown_until = 0.0
+    lead_leg = "left"
+    last_pose = dict(STANDING)
+
+    try:
+        sensor_hub.open()
+        with backend:
+            backend.send(STANDING, duration_ms=900, force=True)
+            time.sleep(0.9)
+            if args.sensor_use_imu:
+                print("[stairs] Keep the robot upright while IMU reference is captured.")
+                reference = sensor_hub.capture_imu_reference(
+                    sample_seconds=args.imu_reference_seconds,
+                    timeout_s=args.imu_reference_timeout_s,
+                    min_gyro_cal=args.imu_min_gyro_cal,
+                    min_accel_cal=args.imu_min_accel_cal,
+                    max_rms_deg=args.imu_reference_max_rms_deg,
+                )
+            if reference is not None:
+                balance = IMUBalanceController(
+                    BalanceConfig(
+                        target_roll_deg=reference[0],
+                        target_pitch_deg=reference[1],
+                        max_correction_deg=args.balance_limit_deg,
+                        roll_deadband_deg=args.balance_deadband_deg,
+                        pitch_deadband_deg=args.balance_deadband_deg,
+                        pitch_ankle_gain=1.0,
+                        pitch_hip_gain=0.30,
+                        roll_ankle_gain=1.0,
+                        roll_hip_gain=0.25,
+                        double_support_gain=1.0,
+                    )
+                )
+                if args.fall_detection_enabled:
+                    fall_detector = configured_fall_detector(args)
+            dashboard.set_runtime("stair", "Stair detection ready - press U")
+
+            while True:
+                loop_started = time.monotonic()
+                control = dashboard.control_state()
+                if not control.armed or control.mode != "stair":
+                    break
+
+                if control.stair_toggle and not previous_toggle:
+                    if not camera_ready:
+                        enabled = False
+                        print("[stairs] Auto stair rejected: camera unavailable.")
+                    else:
+                        enabled = not enabled
+                        stable_frames = 0
+                        if enabled:
+                            message = "ON"
+                        elif stepper.active:
+                            message = "OFF AFTER CURRENT STEP"
+                        else:
+                            message = "OFF"
+                        print(f"[stairs] Auto stair {message}.")
+                previous_toggle = control.stair_toggle
+
+                if control.stop and not previous_stop:
+                    enabled = False
+                    stable_frames = 0
+                    stepper.reset()
+                    approach.reset()
+                    backend.send(STANDING, duration_ms=args.stop_ms, force=True)
+                previous_stop = control.stop
+
+                snapshot = sensor_hub.read()
+                now = time.monotonic()
+                stair_frame = camera.stair_frame() if camera_ready else None
+                detection = stair_frame.primary_stair if stair_frame is not None else None
+                if stair_frame is not None and now - stair_frame.captured_at > 0.8:
+                    detection = None
+                geometry = None
+                if detection is not None:
+                    geometry = estimate_stair_geometry(
+                        detection,
+                        snapshot.depth,
+                        default_riser_mm=args.stair_default_riser_mm,
+                        min_riser_mm=args.stair_min_riser_mm,
+                        max_riser_mm=args.stair_max_riser_mm,
+                        mount_height_mm=args.stair_tof_mount_height_mm,
+                        pitch_down_deg=args.stair_tof_pitch_down_deg,
+                        vertical_fov_deg=args.stair_tof_vertical_fov_deg,
+                        flip_vertical=args.stair_tof_flip_vertical,
+                        direction_delta_mm=args.stair_tof_direction_delta_mm,
+                    )
+                    if stair_frame.captured_at != last_stair_timestamp:
+                        last_stair_timestamp = stair_frame.captured_at
+                        if (
+                            geometry.direction != "unknown"
+                            and geometry.confidence >= args.stair_model_confidence
+                        ):
+                            stable_frames += 1
+                            last_detection_at = now
+                        else:
+                            stable_frames = 0
+                elif now - last_detection_at > 0.5:
+                    stable_frames = 0
+
+                pose = dict(STANDING)
+                gait = stationary_gait("stair-wait")
+                status = "STAIR OFF"
+                if stepper.active:
+                    pose = stepper.update(now)
+                    gait = stepper.telemetry_snapshot()
+                    prefix = "STAIR" if enabled else "STOPPING"
+                    status = f"{prefix} {stepper.direction.upper()} | {stepper.phase.upper()}"
+                    if not stepper.active:
+                        cooldown_until = now + args.stair_step_pause_s
+                        lead_leg = "right" if lead_leg == "left" else "left"
+                        stable_frames = 0
+                elif enabled and now < cooldown_until:
+                    status = "VERIFYING NEXT STEP"
+                elif enabled and geometry is None:
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "SEARCHING FOR STAIRS"
+                elif enabled and geometry.direction == "unknown":
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "STAIR FOUND | WAITING FOR TOF DIRECTION"
+                elif enabled and stable_frames < args.stair_detect_stable_frames:
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = f"VERIFYING STAIR {stable_frames}/{args.stair_detect_stable_frames}"
+                elif enabled and abs(geometry.center_error) > args.stair_camera_align_deadband:
+                    turn = -math.copysign(args.stair_turn_speed, geometry.center_error)
+                    pose = approach.update(0.0, turn, 0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = f"ALIGNING {geometry.center_error:+.2f}"
+                elif enabled and geometry.edge_distance_mm is None:
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "WAITING FOR TOF DISTANCE"
+                elif enabled and geometry.edge_distance_mm > args.stair_target_edge_mm + args.stair_edge_deadband_mm:
+                    pose = approach.update(args.stair_approach_speed, 0.0, 0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = f"APPROACHING {geometry.edge_distance_mm} MM"
+                elif enabled and geometry.edge_distance_mm < args.stair_target_edge_mm - args.stair_edge_deadband_mm:
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = f"TOO CLOSE {geometry.edge_distance_mm} MM"
+                elif enabled and not approach.is_idle_ready():
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "FINISHING APPROACH STEP"
+                elif enabled:
+                    stepper.start(
+                        geometry.direction,
+                        geometry.riser_height_mm,
+                        args.stair_step_depth_mm,
+                        lead_leg,
+                        now,
+                    )
+                    pose = stepper.update(now)
+                    gait = stepper.telemetry_snapshot()
+                    status = f"STAIR {geometry.direction.upper()} | SHIFT"
+
+                if geometry is not None:
+                    gait["perception"] = {
+                        "direction": geometry.direction,
+                        "confidence": geometry.confidence,
+                        "edge_mm": geometry.edge_distance_mm,
+                        "riser_mm": geometry.riser_height_mm,
+                        "center_error": geometry.center_error,
+                        "source": geometry.source,
+                    }
+
+                imu = snapshot.imu
+                dt = max(0.001, now - last_balance_at)
+                last_balance_at = now
+                fall_active = False
+                if imu is not None and reference is not None and fall_detector is not None:
+                    fall_active = update_fall_detector(fall_detector, imu, reference, dt, args)
+                    if fall_active:
+                        enabled = False
+                        stepper.reset()
+                        pose = extend_arms_forward(last_pose, args.fall_arm_forward_pwm)
+                        status = f"FALL: {fall_detector.reason}"
+                if not fall_active and imu is not None and balance is not None:
+                    pose = balance.apply(
+                        pose,
+                        roll_deg=imu.roll_deg,
+                        pitch_deg=imu.pitch_deg,
+                        dt=dt,
+                        support_leg=str(gait.get("support_leg", "double")),
+                    )
+
+                backend.send(pose, duration_ms=args.update_ms)
+                last_pose = dict(pose)
+                dashboard.publish(
+                    pose=pose,
+                    gait=gait,
+                    sensor_snapshot=snapshot,
+                    status=status,
+                    active=enabled or stepper.active,
+                    camera_ready=camera_ready,
+                    balance_status="IMU ON" if balance is not None else "IMU WAIT",
+                )
+                dashboard.set_runtime("stair", status)
+                remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
+                if remaining > 0.0:
+                    time.sleep(remaining)
+
+            backend.send(STANDING, duration_ms=args.stop_ms, force=True)
+            time.sleep(args.stop_ms / 1000.0)
+    finally:
+        camera.set_detector(None)
+        sensor_hub.close()
+        dashboard.set_runtime("idle", "Stair mode stopped")
+        print("[stairs] Stair mode exited.")

@@ -30,6 +30,7 @@ class HeadlessCamera:
         self.stable_frames = max(1, stable_frames)
         self._person_frame = None
         self._object_frame = None
+        self._stair_frame = None
         self._person_stable_frames = 0
         self._last_person_timestamp = None
         self._person_ignored = False
@@ -90,6 +91,7 @@ class HeadlessCamera:
                 self.stable_frames = max(1, stable_frames)
             self._person_frame = None
             self._object_frame = None
+            self._stair_frame = None
             self._person_stable_frames = 0
             self._last_person_timestamp = None
             self._person_ignored = False
@@ -132,6 +134,7 @@ class HeadlessCamera:
                 if hasattr(detection, "people"):
                     self._person_frame = detection
                     self._object_frame = None
+                    self._stair_frame = None
                     is_new = detection.captured_at != self._last_person_timestamp
                     if detection.single_person is not None and is_new:
                         self._person_stable_frames += 1
@@ -142,6 +145,11 @@ class HeadlessCamera:
                 elif hasattr(detection, "objects"):
                     self._person_frame = None
                     self._object_frame = detection
+                    self._stair_frame = None
+                elif hasattr(detection, "stairs"):
+                    self._person_frame = None
+                    self._object_frame = None
+                    self._stair_frame = detection
                 self._jpeg_sequence = -1
 
     def person_frame(self):
@@ -152,6 +160,10 @@ class HeadlessCamera:
         with self._lock:
             return self._object_frame
 
+    def stair_frame(self):
+        with self._lock:
+            return self._stair_frame
+
     def jpeg_frame(self, quality: int = 68) -> bytes | None:
         if self._cv2 is None:
             return None
@@ -161,6 +173,7 @@ class HeadlessCamera:
             frame = None if self._frame is None else self._frame.copy()
             person_frame = self._person_frame
             object_frame = self._object_frame
+            stair_frame = self._stair_frame
             sequence = self._frame_sequence
         if frame is None:
             return None
@@ -189,6 +202,21 @@ class HeadlessCamera:
                     self._cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (244, 184, 74),
+                    1,
+                    self._cv2.LINE_AA,
+                )
+        if stair_frame is not None:
+            for stair in stair_frame.stairs:
+                x1, y1, x2, y2 = stair.box
+                self._cv2.rectangle(frame, (x1, y1), (x2, y2), (78, 166, 255), 2)
+                label = f"STAIR {stair.direction.upper()} {stair.confidence:.2f}"
+                self._cv2.putText(
+                    frame,
+                    label,
+                    (x1, max(18, y1 - 7)),
+                    self._cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (78, 166, 255),
                     1,
                     self._cv2.LINE_AA,
                 )
@@ -242,6 +270,7 @@ class HeadlessCamera:
             self._frame = None
             self._person_frame = None
             self._object_frame = None
+            self._stair_frame = None
             self._jpeg_frame = None
             self._jpeg_sequence = -1
         if was_running:
