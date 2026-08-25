@@ -49,8 +49,7 @@
           </div>
           <div class="mode-list" role="group" aria-label="Robot function">
             <button type="button" class="active" data-mode="manual"><strong>Manual</strong><span>Walking and actions</span></button>
-            <button type="button" data-mode="terrain"><strong>Terrain Balance</strong><span>IMU stabilization</span></button>
-            <button type="button" data-mode="stair"><strong>Stair Auto</strong><span>Camera + ToF climbing</span></button>
+            <button type="button" data-mode="terrain"><strong>Terrain Auto</strong><span>IMU balance + stair traversal</span></button>
             <button type="button" data-mode="follow"><strong>Person Follow</strong><span>Camera + ToF tracking</span></button>
             <button type="button" data-mode="pickup"><strong>Pick Up</strong><span>Camera + ToF positioning</span></button>
           </div>
@@ -85,9 +84,6 @@
           <div class="mode-actions">
             <div data-mode-actions="terrain">
               <button type="button" data-action="terrain_toggle"><span>Balance on/off</span><kbd>V</kbd></button>
-              <button type="button" data-action="reset"><span>Recalibrate IMU</span><kbd>C</kbd></button>
-            </div>
-            <div data-mode-actions="stair">
               <button type="button" data-action="stair_toggle"><span>Auto stair on/off</span><kbd>U</kbd></button>
             </div>
             <div data-mode-actions="follow">

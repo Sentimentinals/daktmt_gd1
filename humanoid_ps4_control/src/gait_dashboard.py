@@ -39,7 +39,7 @@ JOINT_NAMES = {
     25: "head_yaw",
 }
 
-CONTROL_MODES = {"manual", "terrain", "stair", "follow", "pickup"}
+CONTROL_MODES = {"manual", "terrain", "follow", "pickup"}
 CONTROL_ACTIONS = {
     "stop",
     "reset",

@@ -20,7 +20,7 @@ from .stair_perception import StairDetector, estimate_stair_geometry
 from .walking_engine import DynamicWalkingEngine
 
 
-def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
+def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> None:
     model_path = Path(__file__).resolve().parent.parent / args.stair_model
     detector = StairDetector(
         model_path=str(model_path),
@@ -32,9 +32,9 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
     if camera_ready:
         camera.set_detector(detector, stable_frames=args.stair_detect_stable_frames)
         mode = "ONNX+geometry" if detector.model_ready else "geometry fallback"
-        print(f"[stairs] Camera detector ON ({mode}).")
+        print(f"[terrain] Stair detector ON ({mode}).")
     else:
-        print("[stairs] Camera unavailable. Auto stair remains locked.")
+        print("[terrain] Camera unavailable. Auto stair remains locked.")
 
     sensor_hub = RobotSensorHub(
         port=args.sensor_port,
@@ -80,9 +80,11 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
 
     reference = None
     balance = None
+    balance_enabled = False
     fall_detector = None
     enabled = False
     previous_toggle = False
+    previous_balance_toggle = False
     previous_stop = False
     stable_frames = 0
     last_detection_at = 0.0
@@ -98,7 +100,7 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
             backend.send(STANDING, duration_ms=900, force=True)
             time.sleep(0.9)
             if args.sensor_use_imu:
-                print("[stairs] Keep the robot upright while IMU reference is captured.")
+                print("[terrain] Keep the robot upright while IMU reference is captured.")
                 reference = sensor_hub.capture_imu_reference(
                     sample_seconds=args.imu_reference_seconds,
                     timeout_s=args.imu_reference_timeout_s,
@@ -111,9 +113,9 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     BalanceConfig(
                         target_roll_deg=reference[0],
                         target_pitch_deg=reference[1],
-                        max_correction_deg=args.balance_limit_deg,
-                        roll_deadband_deg=args.balance_deadband_deg,
-                        pitch_deadband_deg=args.balance_deadband_deg,
+                        max_correction_deg=args.terrain_balance_limit_deg,
+                        roll_deadband_deg=args.terrain_balance_deadband_deg,
+                        pitch_deadband_deg=args.terrain_balance_deadband_deg,
                         pitch_ankle_gain=1.0,
                         pitch_hip_gain=0.30,
                         roll_ankle_gain=1.0,
@@ -121,20 +123,30 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
                         double_support_gain=1.0,
                     )
                 )
+                balance_enabled = True
                 if args.fall_detection_enabled:
                     fall_detector = configured_fall_detector(args)
-            dashboard.set_runtime("stair", "Stair detection ready - press U")
+            dashboard.set_runtime("terrain", "Terrain Auto ready - V balance, U stairs")
 
             while True:
                 loop_started = time.monotonic()
                 control = dashboard.control_state()
-                if not control.armed or control.mode != "stair":
+                if not control.armed or control.mode != "terrain":
                     break
+
+                if control.auto_toggle and not previous_balance_toggle:
+                    if balance is None:
+                        print("[terrain] IMU balance unavailable.")
+                    else:
+                        balance_enabled = not balance_enabled
+                        balance.reset()
+                        print(f"[terrain] IMU balance {'ON' if balance_enabled else 'OFF'}.")
+                previous_balance_toggle = control.auto_toggle
 
                 if control.stair_toggle and not previous_toggle:
                     if not camera_ready:
                         enabled = False
-                        print("[stairs] Auto stair rejected: camera unavailable.")
+                        print("[terrain] Auto stair rejected: camera unavailable.")
                     else:
                         enabled = not enabled
                         stable_frames = 0
@@ -144,7 +156,7 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
                             message = "OFF AFTER CURRENT STEP"
                         else:
                             message = "OFF"
-                        print(f"[stairs] Auto stair {message}.")
+                        print(f"[terrain] Auto stair {message}.")
                 previous_toggle = control.stair_toggle
 
                 if control.stop and not previous_stop:
@@ -189,8 +201,8 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     stable_frames = 0
 
                 pose = dict(STANDING)
-                gait = stationary_gait("stair-wait")
-                status = "STAIR OFF"
+                gait = stationary_gait("terrain-wait")
+                status = "BALANCE ON | STAIR OFF" if balance_enabled else "TERRAIN IDLE"
                 if stepper.active:
                     pose = stepper.update(now)
                     gait = stepper.telemetry_snapshot()
@@ -268,7 +280,7 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
                         stepper.reset()
                         pose = extend_arms_forward(last_pose, args.fall_arm_forward_pwm)
                         status = f"FALL: {fall_detector.reason}"
-                if not fall_active and imu is not None and balance is not None:
+                if not fall_active and imu is not None and balance is not None and balance_enabled:
                     pose = balance.apply(
                         pose,
                         roll_deg=imu.roll_deg,
@@ -284,11 +296,15 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     gait=gait,
                     sensor_snapshot=snapshot,
                     status=status,
-                    active=enabled or stepper.active,
+                    active=enabled or stepper.active or balance_enabled or fall_active,
                     camera_ready=camera_ready,
-                    balance_status="IMU ON" if balance is not None else "IMU WAIT",
+                    balance_status=(
+                        "IMU WAIT"
+                        if balance is None
+                        else "IMU ON" if balance_enabled else "IMU OFF"
+                    ),
                 )
-                dashboard.set_runtime("stair", status)
+                dashboard.set_runtime("terrain", status)
                 remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
                 if remaining > 0.0:
                     time.sleep(remaining)
@@ -298,5 +314,5 @@ def run_stairs(args: Config, dashboard, camera, camera_ready: bool) -> None:
     finally:
         camera.set_detector(None)
         sensor_hub.close()
-        dashboard.set_runtime("idle", "Stair mode stopped")
-        print("[stairs] Stair mode exited.")
+        dashboard.set_runtime("idle", "Terrain Auto stopped")
+        print("[terrain] Terrain Auto exited.")

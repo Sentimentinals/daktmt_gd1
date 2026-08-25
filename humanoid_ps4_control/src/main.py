@@ -638,11 +638,7 @@ def main() -> None:
                 elif state.mode == "terrain":
                     from .terrain_main import run_terrain
 
-                    run_terrain(args, dashboard, camera_ready)
-                elif state.mode == "stair":
-                    from .stair_main import run_stairs
-
-                    run_stairs(args, dashboard, camera, camera_ready)
+                    run_terrain(args, dashboard, camera, camera_ready)
                 elif state.mode == "follow":
                     from .follow_main import run_follow
 
