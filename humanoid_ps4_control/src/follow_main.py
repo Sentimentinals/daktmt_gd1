@@ -46,14 +46,9 @@ def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,
         landing_roll_release_start=args.walk_landing_roll_release_start,
-        max_leg_pwm_per_s=args.walk_max_leg_pwm_per_s,
-        command_rate_limit=args.command_rate_limit,
         arm_swing_pwm=args.arm_swing_pwm,
         arm_right_dir=args.arm_right_dir,
         arm_left_dir=args.arm_left_dir,
-        arm_smooth_tau=args.arm_smooth_tau,
-        arm_min_pwm=args.arm_min_pwm,
-        arm_quantum_pwm=args.arm_quantum_pwm,
     )
     obstacle_guard = DepthObstacleGuard(
         stop_distance_mm=args.tof_obstacle_stop_mm,

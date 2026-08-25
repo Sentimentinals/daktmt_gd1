@@ -10,7 +10,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     from .walking_engine import (
         DynamicWalkingEngine,
         STANDING,
-        clamp_pose_rate,
     )
     from .arm_dance import ArmDanceEngine
     from .getup import GetupEngine
@@ -23,7 +22,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
         angle_error_deg,
         configured_fall_detector,
         extend_arms_forward,
-        lower_toward_standing,
         update_fall_detector,
     )
     from .sensors import DepthObstacleGuard, RobotSensorHub
@@ -52,14 +50,9 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,
         landing_roll_release_start=args.walk_landing_roll_release_start,
-        command_rate_limit=args.command_rate_limit,
-        max_leg_pwm_per_s=args.walk_max_leg_pwm_per_s,
         arm_swing_pwm=args.arm_swing_pwm,
         arm_right_dir=args.arm_right_dir,
         arm_left_dir=args.arm_left_dir,
-        arm_smooth_tau=args.arm_smooth_tau,
-        arm_min_pwm=args.arm_min_pwm,
-        arm_quantum_pwm=args.arm_quantum_pwm,
         crouch_transition_s=args.walk_crouch_transition_s,
     )
     recovery_engine = DynamicWalkingEngine(
@@ -71,7 +64,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
         step_height=args.push_recovery_step_height_mm,
         step_x_ratio=1.0,
         landing_gap_mm=0.0,
-        command_rate_limit=1000.0,
     )
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,
@@ -81,9 +73,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
         elbow_pwm=args.dance_elbow_pwm,
         lift_pwm=args.dance_lift_pwm,
         head_pwm=args.dance_head_pwm,
-        smooth_tau=args.dance_smooth_tau,
-        max_pwm_per_sec=args.dance_max_pwm_per_sec,
-        min_step_pwm=args.dance_min_step_pwm,
     )
     getup = GetupEngine(
         dt=args.update_ms / 1000.0,
@@ -112,10 +101,8 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     obstacle_blocked = False
     obstacle_mm = None
     previous_obstacle_blocked = False
-    head_pwm = float(STANDING[25])
     head_turn_sign = 0
     head_turn_lead_until = 0.0
-    last_head_update_t = time.monotonic()
     sensor_required = args.sensor_feedback or args.fall_detection_enabled
     if sensor_required:
         sensor_hub = RobotSensorHub(
@@ -457,12 +444,7 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                     recovery_engine.reset()
                                     engine.reset()
                                     standing_hold_active = True
-                                    pose = lower_toward_standing(
-                                        last_pose,
-                                        STANDING,
-                                        balance_dt,
-                                        args.push_recovery_lower_rate_pwm_s,
-                                    )
+                                    pose = dict(STANDING)
                                 elif recovery_step_active:
                                     pose = recovery_engine.update(
                                         decision.forward_cmd if recovery_engine.step_count == 0 else 0.0,
@@ -493,11 +475,6 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                     target_roll_offset_deg=recovery_roll_offset,
                                     target_pitch_offset_deg=recovery_pitch_offset,
                                 )
-                                pose = clamp_pose_rate(
-                                    last_pose,
-                                    pose,
-                                    engine.max_pwm_per_frame,
-                                )
                             else:
                                 balance.reset()
                             balance_has_valid_imu = True
@@ -517,12 +494,7 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                 recovery_engine.reset()
                                 engine.reset()
                                 standing_hold_active = True
-                                pose = lower_toward_standing(
-                                    last_pose,
-                                    STANDING,
-                                    balance_dt,
-                                    args.push_recovery_lower_rate_pwm_s,
-                                )
+                                pose = dict(STANDING)
                             if balance_has_valid_imu:
                                 balance.reset()
                                 balance_has_valid_imu = False
@@ -538,11 +510,7 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         head_target = STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
                             1 if head_turn_cmd > 0.0 else -1 if head_turn_cmd < 0.0 else 0
                         )
-                        now = time.monotonic()
-                        max_head_delta = args.head_pan_rate_pwm_s * max(0.0, now - last_head_update_t)
-                        head_pwm += max(-max_head_delta, min(max_head_delta, head_target - head_pwm))
-                        last_head_update_t = now
-                        pose[25] = max(500, min(2500, round(head_pwm)))
+                        pose[25] = round(head_target)
     
                     try:
                         backend.send(pose, duration_ms=args.update_ms)

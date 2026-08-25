@@ -22,7 +22,6 @@ const control = {
   armed: false,
   mode: "manual",
   axes: { forward: 0, turn: 0, side: 0 },
-  held: new Set(),
   actions: new Set(),
   sending: false,
 };
@@ -31,8 +30,7 @@ function releaseMotion() {
   control.axes.forward = 0;
   control.axes.turn = 0;
   control.axes.side = 0;
-  control.held.clear();
-  document.querySelectorAll("[data-axis].active, [data-hold].active, [data-action].active").forEach((button) => {
+  document.querySelectorAll("[data-axis].active, [data-action].active").forEach((button) => {
     button.classList.remove("active");
     button.setAttribute("aria-pressed", "false");
   });
@@ -66,7 +64,7 @@ function updateControlUI(state = {}) {
   document.querySelectorAll("[data-mode-actions]").forEach((group) => {
     group.classList.toggle("active", group.dataset.modeActions === control.mode);
   });
-  document.querySelectorAll("[data-axis], [data-action], [data-hold]").forEach((button) => {
+  document.querySelectorAll("[data-axis], [data-action]").forEach((button) => {
     const manualOnly = button.closest(".action-grid") || button.hasAttribute("data-axis");
     const modeGroup = button.closest("[data-mode-actions]");
     const modeAllowed = manualOnly ? control.mode === "manual" : !modeGroup || modeGroup.dataset.modeActions === control.mode;
@@ -83,7 +81,6 @@ async function sendControl(emergencyStop = false) {
     armed: control.armed,
     mode: control.mode,
     axes: control.axes,
-    held: [...control.held],
     actions: sentActions,
     emergency_stop: emergencyStop,
   };
@@ -131,14 +128,6 @@ function setAxis(name, value, button) {
   if (!control.armed || control.mode !== "manual") return;
   control.axes[name] = Number(value);
   setButtonActive(button, Number(value) !== 0);
-  sendControl();
-}
-
-function setHeld(name, enabled, button) {
-  if (!control.armed) return;
-  if (enabled) control.held.add(name);
-  else control.held.delete(name);
-  setButtonActive(button, enabled);
   sendControl();
 }
 
@@ -886,16 +875,6 @@ function bindWebControl() {
       setAxis(button.dataset.axis, 0, button);
     });
   });
-  document.querySelectorAll("[data-hold]").forEach((button) => {
-    button.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      button.setPointerCapture(event.pointerId);
-      setHeld(button.dataset.hold, true, button);
-    });
-    button.addEventListener("pointerup", () => setHeld(button.dataset.hold, false, button));
-    button.addEventListener("pointercancel", () => setHeld(button.dataset.hold, false, button));
-  });
-
   const axisKeys = {
     ArrowUp: ["forward", 1],
     ArrowDown: ["forward", -1],
@@ -913,6 +892,7 @@ function bindWebControl() {
     v: "terrain_toggle",
     y: "follow",
     n: "ignore_person",
+    r: "pickup_toggle",
   };
   window.addEventListener("keydown", (event) => {
     if (event.target.matches("input, select")) return;
@@ -923,10 +903,6 @@ function bindWebControl() {
       const [axis, value] = axisKeys[key];
       const button = document.querySelector(`[data-axis="${axis}"][data-value="${value}"]`);
       setAxis(axis, value, button);
-    } else if (key === "r" && control.mode === "pickup") {
-      event.preventDefault();
-      if (event.repeat) return;
-      setHeld("squat", true, document.querySelector('[data-hold="squat"]'));
     } else if (actionKeys[key] && !event.repeat) {
       event.preventDefault();
       setActionActive(actionKeys[key], true);
@@ -946,8 +922,6 @@ function bindWebControl() {
       const [axis] = axisKeys[key];
       const button = document.querySelector(`[data-axis="${axis}"][data-value="${axisKeys[key][1]}"]`);
       setAxis(axis, 0, button);
-    } else if (key === "r") {
-      setHeld("squat", false, document.querySelector('[data-hold="squat"]'));
     } else if (actionKeys[key]) {
       setActionActive(actionKeys[key], false);
     } else if (key === "Escape") {
@@ -971,7 +945,6 @@ function bindWebControl() {
       armed: false,
       mode: control.mode,
       axes: { forward: 0, turn: 0, side: 0 },
-      held: [],
       actions: [],
     });
     navigator.sendBeacon("/api/control", payload);

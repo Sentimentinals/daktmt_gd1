@@ -51,7 +51,7 @@
             <button type="button" class="active" data-mode="manual"><strong>Manual</strong><span>Walking and actions</span></button>
             <button type="button" data-mode="terrain"><strong>Terrain Balance</strong><span>IMU stabilization</span></button>
             <button type="button" data-mode="follow"><strong>Person Follow</strong><span>Camera + ToF tracking</span></button>
-            <button type="button" data-mode="pickup"><strong>Pickup Position</strong><span>Squat positioning</span></button>
+            <button type="button" data-mode="pickup"><strong>Pick Up</strong><span>Camera + ToF positioning</span></button>
           </div>
         </aside>
 
@@ -91,7 +91,7 @@
               <button type="button" data-action="ignore_person"><span>Stop follow</span><kbd>N</kbd></button>
             </div>
             <div data-mode-actions="pickup">
-              <button type="button" data-hold="squat"><span>Hold squat</span><kbd>R</kbd></button>
+              <button type="button" data-action="pickup_toggle"><span>Start / lift / reset</span><kbd>R</kbd></button>
             </div>
           </div>
         </section>
@@ -223,6 +223,6 @@
     </section>
   </main>
 
-  <script type="module" src="/app.js?v=20260825"></script>
+  <script type="module" src="/app.js?v=20260826"></script>
 </body>
 </html>

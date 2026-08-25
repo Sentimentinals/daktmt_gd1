@@ -19,22 +19,11 @@ JOINT_TO_SERVO = {
 }
 
 
-def _clamp_pwm(value: float) -> int:
-    return max(500, min(2500, round(value)))
-
-
-def _smoothstep(t: float) -> float:
-    t = max(0.0, min(1.0, t))
-    return t * t * (3.0 - 2.0 * t)
-
-
 def _ease(t: float, curve: str) -> float:
     t = max(0.0, min(1.0, t))
-    if curve == "linear":
-        return t
     if curve == "snap":
         return 1.0 - (1.0 - t) ** 3
-    return _smoothstep(t)
+    return t
 
 
 def _merge(*parts: dict[int, int]) -> dict[int, int]:
@@ -80,11 +69,11 @@ def _arm_pose(name: str, extra: dict[int, int] | None = None) -> dict[int, int]:
     return base
 
 
-def _blend_pose(a: dict[int, int], b: dict[int, int], t: float, curve: str = "smooth") -> dict[int, int]:
+def _blend_pose(a: dict[int, int], b: dict[int, int], t: float, curve: str = "linear") -> dict[int, int]:
     alpha = _ease(t, curve)
     ids = set(STANDING) | set(a) | set(b)
     return {
-        sid: _clamp_pwm(a.get(sid, STANDING.get(sid, 1500)) * (1.0 - alpha) + b.get(sid, STANDING.get(sid, 1500)) * alpha)
+        sid: round(a.get(sid, STANDING.get(sid, 1500)) * (1.0 - alpha) + b.get(sid, STANDING.get(sid, 1500)) * alpha)
         for sid in ids
     }
 
@@ -94,7 +83,7 @@ class GetupStep:
     label: str
     pose: dict[int, int]
     duration_s: float
-    curve: str = "smooth"
+    curve: str = "linear"
     contacts: tuple[str, ...] = ()
 
 
@@ -165,7 +154,7 @@ def _pose_from_state(state: GetupPoseState) -> dict[int, int]:
         sid, base_key = JOINT_TO_SERVO[joint_name]
         pose[sid] = angle_to_pwm(sid, STAND_ANG[base_key], angle_deg, STANDING[sid])
     for sid, pwm in state.pwm_overrides.items():
-        pose[sid] = _clamp_pwm(pwm)
+        pose[sid] = round(pwm)
     return pose
 
 
@@ -316,8 +305,8 @@ def build_getup_sequence(mode: str = "back", speed: float = 0.7) -> list[GetupSt
 
     if mode == "back":
         plan = [
-            (states["back_box_clear"], 0.62, "smooth"),
-            (states["back_load_knees"], 0.52, "smooth"),
+            (states["back_box_clear"], 0.62, "linear"),
+            (states["back_load_knees"], 0.52, "linear"),
             (states["back_leg_snap"], 0.24, "snap"),
             (states["back_plant_feet"], 0.26, "linear"),
             (states["back_power_stand"], 0.20, "snap"),
@@ -325,14 +314,14 @@ def build_getup_sequence(mode: str = "back", speed: float = 0.7) -> list[GetupSt
         ]
     else:
         plan = [
-            (states["front_arms_forward"], 0.95, "smooth"),
-            (states["front_push_floor"], 1.05, "smooth"),
-            (states["front_plant_knees"], 0.80, "smooth"),
-            (states["front_kneel_low"], 1.05, "smooth"),
-            (states["front_squat_deep"], 0.85, "smooth"),
-            (states["front_squat_high"], 0.75, "smooth"),
-            (states["front_arms_down"], 0.45, "smooth"),
-            (states["front_stand"], 1.05, "smooth"),
+            (states["front_arms_forward"], 0.95, "linear"),
+            (states["front_push_floor"], 1.05, "linear"),
+            (states["front_plant_knees"], 0.80, "linear"),
+            (states["front_kneel_low"], 1.05, "linear"),
+            (states["front_squat_deep"], 0.85, "linear"),
+            (states["front_squat_high"], 0.75, "linear"),
+            (states["front_arms_down"], 0.45, "linear"),
+            (states["front_stand"], 1.05, "linear"),
         ]
 
     return [_step(state, duration, curve, speed) for state, duration, curve in plan]

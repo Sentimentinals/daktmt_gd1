@@ -7,10 +7,26 @@ from typing import Dict, Optional
 
 
 Pose = Dict[int, int]
+PWM_MIN = 500
+PWM_MAX = 2500
+
+
+def validate_pose(pose: Pose) -> None:
+    invalid = {
+        sid: pulse
+        for sid, pulse in pose.items()
+        if not isinstance(sid, int)
+        or not 1 <= sid <= 32
+        or not isinstance(pulse, int)
+        or not PWM_MIN <= pulse <= PWM_MAX
+    }
+    if invalid:
+        raise ValueError(f"Invalid servo command (IDs 1-32, PWM {PWM_MIN}-{PWM_MAX}): {invalid}")
 
 
 def _build_rt_command(pose: Pose, duration_ms: int = 1000) -> str:
     """Build one RTrobot command: #1P1500#2P1500...T40D0."""
+    validate_pose(pose)
     parts = [f"#{sid}P{pulse}" for sid, pulse in sorted(pose.items())]
     return "".join(parts) + f"T{duration_ms}D0"
 
@@ -95,6 +111,7 @@ class SerialRTBackend:
     def send(self, pose: Pose, duration_ms: int = 1000, force: bool = False) -> None:
         if self._serial is None or not self._serial.is_open:
             raise RuntimeError("Serial port is not open. Call open() first.")
+        validate_pose(pose)
 
         self._frame_count += 1
         is_moving = pose != self._prev_pose
@@ -148,6 +165,7 @@ class CsvLogBackend:
         print(f"[CsvLogBackend] Writing to {self.csv_path}")
 
     def send(self, pose: Pose, duration_ms: int = 1000, force: bool = False) -> None:
+        validate_pose(pose)
         if self._file is None:
             raise RuntimeError("CsvLogBackend is not open. Call open() first.")
 

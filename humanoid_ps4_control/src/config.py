@@ -24,9 +24,6 @@ GAIT = {
     "arm_swing_pwm": 240,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
-    "arm_smooth_tau": 0.12,
-    "arm_min_pwm": 18,
-    "arm_quantum_pwm": 6,
     "max_side_step_len": 38.0,
     "max_turn_step_len": 7.0,
 }
@@ -103,26 +100,20 @@ class Config:
     walk_lift_end_phase: float = 1.0
     walk_landing_roll_release_start: float = 0.42
     walk_crouch_transition_s: float = 0.45
-    walk_max_leg_pwm_per_s: float = 1100.0
     t_step: float = 1.15
     t_dbl: float = 0.12
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
-    command_rate_limit: float = 40.0
     # --- Arms (Linked to GAIT values by default) ---
     arm_swing_pwm: int = GAIT["arm_swing_pwm"]
     arm_right_dir: int = GAIT["arm_right_dir"]
     arm_left_dir: int = GAIT["arm_left_dir"]
-    arm_smooth_tau: float = GAIT["arm_smooth_tau"]
-    arm_min_pwm: int = GAIT["arm_min_pwm"]
-    arm_quantum_pwm: int = GAIT["arm_quantum_pwm"]
 
     # --- Live Camera & Person Follow ---
     vision_camera_width: int = 480
     vision_camera_height: int = 360
     vision_fps: int = 12
     head_pan_pwm: int = 220
-    head_pan_rate_pwm_s: float = 700.0
     head_turn_lead_s: float = 0.30
     head_pan_direction: float = 1.0
 
@@ -152,13 +143,23 @@ class Config:
     # --- Adaptive Squat ---
     squat_min_depth_mm: float = 12.0
     squat_max_depth_mm: float = 60.0
-    squat_depth_rate_mm_s: float = 35.0
-    squat_max_pwm_per_frame: float = 28.0
     pickup_object_model: str = "deploy/models/pickup_objects.onnx"
     pickup_object_confidence: float = 0.50
     pickup_object_iou_threshold: float = 0.45
     pickup_object_input_size: int = 416
     pickup_detect_every_frames: int = 3
+    pickup_target_stable_frames: int = 3
+    pickup_target_timeout_s: float = 0.8
+    pickup_align_deadband: float = 0.10
+    pickup_turn_speed: float = 0.20
+    pickup_approach_speed: float = 0.18
+    pickup_target_distance_mm: int = 420
+    pickup_distance_deadband_mm: int = 70
+    pickup_target_area_ratio: float = 0.10
+    pickup_squat_duration_s: float = 1.0
+    pickup_reach_duration_s: float = 0.7
+    pickup_lift_duration_s: float = 1.0
+    pickup_reach_pwm: int = 520
 
     # --- Terrain IMU Balance ---
     terrain_emergency_tilt_deg: float = 18.0
@@ -177,9 +178,6 @@ class Config:
     dance_elbow_pwm: int = 260
     dance_lift_pwm: int = 820
     dance_head_pwm: int = 180
-    dance_smooth_tau: float = 0.08
-    dance_max_pwm_per_sec: float = 2200.0
-    dance_min_step_pwm: int = 18
 
     # --- Getup ---
     getup_mode: str = "back"
@@ -212,7 +210,6 @@ class Config:
     push_recovery_timeout_s: float = 3.0
     push_recovery_counter_lean_s: float = 0.40
     push_recovery_counter_lean_deg: float = 1.5
-    push_recovery_lower_rate_pwm_s: float = 300.0
     fall_detection_enabled: bool = True
     fall_trigger_tilt_deg: float = 18.0
     fall_trigger_rate_deg_s: float = 70.0

@@ -49,8 +49,8 @@ CONTROL_ACTIONS = {
     "terrain_toggle",
     "follow",
     "ignore_person",
+    "pickup_toggle",
 }
-CONTROL_HELD = {"squat"}
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class WebControlState:
     auto_toggle: bool = False
     follow: bool = False
     ignore_person: bool = False
-    squat: bool = False
+    pickup_toggle: bool = False
 
 LEG_BASE_ANGLES = {
     12: STAND_ANG["L_hip_abduct"],
@@ -159,7 +159,6 @@ class GaitDashboard:
         self._control_armed = False
         self._control_mode = "manual"
         self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
-        self._control_held: set[str] = set()
         self._control_actions: deque[str] = deque()
         self._runtime_mode = "idle"
         self._runtime_status = "Waiting for browser control"
@@ -220,7 +219,6 @@ class GaitDashboard:
         if self._control_armed and now - self._control_last_at > self.command_timeout_s:
             self._control_armed = False
             self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
-            self._control_held.clear()
             self._control_actions.clear()
             self._runtime_status = "Control heartbeat lost - standing"
 
@@ -236,7 +234,6 @@ class GaitDashboard:
             if emergency:
                 self._control_armed = False
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
-                self._control_held.clear()
                 self._control_actions.clear()
                 self._runtime_status = "Emergency stop requested"
                 return 200, self._control_payload_locked(now)
@@ -260,7 +257,6 @@ class GaitDashboard:
             if requested_mode in CONTROL_MODES and requested_mode != self._control_mode:
                 self._control_mode = requested_mode
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
-                self._control_held.clear()
                 self._control_actions.clear()
 
             self._control_armed = bool(request.get("armed", self._control_armed))
@@ -272,12 +268,6 @@ class GaitDashboard:
                     name: self._axis(axes.get(name, 0.0))
                     for name in ("forward", "turn", "side")
                 }
-                held = request.get("held", [])
-                self._control_held = (
-                    {str(name) for name in held if str(name) in CONTROL_HELD}
-                    if isinstance(held, list)
-                    else set()
-                )
                 actions = request.get("actions", [])
                 if isinstance(actions, list):
                     self._control_actions.extend(
@@ -285,7 +275,6 @@ class GaitDashboard:
                     )
             else:
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
-                self._control_held.clear()
                 self._control_actions.clear()
             return 200, self._control_payload_locked(now)
 
@@ -293,7 +282,6 @@ class GaitDashboard:
         with self._control_lock:
             self._control_armed = False
             self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
-            self._control_held.clear()
             self._control_actions.clear()
             self._runtime_status = status
 
@@ -324,7 +312,7 @@ class GaitDashboard:
                 auto_toggle="terrain_toggle" in actions,
                 follow="follow" in actions,
                 ignore_person="ignore_person" in actions,
-                squat=self._control_armed and "squat" in self._control_held,
+                pickup_toggle="pickup_toggle" in actions,
             )
 
     def control_payload(self) -> dict[str, object]:

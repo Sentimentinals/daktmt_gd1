@@ -1,27 +1,13 @@
 from __future__ import annotations
 
-import math
-
 from .walking_engine import STANDING
 
 
-ARM_DANCE_IDS = (9, 10, 11, 22, 23, 24, 25)
-
-
-def _clamp_pwm(value: float) -> int:
-    return max(500, min(2500, round(value)))
-
-
-def _smoothstep(t: float) -> float:
-    t = max(0.0, min(1.0, t))
-    return t * t * (3.0 - 2.0 * t)
-
-
 def _blend_pose(a: dict[int, int], b: dict[int, int], t: float) -> dict[int, int]:
-    alpha = _smoothstep(t)
+    alpha = max(0.0, min(1.0, t))
     ids = set(a) | set(b)
     return {
-        sid: _clamp_pwm(a.get(sid, STANDING.get(sid, 1500)) * (1.0 - alpha) + b.get(sid, STANDING.get(sid, 1500)) * alpha)
+        sid: round(a.get(sid, STANDING.get(sid, 1500)) * (1.0 - alpha) + b.get(sid, STANDING.get(sid, 1500)) * alpha)
         for sid in ids
     }
 
@@ -31,7 +17,7 @@ class ArmDanceEngine:
     Standing arm keyframe loop.
 
     It only drives arm/head channels and keeps the legs at STANDING. L/M toggles
-    between running the loop and returning smoothly to STANDING.
+    between running the loop and returning to STANDING.
     """
 
     def __init__(
@@ -43,9 +29,6 @@ class ArmDanceEngine:
         elbow_pwm: int = 260,
         lift_pwm: int = 820,
         head_pwm: int = 180,
-        smooth_tau: float = 0.08,
-        max_pwm_per_sec: float = 2200.0,
-        min_step_pwm: int = 18,
     ) -> None:
         self.dt = dt
         self.period_s = max(0.8, period_s)
@@ -54,9 +37,6 @@ class ArmDanceEngine:
         self.elbow_pwm = abs(elbow_pwm)
         self.lift_pwm = abs(lift_pwm)
         self.head_pwm = abs(head_pwm)
-        self.smooth_tau = max(dt, smooth_tau)
-        self.max_pwm_per_frame = max(1.0, abs(max_pwm_per_sec) * dt)
-        self.min_step_pwm = max(0, int(min_step_pwm))
         self.mode = "off"
         self.phase_t = 0.0
         self.transition_t = 0.0
@@ -106,13 +86,13 @@ class ArmDanceEngine:
         head: float = 0.0,
     ) -> dict[int, int]:
         pose = dict(STANDING)
-        pose[23] = _clamp_pwm(STANDING[23] + right_lift)
-        pose[10] = _clamp_pwm(STANDING[10] - left_lift)
-        pose[22] = _clamp_pwm(STANDING[22] + right_shoulder)
-        pose[11] = _clamp_pwm(STANDING[11] + left_shoulder)
-        pose[24] = _clamp_pwm(STANDING[24] + right_elbow)
-        pose[9] = _clamp_pwm(STANDING[9] - left_elbow)
-        pose[25] = _clamp_pwm(STANDING[25] + head)
+        pose[23] = round(STANDING[23] + right_lift)
+        pose[10] = round(STANDING[10] - left_lift)
+        pose[22] = round(STANDING[22] + right_shoulder)
+        pose[11] = round(STANDING[11] + left_shoulder)
+        pose[24] = round(STANDING[24] + right_elbow)
+        pose[9] = round(STANDING[9] - left_elbow)
+        pose[25] = round(STANDING[25] + head)
         return pose
 
     def _dance_keyframes(self) -> list[dict[int, int]]:
@@ -144,28 +124,6 @@ class ArmDanceEngine:
         blend_t = (local_t - hold) / (1.0 - hold)
         return _blend_pose(frames[idx], frames[(idx + 1) % n], blend_t)
 
-    def _filter_pose(self, target: dict[int, int]) -> dict[int, int]:
-        alpha = 1.0 - math.exp(-self.dt / self.smooth_tau)
-        out = dict(STANDING)
-
-        for sid in ARM_DANCE_IDS:
-            current = float(self.current_pose.get(sid, STANDING[sid]))
-            desired = float(target.get(sid, STANDING[sid]))
-            raw_delta = (desired - current) * alpha
-            if abs(raw_delta) > self.max_pwm_per_frame:
-                raw_delta = math.copysign(self.max_pwm_per_frame, raw_delta)
-
-            remaining = desired - current
-            if self.min_step_pwm > 0 and 0.0 < abs(raw_delta) < self.min_step_pwm:
-                if abs(remaining) <= self.min_step_pwm:
-                    raw_delta = remaining
-                else:
-                    raw_delta = math.copysign(self.min_step_pwm, remaining)
-
-            out[sid] = _clamp_pwm(current + raw_delta)
-
-        return out
-
     def update(self) -> dict[int, int]:
         if self.mode == "off":
             self.current_pose = dict(STANDING)
@@ -176,19 +134,17 @@ class ArmDanceEngine:
 
         if self.mode == "starting":
             self.transition_t += self.dt
-            target_pose = _blend_pose(self.start_pose, loop_pose, self.transition_t / self.transition_s)
-            self.current_pose = self._filter_pose(target_pose)
+            self.current_pose = _blend_pose(self.start_pose, loop_pose, self.transition_t / self.transition_s)
             if self.transition_t >= self.transition_s:
                 self.mode = "loop"
             return self.current_pose
 
         if self.mode == "returning":
             self.transition_t += self.dt
-            target_pose = _blend_pose(self.start_pose, STANDING, self.transition_t / self.transition_s)
-            self.current_pose = self._filter_pose(target_pose)
+            self.current_pose = _blend_pose(self.start_pose, STANDING, self.transition_t / self.transition_s)
             if self.transition_t >= self.transition_s:
                 self.reset()
             return self.current_pose
 
-        self.current_pose = self._filter_pose(loop_pose)
+        self.current_pose = loop_pose
         return self.current_pose

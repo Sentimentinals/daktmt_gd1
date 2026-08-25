@@ -351,29 +351,14 @@ def extend_arms_forward(
     targets = {
         9: STANDING[9],
         10: STANDING[10],
-        11: max(500, STANDING[11] - abs(forward_pwm)),
-        22: min(2500, STANDING[22] + abs(forward_pwm)),
+        11: STANDING[11] - abs(forward_pwm),
+        22: STANDING[22] + abs(forward_pwm),
         23: STANDING[23],
         24: STANDING[24],
     }
     protected = dict(pose)
     protected.update(targets)
     return protected
-
-
-def lower_toward_standing(
-    pose: Pose,
-    standing: Pose,
-    dt: float,
-    max_rate_pwm_s: float,
-) -> Pose:
-    """Return a bounded transition from the current pose back to standing."""
-    max_delta = max(1, round(max_rate_pwm_s * max(0.005, min(0.10, dt))))
-    return {
-        servo_id: current + max(-max_delta, min(max_delta, standing[servo_id] - current))
-        for servo_id, current in pose.items()
-        if servo_id in standing
-    }
 
 
 class IMUBalanceController:
@@ -460,4 +445,4 @@ class IMUBalanceController:
         if servo_id not in pose:
             return
         delta_pwm = round(self.DIR[servo_id] * delta_deg * self.config.pwm_per_deg)
-        pose[servo_id] = max(500, min(2500, pose[servo_id] + delta_pwm))
+        pose[servo_id] += delta_pwm
