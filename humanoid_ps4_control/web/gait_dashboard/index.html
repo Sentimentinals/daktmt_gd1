@@ -3,10 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101411">
   <title>Humanoid Control</title>
-  <link rel="stylesheet" href="/style.css?v=20260824">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='6' fill='%23151e12'/%3E%3Cpath d='M1 1h62v62H1z' fill='none' stroke='%23afe06f' stroke-width='2'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%23afe06f'%3EH17%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css?v=20260825">
 </head>
 <body>
+  <a class="skip-link" href="#controlSection">Skip to controls</a>
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">H17</span>
@@ -16,12 +19,12 @@
       </div>
     </div>
     <nav class="app-tabs" aria-label="Workspace">
-      <button type="button" class="active" data-section="control">Control</button>
-      <button type="button" data-section="analysis">Analysis</button>
+      <button type="button" class="active" data-section="control" aria-pressed="true">Control</button>
+      <button type="button" data-section="analysis" aria-pressed="false">Analysis</button>
     </nav>
     <div class="connection-row">
       <span id="streamState" class="status-dot offline"></span>
-      <span id="streamLabel">Disconnected</span>
+      <span id="streamLabel" aria-live="polite">Disconnected</span>
       <span id="modeBadge" class="badge">IDLE</span>
     </div>
   </header>
@@ -31,7 +34,7 @@
       <div class="control-safety panel">
         <div>
           <span class="eyebrow">CONTROL LINK</span>
-          <strong id="controlStatus">Disabled</strong>
+          <strong id="controlStatus" aria-live="polite">Disabled</strong>
         </div>
         <div class="safety-actions">
           <button id="armButton" type="button" class="arm-button">Enable control</button>
@@ -220,6 +223,6 @@
     </section>
   </main>
 
-  <script type="module" src="/app.js?v=20260824"></script>
+  <script type="module" src="/app.js?v=20260825"></script>
 </body>
 </html>

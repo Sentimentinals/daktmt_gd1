@@ -57,9 +57,11 @@ function updateControlUI(state = {}) {
   $("armButton").classList.toggle("active", control.armed);
   $("armButton").textContent = control.armed ? "Disable control" : "Enable control";
   $("controlStatus").textContent = control.armed ? "ARMED" : "Disabled";
-  $("controlStatus").style.color = control.armed ? "#45d09a" : "#aeb7bf";
+  $("controlStatus").classList.toggle("armed", control.armed);
   document.querySelectorAll("[data-mode]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.mode === control.mode);
+    const active = button.dataset.mode === control.mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
   document.querySelectorAll("[data-mode-actions]").forEach((group) => {
     group.classList.toggle("active", group.dataset.modeActions === control.mode);
@@ -837,7 +839,9 @@ function bindWebControl() {
       releaseMotion();
       sendControl();
       document.querySelectorAll("[data-section]").forEach((item) => {
-        item.classList.toggle("active", item === button);
+        const active = item === button;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", String(active));
       });
       $("controlSection").classList.toggle("active", activeSection === "control");
       $("analysisSection").classList.toggle("active", activeSection === "analysis");
