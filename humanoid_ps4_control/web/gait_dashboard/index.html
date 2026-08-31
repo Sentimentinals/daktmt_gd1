@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101411">
   <title>Humanoid Control</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='6' fill='%23151e12'/%3E%3Cpath d='M1 1h62v62H1z' fill='none' stroke='%23afe06f' stroke-width='2'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%23afe06f'%3EH17%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css?v=20260825">
+  <link rel="stylesheet" href="/style.css?v=20260831">
 </head>
 <body>
   <a class="skip-link" href="#controlSection">Skip to controls</a>
@@ -18,10 +18,6 @@
         <p id="clock">--:--:--</p>
       </div>
     </div>
-    <nav class="app-tabs" aria-label="Workspace">
-      <button type="button" class="active" data-section="control" aria-pressed="true">Control</button>
-      <button type="button" data-section="analysis" aria-pressed="false">Analysis</button>
-    </nav>
     <div class="connection-row">
       <span id="streamState" class="status-dot offline"></span>
       <span id="streamLabel" aria-live="polite">Disconnected</span>
@@ -30,7 +26,7 @@
   </header>
 
   <main>
-    <section id="controlSection" class="app-section active">
+    <section id="controlSection">
       <div class="control-safety panel">
         <div>
           <span class="eyebrow">CONTROL LINK</span>
@@ -115,114 +111,8 @@
       </div>
     </section>
 
-    <section id="analysisSection" class="app-section">
-      <div class="dashboard">
-        <section class="viewer-panel panel">
-          <div class="panel-head">
-            <div><span class="eyebrow">DIGITAL TWIN</span><h2>17-DOF pose</h2></div>
-            <div class="view-controls" role="group" aria-label="Camera view">
-              <button type="button" data-view="front">Front</button>
-              <button type="button" data-view="side">Side</button>
-              <button type="button" data-view="top">Top</button>
-              <button type="button" data-view="fit">Fit</button>
-            </div>
-          </div>
-          <div id="robotViewport" class="robot-viewport">
-            <div id="webglFallback" class="fallback hidden">WebGL unavailable</div>
-          </div>
-          <div class="scene-legend">
-            <span><i class="legend-swatch support"></i>Support</span>
-            <span><i class="legend-swatch swing"></i>Swing</span>
-            <span><i class="legend-swatch com"></i>CoM</span>
-            <span><i class="legend-swatch zmp"></i>ZMP</span>
-          </div>
-        </section>
-
-        <aside class="telemetry-panel panel">
-          <div class="panel-head">
-            <div><span class="eyebrow">GAIT STATE</span><h2 id="phaseName">IDLE</h2></div>
-            <span id="supportBadge" class="badge">DOUBLE</span>
-          </div>
-          <div class="metric-section">
-            <div class="section-title">Body orientation</div>
-            <div class="metric-row"><span>Roll</span><strong id="rollValue">--</strong></div>
-            <div class="meter"><i id="rollMeter"></i></div>
-            <div class="metric-row"><span>Pitch</span><strong id="pitchValue">--</strong></div>
-            <div class="meter"><i id="pitchMeter"></i></div>
-            <div class="metric-row"><span>Yaw</span><strong id="yawValue">--</strong></div>
-          </div>
-          <div class="metric-section">
-            <div class="section-title">Foot contact</div>
-            <div class="force-row">
-              <div><span>LEFT</span><strong id="leftForce">--</strong><i><b id="leftForceBar"></b></i></div>
-              <div><span>RIGHT</span><strong id="rightForce">--</strong><i><b id="rightForceBar"></b></i></div>
-            </div>
-          </div>
-          <div class="metric-section">
-            <div class="section-title">Trajectory</div>
-            <div class="metric-row"><span>CoM X / Y</span><strong id="comValue">--</strong></div>
-            <div class="metric-row"><span>ZMP X / Y</span><strong id="zmpValue">--</strong></div>
-            <div class="metric-row"><span>Left foot Z</span><strong id="leftFootZ">--</strong></div>
-            <div class="metric-row"><span>Right foot Z</span><strong id="rightFootZ">--</strong></div>
-          </div>
-          <div class="metric-section command-section">
-            <div class="section-title">Step command</div>
-            <div class="command-values">
-              <div><span>Forward</span><strong id="forwardCommand">0.0</strong></div>
-              <div><span>Turn</span><strong id="turnCommand">0.0</strong></div>
-              <div><span>Side</span><strong id="sideCommand">0.0</strong></div>
-            </div>
-          </div>
-        </aside>
-
-        <section class="analysis-panel panel">
-          <div class="analysis-head">
-            <div><span class="eyebrow">GAIT TIMELINE</span><h2>Balance and foot clearance</h2></div>
-            <div class="replay-controls">
-              <button id="liveButton" type="button" class="active">Live</button>
-              <button id="playButton" type="button">Pause</button>
-              <select id="sessionSelect" aria-label="Recorded session"><option value="">Recorded sessions</option></select>
-              <button id="loadSessionButton" type="button">Load</button>
-              <button id="exportButton" type="button">Export</button>
-            </div>
-          </div>
-          <div class="walking-debug">
-            <div class="debug-summary">
-              <div><span>Lift</span><strong id="debugLift">0.00</strong></div>
-              <div><span>Landing</span><strong id="debugLanding">0.00</strong></div>
-              <div><span>Crouch</span><strong id="debugCrouch">0.0 mm</strong></div>
-              <div><span>Support ankle</span><strong id="debugSupportAnkle">--</strong></div>
-              <div><span>Swing ankle</span><strong id="debugSwingAnkle">--</strong></div>
-            </div>
-            <div class="debug-joints">
-              <div class="debug-row debug-head"><span>Joint</span><span>Left PWM</span><span>Right PWM</span></div>
-              <div class="debug-row"><span>Hip roll 12 / 21</span><strong id="debugL12">--</strong><strong id="debugR21">--</strong></div>
-              <div class="debug-row"><span>Hip pitch 13 / 20</span><strong id="debugL13">--</strong><strong id="debugR20">--</strong></div>
-              <div class="debug-row"><span>Knee 14 / 19</span><strong id="debugL14">--</strong><strong id="debugR19">--</strong></div>
-              <div class="debug-row"><span>Ankle pitch 15 / 18</span><strong id="debugL15">--</strong><strong id="debugR18">--</strong></div>
-              <div class="debug-row"><span>Ankle roll 16 / 17</span><strong id="debugL16">--</strong><strong id="debugR17">--</strong></div>
-            </div>
-          </div>
-          <div class="chart-grid">
-            <div class="chart-box">
-              <div class="chart-label"><span>IMU tilt</span><span class="chart-key"><i class="roll-key"></i>Roll <i class="pitch-key"></i>Pitch</span></div>
-              <canvas id="imuChart"></canvas>
-            </div>
-            <div class="chart-box">
-              <div class="chart-label"><span>Foot Z</span><span class="chart-key"><i class="left-key"></i>Left <i class="right-key"></i>Right</span></div>
-              <canvas id="footChart"></canvas>
-            </div>
-          </div>
-          <div class="scrubber-row">
-            <span id="replayTime">LIVE</span>
-            <input id="replaySlider" type="range" min="0" max="0" value="0" aria-label="Replay position">
-            <span id="frameCounter">0 frames</span>
-          </div>
-        </section>
-      </div>
-    </section>
   </main>
 
-  <script type="module" src="/app.js?v=20260826"></script>
+  <script type="module" src="/app.js?v=20260831"></script>
 </body>
 </html>

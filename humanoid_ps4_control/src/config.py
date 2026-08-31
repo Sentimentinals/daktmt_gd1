@@ -121,7 +121,6 @@ class Config:
     gait_dashboard_host: str = "0.0.0.0"
     gait_dashboard_port: int = 8765
     gait_dashboard_stream_hz: int = 12
-    gait_dashboard_history_s: int = 120
     gait_dashboard_command_timeout_s: float = 0.6
 
     # --- Person Detection & Follow ---

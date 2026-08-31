@@ -11,34 +11,10 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
-
-from .config import DIR, PWM_PER_DEG, ROBOT, STAND_ANG, STANDING
+from urllib.parse import unquote, urlparse
 
 
 STATIC_ROOT = Path(__file__).resolve().parent.parent / "web" / "gait_dashboard"
-SESSION_ROOT = Path(__file__).resolve().parent.parent / "out" / "gait_sessions"
-
-JOINT_NAMES = {
-    9: "left_elbow",
-    10: "left_upper_arm",
-    11: "left_shoulder_swing",
-    12: "left_hip_roll",
-    13: "left_hip_pitch",
-    14: "left_knee",
-    15: "left_ankle_pitch",
-    16: "left_ankle_roll",
-    17: "right_ankle_roll",
-    18: "right_ankle_pitch",
-    19: "right_knee",
-    20: "right_hip_pitch",
-    21: "right_hip_roll",
-    22: "right_shoulder_swing",
-    23: "right_upper_arm",
-    24: "right_elbow",
-    25: "head_yaw",
-}
-
 CONTROL_MODES = {"manual", "terrain", "follow", "pickup"}
 CONTROL_ACTIONS = {
     "stop",
@@ -73,19 +49,6 @@ class WebControlState:
     pickup_toggle: bool = False
     stair_toggle: bool = False
 
-LEG_BASE_ANGLES = {
-    12: STAND_ANG["L_hip_abduct"],
-    13: STAND_ANG["L_hip_pitch"],
-    14: STAND_ANG["L_knee"],
-    15: STAND_ANG["L_ankle"],
-    16: STAND_ANG["hip_roll"],
-    17: STAND_ANG["hip_roll"],
-    18: STAND_ANG["R_ankle"],
-    19: STAND_ANG["R_knee"],
-    20: STAND_ANG["R_hip_pitch"],
-    21: STAND_ANG["R_hip_abduct"],
-}
-
 
 def _json_ready(value: Any) -> Any:
     if isinstance(value, dict):
@@ -95,20 +58,6 @@ def _json_ready(value: Any) -> Any:
     if hasattr(value, "item"):
         return value.item()
     return value
-
-
-def _model_payload() -> dict[str, object]:
-    return {
-        "dimensions_mm": ROBOT,
-        "pwm_per_deg": PWM_PER_DEG,
-        "standing_pwm": {str(sid): pwm for sid, pwm in STANDING.items()},
-        "directions": {str(sid): direction for sid, direction in DIR.items()},
-        "base_angles_deg": {str(sid): angle for sid, angle in LEG_BASE_ANGLES.items()},
-        "joints": [
-            {"id": sid, "name": name}
-            for sid, name in sorted(JOINT_NAMES.items())
-        ],
-    }
 
 
 def stationary_gait(phase: str = "idle") -> dict[str, object]:
@@ -133,7 +82,6 @@ class GaitDashboard:
         host: str = "127.0.0.1",
         port: int = 8765,
         stream_hz: int = 12,
-        history_seconds: int = 120,
         command_timeout_s: float = 0.6,
         camera=None,
     ) -> None:
@@ -146,14 +94,9 @@ class GaitDashboard:
         self._stop = threading.Event()
         self._condition = threading.Condition()
         self._sequence = 0
-        self._latest_frame: dict[str, object] = {}
         self._latest_payload = b"{}"
-        self._history = deque(maxlen=max(250, history_seconds * 30))
-        self._active_session: list[dict[str, object]] | None = None
-        self._session_idle_since: float | None = None
         self._server: _DashboardServer | None = None
         self._server_thread: threading.Thread | None = None
-        self._writer_threads: list[threading.Thread] = []
         self._control_lock = threading.Lock()
         self._control_client = ""
         self._control_sequence = -1
@@ -197,16 +140,12 @@ class GaitDashboard:
         self.disarm("Server stopping")
         self._stop.set()
         with self._condition:
-            self._finish_session_locked()
             self._condition.notify_all()
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
         if self._server_thread is not None:
             self._server_thread.join(timeout=1.5)
-        for writer in self._writer_threads:
-            writer.join(timeout=1.5)
-        self._writer_threads.clear()
         self._server = None
         self._server_thread = None
 
@@ -400,21 +339,7 @@ class GaitDashboard:
 
         with self._condition:
             self._sequence += 1
-            self._latest_frame = frame
             self._latest_payload = payload
-            self._history.append(frame)
-            if active:
-                if self._active_session is None:
-                    pre_roll = list(self._history)[:-1][-15:]
-                    self._active_session = pre_roll
-                self._active_session.append(frame)
-                self._session_idle_since = None
-            elif self._active_session is not None:
-                self._active_session.append(frame)
-                if self._session_idle_since is None:
-                    self._session_idle_since = now
-                elif now - self._session_idle_since >= 1.0:
-                    self._finish_session_locked()
             self._condition.notify_all()
 
     def wait_for_update(self, sequence: int, timeout_s: float) -> tuple[int, bytes]:
@@ -429,65 +354,8 @@ class GaitDashboard:
         with self._condition:
             return self._latest_payload
 
-    def history_payload(self) -> bytes:
-        with self._condition:
-            frames = list(self._history)
-        return json.dumps(frames, separators=(",", ":"), allow_nan=False).encode("utf-8")
-
     def camera_frame(self) -> bytes | None:
         return None if self.camera is None else self.camera.jpeg_frame()
-
-    def session_list(self) -> list[dict[str, object]]:
-        if not SESSION_ROOT.exists():
-            return []
-        sessions = []
-        for path in sorted(SESSION_ROOT.glob("gait_*.jsonl"), reverse=True):
-            stat = path.stat()
-            sessions.append(
-                {
-                    "name": path.name,
-                    "size": stat.st_size,
-                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
-                }
-            )
-        return sessions[:30]
-
-    def session_path(self, name: str) -> Path | None:
-        if not name or Path(name).name != name or not name.endswith(".jsonl"):
-            return None
-        path = SESSION_ROOT / name
-        return path if path.is_file() else None
-
-    def _finish_session_locked(self) -> None:
-        if not self._active_session:
-            self._active_session = None
-            self._session_idle_since = None
-            return
-        frames = self._active_session
-        self._active_session = None
-        self._session_idle_since = None
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-        path = SESSION_ROOT / f"gait_{timestamp}.jsonl"
-        writer = threading.Thread(
-            target=self._write_session,
-            args=(path, frames),
-            name="gait-session-writer",
-            daemon=True,
-        )
-        self._writer_threads.append(writer)
-        writer.start()
-
-    @staticmethod
-    def _write_session(path: Path, frames: list[dict[str, object]]) -> None:
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("w", encoding="utf-8") as output:
-                for frame in frames:
-                    output.write(json.dumps(frame, separators=(",", ":"), allow_nan=False))
-                    output.write("\n")
-            print(f"[dashboard] Saved gait session: {path}")
-        except OSError as exc:
-            print(f"[dashboard] Cannot save gait session: {exc}")
 
 
 class _DashboardServer(ThreadingHTTPServer):
@@ -505,17 +373,8 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             self._serve_events()
         elif parsed.path == "/api/latest":
             self._send_bytes(self.server.dashboard.latest_payload(), "application/json")
-        elif parsed.path == "/api/history":
-            self._send_bytes(self.server.dashboard.history_payload(), "application/json")
-        elif parsed.path == "/api/model":
-            self._send_json(_model_payload())
         elif parsed.path == "/api/control":
             self._send_json(self.server.dashboard.control_payload())
-        elif parsed.path == "/api/sessions":
-            self._send_json(self.server.dashboard.session_list())
-        elif parsed.path == "/api/session":
-            name = parse_qs(parsed.query).get("name", [""])[0]
-            self._serve_session(name)
         elif parsed.path == "/camera.mjpg":
             self._serve_camera()
         else:
@@ -583,18 +442,6 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError):
             return
 
-    def _serve_session(self, name: str) -> None:
-        path = self.server.dashboard.session_path(name)
-        if path is None:
-            self.send_error(404, "Session not found")
-            return
-        try:
-            payload = path.read_bytes()
-        except OSError:
-            self.send_error(500, "Cannot read session")
-            return
-        self._send_bytes(payload, "application/x-ndjson")
-
     def _serve_static(self, request_path: str) -> None:
         relative = "index.html" if request_path in ("", "/") else unquote(request_path.lstrip("/"))
         path = (STATIC_ROOT / relative).resolve()
@@ -604,7 +451,7 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         if path.suffix == ".js":
             content_type = "text/javascript"
-        self._send_bytes(path.read_bytes(), content_type, cache=relative.startswith("vendor/"))
+        self._send_bytes(path.read_bytes(), content_type)
 
     def _send_json(self, value: object, status: int = 200) -> None:
         payload = json.dumps(value, separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -614,13 +461,12 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         self,
         payload: bytes,
         content_type: str,
-        cache: bool = False,
         status: int = 200,
     ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "public, max-age=86400" if cache else "no-store")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(payload)
 

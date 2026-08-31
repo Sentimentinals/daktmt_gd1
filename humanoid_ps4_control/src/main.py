@@ -615,7 +615,6 @@ def main() -> None:
         host=args.gait_dashboard_host,
         port=args.gait_dashboard_port,
         stream_hz=args.gait_dashboard_stream_hz,
-        history_seconds=args.gait_dashboard_history_s,
         command_timeout_s=args.gait_dashboard_command_timeout_s,
         camera=camera,
     )
