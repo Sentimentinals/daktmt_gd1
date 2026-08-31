@@ -270,9 +270,15 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             fall_detector.reset()
                         engine.reset()
                         arm_dance.reset()
+                        recovery_engine.reset()
+                        recovery_step_active = False
+                        if recovery is not None:
+                            recovery.reset()
+                            recovery_status = "STABLE"
                         standing_hold_active = False
-                        label = getup.start(last_pose, mode=args.getup_mode)
-                        print(f"[main] G pressed. Running {args.getup_mode} get-up sequence from step {label}.")
+                        protected_pose = extend_arms_forward(last_pose, args.fall_arm_forward_pwm)
+                        label = getup.start(protected_pose, mode="front")
+                        print(f"[main] G pressed. Running front get-up sequence from step {label}.")
                     prev_getup_pressed = getup_pressed
 
                     getup_back_pressed = state.getup_back
