@@ -60,8 +60,8 @@ function updateControlUI(state = {}) {
   });
 }
 
-async function sendControl(emergencyStop = false) {
-  if (control.sending && !emergencyStop) {
+async function sendControl(emergencyStop = false, immediate = false) {
+  if (control.sending && !emergencyStop && (!immediate || control.actions.size > 0)) {
     control.pending = true;
     return;
   }
@@ -130,7 +130,7 @@ function setAxis(name, value, button) {
   if (!control.armed || control.mode !== "manual") return;
   control.axes[name] = Number(value);
   setButtonActive(button, Number(value) !== 0);
-  sendControl();
+  sendControl(false, true);
 }
 
 function updateReadouts(frame) {
@@ -138,6 +138,8 @@ function updateReadouts(frame) {
   $("modeBadge").textContent = frame.active ? "ACTIVE" : "IDLE";
   $("motionStatus").textContent = frame.status || "Waiting";
   $("balanceStatus").textContent = frame.balance_status || "--";
+  $("motionStatus").title = $("motionStatus").textContent;
+  $("balanceStatus").title = $("balanceStatus").textContent;
   $("stepCount").textContent = gait.step_count ?? 0;
   $("swingLeg").textContent = String(gait.swing_leg || "none").toUpperCase();
   const cameraOn = Boolean(frame.camera_ready);
@@ -264,12 +266,12 @@ function bindWebControl() {
   });
   window.addEventListener("blur", () => {
     releaseMotion();
-    sendControl();
+    sendControl(false, true);
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       releaseMotion();
-      sendControl();
+      sendControl(false, true);
     }
   });
   window.addEventListener("beforeunload", () => {

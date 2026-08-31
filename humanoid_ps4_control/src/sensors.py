@@ -404,6 +404,7 @@ class RobotSensorHub:
         min_gyro_cal: int = 1,
         min_accel_cal: int = 1,
         max_rms_deg: float = 2.0,
+        cancel_event: threading.Event | None = None,
     ) -> Optional[tuple[float, float]]:
         deadline = time.monotonic() + max(sample_seconds, timeout_s)
         started_at: Optional[float] = None
@@ -413,6 +414,8 @@ class RobotSensorHub:
         self._gravity_basis = None
 
         while not self._stop.is_set() and time.monotonic() < deadline:
+            if cancel_event is not None and cancel_event.is_set():
+                return None
             reading = self.read().imu
             if (
                 reading is None
@@ -431,6 +434,8 @@ class RobotSensorHub:
                 break
             time.sleep(0.005)
 
+        if self._stop.is_set() or (cancel_event is not None and cancel_event.is_set()):
+            return None
         if len(samples) < min_samples:
             return None
         reference_samples = calibrated_samples if len(calibrated_samples) >= min_samples else samples

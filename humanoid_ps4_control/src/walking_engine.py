@@ -242,19 +242,6 @@ class DynamicWalkingEngine:
         self._zmp_x = 0.0
         self._crouch_pending = self.crouch_transition_s > 0.0 and self.crouch_depth_mm > 0.0
 
-        for _ in range(self.n_d):
-            self.zmp_y_queue.append(0.0)
-            self.zmp_x_queue.append(0.0)
-            self.body_drop_queue.append(0.0)
-            self.foot_L_queue.append(np.array([0.0, -self.hw, 0.0]))
-            self.foot_R_queue.append(np.array([0.0, self.hw, 0.0]))
-            self.arm_queue.append((0, 0))
-            self.swing_leg_queue.append("none")
-            self.lift_factor_queue.append(0.0)
-            self.landing_progress_queue.append(0.0)
-            self.phase_mode_queue.append("idle")
-            self.side_len_queue.append(0.0)
-
         self.prev_pose = dict(self.ready_pose)
 
     def _enqueue_body_transition(self, target_depth: float) -> None:
@@ -552,7 +539,8 @@ class DynamicWalkingEngine:
             elif input_active and not crouch_requested and self.last_body_drop > 0.05:
                 self._crouch_pending = True
                 self._enqueue_body_transition(0.0)
-            if not self.zmp_y_queue:
+            # Commit the requested step together with its preparation.
+            if input_active or not self.zmp_y_queue:
                 self._enqueue_next_step(
                     self.commanded_step_len,
                     self.commanded_turn_len,

@@ -114,7 +114,6 @@ class Config:
     vision_camera_height: int = 360
     vision_fps: int = 12
     head_pan_pwm: int = 220
-    head_turn_lead_s: float = 0.30
     head_pan_direction: float = 1.0
 
     # --- Web Control ---
