@@ -100,7 +100,7 @@ class Config:
     walk_lift_end_phase: float = 1.0
     walk_landing_roll_release_start: float = 0.42
     walk_crouch_transition_s: float = 0.45
-    t_step: float = 1.30
+    t_step: float = 1.3
     t_dbl: float = 0.12
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
