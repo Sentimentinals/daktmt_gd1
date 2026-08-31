@@ -24,6 +24,7 @@ const control = {
   axes: { forward: 0, turn: 0, side: 0 },
   actions: new Set(),
   sending: false,
+  pending: false,
 };
 
 function releaseMotion() {
@@ -73,14 +74,18 @@ function updateControlUI(state = {}) {
 }
 
 async function sendControl(emergencyStop = false) {
-  if (control.sending && !emergencyStop) return;
+  if (control.sending && !emergencyStop) {
+    control.pending = true;
+    return;
+  }
+  control.pending = false;
   const sentActions = [...control.actions];
   const payload = {
     client_id: control.clientId,
     sequence: ++control.sequence,
     armed: control.armed,
     mode: control.mode,
-    axes: control.axes,
+    axes: { ...control.axes },
     actions: sentActions,
     emergency_stop: emergencyStop,
   };
@@ -96,23 +101,33 @@ async function sendControl(emergencyStop = false) {
       signal: requestController.signal,
     });
     const state = await response.json();
+    if (payload.sequence !== control.sequence) return;
     if (!response.ok) {
       const message = state.error || `Control HTTP ${response.status}`;
       if (response.status === 400 || response.status === 409) {
         releaseMotion();
         control.armed = false;
+        control.actions.clear();
         updateControlUI({ runtime_status: message });
       }
       console.warn(message);
       return;
     }
     sentActions.forEach((action) => control.actions.delete(action));
-    updateControlUI(state);
+    // An older heartbeat must not undo a selection made while it was in flight.
+    updateControlUI({
+      ...state,
+      mode: control.mode === payload.mode ? state.mode : control.mode,
+      armed: control.armed === payload.armed ? state.armed : control.armed,
+    });
   } catch (error) {
     if (error.name !== "AbortError") console.warn("Control heartbeat failed", error);
   } finally {
     clearTimeout(requestTimeout);
-    control.sending = false;
+    if (payload.sequence === control.sequence) {
+      control.sending = false;
+      if (control.pending) sendControl();
+    }
   }
 }
 
@@ -841,12 +856,14 @@ function bindWebControl() {
   $("armButton").addEventListener("click", () => {
     releaseMotion();
     control.armed = !control.armed;
+    if (!control.armed) control.actions.clear();
     updateControlUI();
     sendControl();
   });
   $("emergencyButton").addEventListener("click", () => {
     releaseMotion();
     control.armed = false;
+    control.actions.clear();
     updateControlUI({ runtime_status: "Emergency stop requested" });
     sendControl(true);
   });
@@ -855,6 +872,7 @@ function bindWebControl() {
     button.addEventListener("click", () => {
       releaseMotion();
       control.mode = button.dataset.mode;
+      control.actions.clear();
       updateControlUI();
       sendControl();
     });
@@ -913,6 +931,7 @@ function bindWebControl() {
       releaseMotion();
       setButtonActive($("emergencyButton"), true);
       control.armed = false;
+      control.actions.clear();
       updateControlUI({ runtime_status: "Emergency stop requested" });
       sendControl(true);
     }

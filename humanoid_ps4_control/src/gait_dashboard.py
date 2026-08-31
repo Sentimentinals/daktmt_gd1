@@ -230,10 +230,16 @@ class GaitDashboard:
         if len(client) < 8:
             return 400, {"error": "Invalid client_id"}
         emergency = bool(request.get("emergency_stop", False))
+        try:
+            sequence = int(request.get("sequence", -1))
+        except (TypeError, ValueError):
+            sequence = -1
         with self._control_lock:
             self._expire_control_locked(now)
             owner_live = bool(self._control_client) and now - self._control_last_at <= self.command_timeout_s
             if emergency:
+                if self._control_client == client:
+                    self._control_sequence = max(self._control_sequence, sequence)
                 self._control_armed = False
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
                 self._control_actions.clear()
@@ -245,10 +251,6 @@ class GaitDashboard:
                 self._control_client = client
                 self._control_sequence = -1
 
-            try:
-                sequence = int(request.get("sequence", -1))
-            except (TypeError, ValueError):
-                sequence = -1
             if sequence <= self._control_sequence:
                 self._control_last_at = now
                 return 200, self._control_payload_locked(now)
