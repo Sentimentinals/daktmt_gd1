@@ -38,6 +38,7 @@ class StairGeometry:
     riser_height_mm: float
     center_error: float
     source: str
+    edge_uncertainty_mm: float = 0.0
 
 
 class StairDetector:
@@ -86,7 +87,7 @@ class StairDetector:
                 source="model+lines",
             )
         else:
-            detection = model_detection or line_detection
+            detection = model_detection if self.model_ready else line_detection
 
         stairs = (detection,) if detection is not None else ()
         self._last = StairFrame(stairs, time.monotonic())
@@ -252,42 +253,69 @@ def estimate_stair_geometry(
     pitch_down_deg: float,
     vertical_fov_deg: float,
     flip_vertical: bool,
-    direction_delta_mm: float,
+    forward_offset_mm: float = 0.0,
 ) -> StairGeometry:
     direction = "unknown"
-    edge_distance = depth.tracking_distance_mm if depth is not None else None
+    edge_distance = None
+    edge_uncertainty = 0.0
     riser_height = default_riser_mm
     source = detection.source
 
     if depth is not None:
-        rows = [depth.region_median_mm(row, row + 1, 1, 7) for row in range(8)]
+        rows = [depth.region_median_mm(row, row + 1, 3, 5) for row in range(8)]
         if flip_vertical:
             rows.reverse()
-        top = [value for value in rows[:3] if value is not None]
-        bottom = [value for value in rows[5:] if value is not None]
-        if top and bottom:
-            delta = median(top) - median(bottom)
-            if abs(delta) >= direction_delta_mm:
-                direction = "up" if delta > 0 else "down"
-
-        surface_heights = []
+        points = []
         for row, distance in enumerate(rows):
             if distance is None:
                 continue
             ray_offset = ((row + 0.5) / 8.0 - 0.5) * vertical_fov_deg
             ray_down = math.radians(pitch_down_deg + ray_offset)
-            surface_heights.append(mount_height_mm - distance * math.sin(ray_down))
-        if len(surface_heights) >= 4:
-            low = median(sorted(surface_heights)[:2])
-            high = median(sorted(surface_heights)[-2:])
-            measured = abs(high - low)
-            if min_riser_mm <= measured <= max_riser_mm:
-                riser_height = measured
-        source += "+tof"
+            if 0.0 < ray_down < math.pi / 2:
+                points.append((
+                    distance * math.cos(ray_down) + forward_offset_mm,
+                    mount_height_mm - distance * math.sin(ray_down),
+                ))
+        points.sort()
+        # Raw range gradients also occur on flat ground. Require two horizontal
+        # levels, each supported by multiple zones, with the near level at floor.
+        tolerance = min(5.0, default_riser_mm * 0.25)
+        for split in range(2, len(points) - 1):
+            near = points[:split]
+            far = points[split:split + 2]
+            far_level = median(p[1] for p in far)
+            for point in points[split + 2:]:
+                if abs(point[1] - far_level) > tolerance:
+                    break
+                far.append(point)
+            near_height = median(p[1] for p in near)
+            far_height = median(p[1] for p in far)
+            delta = far_height - near_height
+            if abs(near_height) > tolerance:
+                continue
+            if not min_riser_mm <= abs(delta) <= max_riser_mm:
+                continue
+            if any(abs(p[1] - near_height) > tolerance for p in near):
+                continue
+            if any(abs(p[1] - far_height) > tolerance for p in far):
+                continue
+            if any(
+                group[-1][0] - group[0][0] < 20.0
+                or abs(group[-1][1] - group[0][1]) / (group[-1][0] - group[0][0]) > 0.06
+                for group in (near, far)
+            ):
+                continue
+            near_x, far_x = near[-1][0], far[0][0]
+            if far_x <= near_x or near[0][0] <= 0:
+                continue
+            direction = "up" if delta > 0 else "down"
+            riser_height = abs(delta)
+            edge_distance = round((near_x + far_x) * 0.5)
+            edge_uncertainty = (far_x - near_x) * 0.5 + tolerance
+            break
+        source += "+tof-levels" if direction != "unknown" else "+tof-unresolved"
 
     confidence = detection.confidence
-    if depth is not None:
-        confidence = min(0.99, confidence + 0.08)
     if direction == "unknown":
         confidence *= 0.72
     return StairGeometry(
@@ -297,4 +325,5 @@ def estimate_stair_geometry(
         riser_height_mm=max(min_riser_mm, min(max_riser_mm, riser_height)),
         center_error=detection.center_error,
         source=source,
+        edge_uncertainty_mm=edge_uncertainty,
     )

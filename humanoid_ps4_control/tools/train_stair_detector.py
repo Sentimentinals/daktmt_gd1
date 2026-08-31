@@ -18,6 +18,7 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--device", default="0")
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--freeze", type=int, default=0)
     args = parser.parse_args()
 
     data_yaml = args.data.resolve()
@@ -51,10 +52,27 @@ def main() -> int:
         seed=42,
         deterministic=True,
         plots=True,
+        freeze=args.freeze,
+        degrees=8.0,
+        scale=0.3,
+        mosaic=0.5,
     )
     best = Path(model.trainer.best)
     trained = YOLO(str(best))
-    metrics = trained.val(data=str(data_yaml), imgsz=args.imgsz, device=args.device, plots=True)
+    metrics = trained.val(
+        data=str(data_yaml), imgsz=args.imgsz, device=args.device,
+        workers=args.workers, plots=True, project=str(runs), name="validation",
+    )
+    import yaml
+
+    data_config = yaml.safe_load(data_yaml.read_text(encoding="utf-8"))
+    test_metrics = None
+    if data_config.get("test"):
+        test_metrics = trained.val(
+            data=str(data_yaml), split="test", imgsz=args.imgsz,
+            device=args.device, workers=args.workers, plots=True,
+            project=str(runs), name="held_out_test",
+        )
     exported = Path(
         trained.export(
             format="onnx",
@@ -65,6 +83,17 @@ def main() -> int:
         )
     )
 
+    import cv2
+    import numpy as np
+
+    net = cv2.dnn.readNetFromONNX(str(exported))
+    net.setInput(np.zeros((1, 3, args.imgsz, args.imgsz), dtype=np.float32))
+    prediction = net.forward()
+    if prediction.ndim != 3 or prediction.shape[1] != 4 + len(metrics.names):
+        raise RuntimeError(f"Unsupported stair ONNX output: {prediction.shape}")
+    if not np.isfinite(prediction).all():
+        raise RuntimeError("Stair ONNX produced non-finite predictions")
+
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(exported, output)
@@ -72,13 +101,26 @@ def main() -> int:
     summary = {
         "model": args.model,
         "image_size": args.imgsz,
+        "epochs_requested": args.epochs,
         "epochs_completed": int(model.trainer.epoch + 1),
         "map50": float(metrics.box.map50),
         "map50_95": float(metrics.box.map),
         "precision": float(metrics.box.mp),
         "recall": float(metrics.box.mr),
         "classes": classes,
+        "onnx_output_shape": list(prediction.shape),
+        "freeze": args.freeze,
     }
+    if test_metrics is not None:
+        summary["held_out_test"] = {
+            "map50": float(test_metrics.box.map50),
+            "map50_95": float(test_metrics.box.map),
+            "precision": float(test_metrics.box.mp),
+            "recall": float(test_metrics.box.mr),
+        }
+    provenance = data_yaml.with_name("provenance.json")
+    if provenance.is_file():
+        summary["dataset"] = json.loads(provenance.read_text(encoding="utf-8"))
     output.with_suffix(".json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
     print(f"Exported: {output}")

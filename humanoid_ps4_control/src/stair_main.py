@@ -8,11 +8,12 @@ from .backends import make_backend
 from .balance import (
     BalanceConfig,
     IMUBalanceController,
+    angle_error_deg,
     configured_fall_detector,
     extend_arms_forward,
     update_fall_detector,
 )
-from .config import Config, STANDING
+from .config import Config, ROBOT, STANDING
 from .gait_dashboard import stationary_gait
 from .sensors import RobotSensorHub
 from .stair_motion import StairStepEngine
@@ -76,6 +77,7 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
         settle_s=args.stair_phase_settle_s,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
+        crouch_depth_mm=args.stair_crouch_depth_mm,
     )
 
     reference = None
@@ -89,10 +91,21 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
     stable_frames = 0
     last_detection_at = 0.0
     last_stair_timestamp = None
+    last_depth_timestamp = None
+    last_direction = "unknown"
     last_balance_at = time.monotonic()
     cooldown_until = 0.0
     lead_leg = "left"
     last_pose = dict(STANDING)
+    calibration_error = ""
+    if not args.stair_geometry_calibrated:
+        calibration_error = "STAIR PREVIEW | CALIBRATE TOF AND FOOT DIMENSIONS"
+    elif min(args.stair_foot_toe_mm, args.stair_foot_heel_mm, args.stair_foot_width_mm) <= 0:
+        calibration_error = "STAIR LOCKED | FOOT DIMENSIONS MISSING"
+    elif args.stair_foot_toe_mm + args.stair_foot_heel_mm + 2 * args.stair_landing_margin_mm > args.stair_tread_depth_mm:
+        calibration_error = "STAIR LOCKED | FOOT DOES NOT FIT TREAD"
+    elif 2 * ROBOT["half_hip"] + args.stair_foot_width_mm + 2 * args.stair_landing_margin_mm > args.stair_width_mm:
+        calibration_error = "STAIR LOCKED | FEET DO NOT FIT STAIR WIDTH"
 
     try:
         sensor_hub.open()
@@ -169,6 +182,9 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
 
                 snapshot = sensor_hub.read()
                 now = time.monotonic()
+                imu = snapshot.imu
+                pitch_delta = angle_error_deg(imu.pitch_deg, reference[1]) if imu is not None and reference is not None else 0.0
+                roll_delta = angle_error_deg(imu.roll_deg, reference[0]) if imu is not None and reference is not None else 0.0
                 stair_frame = camera.stair_frame() if camera_ready else None
                 detection = stair_frame.primary_stair if stair_frame is not None else None
                 if stair_frame is not None and now - stair_frame.captured_at > 0.8:
@@ -182,13 +198,18 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
                         min_riser_mm=args.stair_min_riser_mm,
                         max_riser_mm=args.stair_max_riser_mm,
                         mount_height_mm=args.stair_tof_mount_height_mm,
-                        pitch_down_deg=args.stair_tof_pitch_down_deg,
+                        pitch_down_deg=args.stair_tof_pitch_down_deg + pitch_delta,
                         vertical_fov_deg=args.stair_tof_vertical_fov_deg,
                         flip_vertical=args.stair_tof_flip_vertical,
-                        direction_delta_mm=args.stair_tof_direction_delta_mm,
+                        forward_offset_mm=args.stair_tof_forward_offset_mm,
                     )
-                    if stair_frame.captured_at != last_stair_timestamp:
+                    depth_timestamp = snapshot.depth.sensor_time_ms if snapshot.depth is not None else None
+                    if geometry.direction != last_direction or snapshot.depth is None:
+                        stable_frames = 0
+                    last_direction = geometry.direction
+                    if stair_frame.captured_at != last_stair_timestamp and depth_timestamp != last_depth_timestamp:
                         last_stair_timestamp = stair_frame.captured_at
+                        last_depth_timestamp = depth_timestamp
                         if (
                             geometry.direction != "unknown"
                             and geometry.confidence >= args.stair_model_confidence
@@ -202,6 +223,12 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
 
                 pose = dict(STANDING)
                 gait = stationary_gait("terrain-wait")
+                edge_near = edge_far = landing_stride = landing_max = None
+                if geometry is not None and geometry.edge_distance_mm is not None:
+                    edge_near = geometry.edge_distance_mm - geometry.edge_uncertainty_mm
+                    edge_far = geometry.edge_distance_mm + geometry.edge_uncertainty_mm
+                    landing_stride = edge_far + args.stair_foot_heel_mm + args.stair_landing_margin_mm
+                    landing_max = edge_near + args.stair_tread_depth_mm - args.stair_foot_toe_mm - args.stair_landing_margin_mm
                 status = "BALANCE ON | STAIR OFF" if balance_enabled else "TERRAIN IDLE"
                 if stepper.active:
                     pose = stepper.update(now)
@@ -212,8 +239,18 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
                         cooldown_until = now + args.stair_step_pause_s
                         lead_leg = "right" if lead_leg == "left" else "left"
                         stable_frames = 0
+                elif not enabled and not approach.is_idle_ready():
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "FINISHING APPROACH STEP"
                 elif enabled and now < cooldown_until:
                     status = "VERIFYING NEXT STEP"
+                elif enabled and (calibration_error or not detector.model_ready):
+                    status = calibration_error or "STAIR LOCKED | TRAINED MODEL MISSING"
+                elif enabled and (imu is None or reference is None or not balance_enabled or abs(roll_delta) > 3.0 or abs(pitch_delta) > 3.0):
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "WAITING FOR UPRIGHT IMU AND BALANCE"
                 elif enabled and geometry is None:
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
@@ -221,43 +258,57 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
                 elif enabled and geometry.direction == "unknown":
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
-                    status = "STAIR FOUND | WAITING FOR TOF DIRECTION"
+                    status = "STAIR FOUND | TOF HAS NOT RESOLVED TWO LEVELS"
                 elif enabled and stable_frames < args.stair_detect_stable_frames:
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
                     status = f"VERIFYING STAIR {stable_frames}/{args.stair_detect_stable_frames}"
-                elif enabled and abs(geometry.center_error) > args.stair_camera_align_deadband:
-                    turn = -math.copysign(args.stair_turn_speed, geometry.center_error)
-                    pose = approach.update(0.0, turn, 0.0)
-                    gait = approach.telemetry_snapshot()
-                    status = f"ALIGNING {geometry.center_error:+.2f}"
                 elif enabled and geometry.edge_distance_mm is None:
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
                     status = "WAITING FOR TOF DISTANCE"
-                elif enabled and geometry.edge_distance_mm > args.stair_target_edge_mm + args.stair_edge_deadband_mm:
+                elif enabled and landing_stride > landing_max:
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "STAIR EDGE TOO UNCERTAIN FOR FULL FOOT LANDING"
+                elif enabled and edge_near < args.stair_foot_toe_mm + args.stair_landing_margin_mm:
+                    pose = approach.update(0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = "TOO CLOSE TO EDGE | REPOSITION MANUALLY"
+                elif enabled and abs(geometry.center_error) > args.stair_camera_align_deadband:
+                    turn_room = edge_near > args.stair_foot_toe_mm + args.stair_landing_margin_mm + 18.0
+                    turn = -math.copysign(args.stair_turn_speed, geometry.center_error) if turn_room else 0.0
+                    pose = approach.update(0.0, turn, 0.0)
+                    gait = approach.telemetry_snapshot()
+                    status = f"ALIGNING {geometry.center_error:+.2f}" if turn_room else "TOO CLOSE TO TURN | REPOSITION MANUALLY"
+                elif enabled and landing_stride > args.stair_step_depth_mm and edge_near > args.stair_foot_toe_mm + args.stair_landing_margin_mm + 18.0:
                     pose = approach.update(args.stair_approach_speed, 0.0, 0.0)
                     gait = approach.telemetry_snapshot()
                     status = f"APPROACHING {geometry.edge_distance_mm} MM"
-                elif enabled and geometry.edge_distance_mm < args.stair_target_edge_mm - args.stair_edge_deadband_mm:
+                elif enabled and landing_stride > args.stair_step_depth_mm:
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
-                    status = f"TOO CLOSE {geometry.edge_distance_mm} MM"
+                    status = "REQUIRED LANDING STRIDE EXCEEDS STAIR REACH"
                 elif enabled and not approach.is_idle_ready():
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
                     status = "FINISHING APPROACH STEP"
                 elif enabled:
-                    stepper.start(
-                        geometry.direction,
-                        geometry.riser_height_mm,
-                        args.stair_step_depth_mm,
-                        lead_leg,
-                        now,
-                    )
-                    pose = stepper.update(now)
-                    gait = stepper.telemetry_snapshot()
-                    status = f"STAIR {geometry.direction.upper()} | SHIFT"
+                    try:
+                        stepper.start(
+                            geometry.direction,
+                            geometry.riser_height_mm,
+                            landing_stride,
+                            lead_leg,
+                            now,
+                        )
+                        pose = stepper.update(now)
+                        gait = stepper.telemetry_snapshot()
+                        status = f"STAIR {geometry.direction.upper()} | SHIFT"
+                    except ValueError as exc:
+                        enabled = False
+                        status = f"STAIR REJECTED | {exc}"
+                        print(f"[terrain] {status}")
 
                 if geometry is not None:
                     gait["perception"] = {
@@ -267,9 +318,12 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
                         "riser_mm": geometry.riser_height_mm,
                         "center_error": geometry.center_error,
                         "source": geometry.source,
+                        "edge_uncertainty_mm": geometry.edge_uncertainty_mm,
+                        "landing_stride_mm": landing_stride,
+                        "tread_depth_mm": args.stair_tread_depth_mm,
+                        "calibrated": args.stair_geometry_calibrated,
                     }
 
-                imu = snapshot.imu
                 dt = max(0.001, now - last_balance_at)
                 last_balance_at = now
                 fall_active = False
@@ -278,6 +332,7 @@ def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> Non
                     if fall_active:
                         enabled = False
                         stepper.reset()
+                        approach.reset()
                         pose = extend_arms_forward(last_pose, args.fall_arm_forward_pwm)
                         status = f"FALL: {fall_detector.reason}"
                 if not fall_active and imu is not None and balance is not None and balance_enabled:
