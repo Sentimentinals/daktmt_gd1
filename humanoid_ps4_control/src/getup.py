@@ -181,6 +181,11 @@ def build_getup_sequence(mode: str = "front", speed: float = 0.7) -> list[GetupS
         knee=-28.0,
         hip_pitch=-40.0,
     )
+    front_tuck_angles = _symmetric_leg_angles(
+        ankle_pitch=50.0,
+        knee=-38.0,
+        hip_pitch=-50.0,
+    )
     snap_angles = _symmetric_leg_angles(
         ankle_pitch=26.0,
         knee=8.0,
@@ -247,13 +252,13 @@ def build_getup_sequence(mode: str = "front", speed: float = 0.7) -> list[GetupS
         "front_arms_forward": GetupPoseState(
             "arms-forward",
             ("chest", "hands", "knees"),
-            tuck_angles,
+            front_tuck_angles,
             _arm_pose("front_reach"),
         ),
         "front_push_floor": GetupPoseState(
             "push-floor",
             ("hands", "knees", "feet"),
-            tuck_angles,
+            front_tuck_angles,
             _arm_pose("front_push"),
         ),
         "front_plant_knees": GetupPoseState(
