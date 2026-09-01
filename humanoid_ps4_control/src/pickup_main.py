@@ -13,10 +13,19 @@ from .sensors import RobotSensorHub
 from .walking_engine import AdaptiveSquatEngine, DynamicWalkingEngine
 
 
-def _reach_pose(base_pose: dict[int, int], reach_pwm: int) -> dict[int, int]:
+def _pickup_arm_pose(
+    base_pose: dict[int, int],
+    shoulder_pwm: int,
+    upper_arm_pwm: int,
+    elbow_pwm: int = 0,
+) -> dict[int, int]:
     pose = dict(base_pose)
-    pose[11] = STANDING[11] - reach_pwm
-    pose[22] = STANDING[22] + reach_pwm
+    pose[10] = STANDING[10] - upper_arm_pwm
+    pose[23] = STANDING[23] + upper_arm_pwm
+    pose[11] = STANDING[11] - shoulder_pwm
+    pose[22] = STANDING[22] + shoulder_pwm
+    pose[9] = STANDING[9] - elbow_pwm
+    pose[24] = STANDING[24] + elbow_pwm
     return pose
 
 
@@ -93,6 +102,7 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
     target_key = None
     target_frames = 0
     target_squat_mm = args.squat_min_depth_mm
+    target_upper_arm_pwm = args.pickup_upper_arm_min_pwm
     last_detection_at = None
     previous_stop = False
     imu_reference = None
@@ -148,9 +158,7 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
                 if control.pickup_toggle:
                     if phase == "idle":
                         enter("acquire")
-                    elif phase == "ready":
-                        enter("lift")
-                    else:
+                    elif phase == "holding":
                         cancel()
 
                 snapshot = sensor_hub.read() if sensor_hub is not None else None
@@ -228,6 +236,14 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
                                         target_squat_mm = args.squat_min_depth_mm + y_ratio * (
                                             args.squat_max_depth_mm - args.squat_min_depth_mm
                                         )
+                                        target_upper_arm_pwm = round(
+                                            args.pickup_upper_arm_max_pwm
+                                            - y_ratio
+                                            * (
+                                                args.pickup_upper_arm_max_pwm
+                                                - args.pickup_upper_arm_min_pwm
+                                            )
+                                        )
                                         enter("squat")
                                 elif distance is None:
                                     pose = walking.update(0.0)
@@ -243,33 +259,51 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
                     gait = stationary_gait("squat")
                     status = f"SQUAT {round(progress * 100)}%"
                     if progress >= 1.0:
+                        enter("arm_position")
+                elif phase == "arm_position":
+                    progress = min(1.0, (now - phase_started) / args.pickup_arm_position_duration_s)
+                    pose = _pickup_arm_pose(
+                        squat.update_depth(target_squat_mm),
+                        round(args.pickup_shoulder_forward_pwm * progress),
+                        round(target_upper_arm_pwm * progress),
+                    )
+                    gait = stationary_gait("arm-position")
+                    status = f"POSITION ARMS {round(progress * 100)}%"
+                    if progress >= 1.0:
                         enter("reach")
                 elif phase == "reach":
                     progress = min(1.0, (now - phase_started) / args.pickup_reach_duration_s)
-                    base_pose = squat.update_depth(target_squat_mm)
-                    pose = _reach_pose(base_pose, round(args.pickup_reach_pwm * progress))
+                    pose = _pickup_arm_pose(
+                        squat.update_depth(target_squat_mm),
+                        args.pickup_shoulder_forward_pwm,
+                        target_upper_arm_pwm,
+                        round(args.pickup_elbow_reach_pwm * progress),
+                    )
                     gait = stationary_gait("reach")
                     status = f"REACH {round(progress * 100)}%"
                     if progress >= 1.0:
-                        enter("ready")
-                elif phase == "ready":
-                    pose = _reach_pose(squat.update_depth(target_squat_mm), args.pickup_reach_pwm)
-                    gait = stationary_gait("reach")
-                    status = "OBJECT READY - PRESS R TO LIFT"
+                        enter("lift")
                 elif phase == "lift":
                     progress = min(1.0, (now - phase_started) / args.pickup_lift_duration_s)
-                    pose = _reach_pose(
+                    pose = _pickup_arm_pose(
                         squat.update_depth(target_squat_mm * (1.0 - progress)),
-                        args.pickup_reach_pwm,
+                        args.pickup_shoulder_forward_pwm,
+                        target_upper_arm_pwm,
+                        args.pickup_elbow_reach_pwm,
                     )
                     gait = stationary_gait("lift")
                     status = f"LIFT {round(progress * 100)}%"
                     if progress >= 1.0:
                         enter("holding")
                 elif phase == "holding":
-                    pose = _reach_pose(STANDING, args.pickup_reach_pwm)
+                    pose = _pickup_arm_pose(
+                        STANDING,
+                        args.pickup_shoulder_forward_pwm,
+                        target_upper_arm_pwm,
+                        args.pickup_elbow_reach_pwm,
+                    )
                     gait = stationary_gait("hold")
-                    status = "LIFTED - PRESS R TO RESET"
+                    status = "PICKUP COMPLETE - PRESS R TO RESET"
 
                 gait["crouch_mm"] = squat.depth_mm
 

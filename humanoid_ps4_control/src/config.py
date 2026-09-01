@@ -155,9 +155,13 @@ class Config:
     pickup_distance_deadband_mm: int = 70
     pickup_target_area_ratio: float = 0.10
     pickup_squat_duration_s: float = 1.0
+    pickup_arm_position_duration_s: float = 0.7
     pickup_reach_duration_s: float = 0.7
     pickup_lift_duration_s: float = 1.0
-    pickup_reach_pwm: int = 520
+    pickup_shoulder_forward_pwm: int = 360
+    pickup_upper_arm_min_pwm: int = 480
+    pickup_upper_arm_max_pwm: int = 760
+    pickup_elbow_reach_pwm: int = 360
 
     # --- Stair Detection & Climbing ---
     stair_model: str = "deploy/models/stair_detector.onnx"
