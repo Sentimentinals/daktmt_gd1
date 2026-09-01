@@ -12,6 +12,7 @@ from .walking_engine import DynamicWalkingEngine
 
 
 def run_follow(args: Config, dashboard, camera, camera_ready: bool) -> None:
+    dashboard.set_runtime("follow", "Starting Person Follow")
     package_root = Path(__file__).resolve().parent.parent
     detector = PersonDetector(
         prototxt_path=str((package_root / args.person_detect_prototxt).resolve()),

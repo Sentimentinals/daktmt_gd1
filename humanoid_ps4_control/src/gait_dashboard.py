@@ -284,6 +284,8 @@ class GaitDashboard:
         balance_status: str,
     ) -> None:
         now = time.monotonic()
+        with self._control_lock:
+            runtime_mode = self._runtime_mode
         imu = None
         feet = None
         depth = None
@@ -325,6 +327,7 @@ class GaitDashboard:
                 "active": bool(active),
                 "camera_ready": bool(camera_ready),
                 "balance_status": balance_status,
+                "runtime_mode": runtime_mode,
                 "pose_pwm": pose,
                 "gait": gait,
                 "imu": imu,

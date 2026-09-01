@@ -22,6 +22,7 @@ from .walking_engine import DynamicWalkingEngine
 
 
 def run_terrain_auto(args: Config, dashboard, camera, camera_ready: bool) -> None:
+    dashboard.set_runtime("terrain", "Starting Terrain Auto")
     model_path = Path(__file__).resolve().parent.parent / args.stair_model
     detector = StairDetector(
         model_path=str(model_path),

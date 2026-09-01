@@ -21,6 +21,7 @@ def _reach_pose(base_pose: dict[int, int], reach_pwm: int) -> dict[int, int]:
 
 
 def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
+    dashboard.set_runtime("pickup", "Starting Pick Up")
     squat = AdaptiveSquatEngine(
         min_depth_mm=args.squat_min_depth_mm,
         max_depth_mm=args.squat_max_depth_mm,

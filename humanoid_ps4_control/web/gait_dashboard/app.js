@@ -1,5 +1,11 @@
 const $ = (id) => document.getElementById(id);
 const CONTROL_REQUEST_TIMEOUT_MS = 350;
+const MODE_LABELS = {
+  manual: "MANUAL",
+  terrain: "TERRAIN AUTO",
+  follow: "PERSON FOLLOW",
+  pickup: "PICK UP",
+};
 
 let lastEventAt = 0;
 
@@ -37,6 +43,17 @@ function setActionActive(action, enabled) {
   });
 }
 
+function showModeTransition() {
+  const label = MODE_LABELS[control.mode] || control.mode.toUpperCase();
+  $("motionStatus").textContent = control.armed ? `STARTING ${label}` : `${label} SELECTED`;
+  $("motionStatus").title = $("motionStatus").textContent;
+  $("balanceStatus").textContent = "--";
+  $("balanceStatus").title = "--";
+  $("stepCount").textContent = "0";
+  $("swingLeg").textContent = "NONE";
+  $("modeBadge").textContent = "IDLE";
+}
+
 function updateControlUI(state = {}) {
   if (typeof state.armed === "boolean") control.armed = state.armed;
   if (state.mode) control.mode = state.mode;
@@ -58,6 +75,14 @@ function updateControlUI(state = {}) {
     const modeAllowed = manualOnly ? control.mode === "manual" : !modeGroup || modeGroup.dataset.modeActions === control.mode;
     button.disabled = !control.armed || !modeAllowed;
   });
+  if (state.runtime_status) {
+    if (!state.runtime_mode || state.runtime_mode === control.mode) {
+      $("motionStatus").textContent = state.runtime_status;
+      $("motionStatus").title = state.runtime_status;
+    } else {
+      showModeTransition();
+    }
+  }
 }
 
 async function sendControl(emergencyStop = false, immediate = false) {
@@ -135,13 +160,15 @@ function setAxis(name, value, button) {
 
 function updateReadouts(frame) {
   const gait = frame.gait || {};
-  $("modeBadge").textContent = frame.active ? "ACTIVE" : "IDLE";
-  $("motionStatus").textContent = frame.status || "Waiting";
-  $("balanceStatus").textContent = frame.balance_status || "--";
-  $("motionStatus").title = $("motionStatus").textContent;
-  $("balanceStatus").title = $("balanceStatus").textContent;
-  $("stepCount").textContent = gait.step_count ?? 0;
-  $("swingLeg").textContent = String(gait.swing_leg || "none").toUpperCase();
+  if (!frame.runtime_mode || frame.runtime_mode === control.mode) {
+    $("modeBadge").textContent = frame.active ? "ACTIVE" : "IDLE";
+    $("motionStatus").textContent = frame.status || "Waiting";
+    $("balanceStatus").textContent = frame.balance_status || "--";
+    $("motionStatus").title = $("motionStatus").textContent;
+    $("balanceStatus").title = $("balanceStatus").textContent;
+    $("stepCount").textContent = gait.step_count ?? 0;
+    $("swingLeg").textContent = String(gait.swing_leg || "none").toUpperCase();
+  }
   const cameraOn = Boolean(frame.camera_ready);
   $("cameraBadge").textContent = cameraOn ? "LIVE" : "OFF";
   $("cameraBadge").classList.toggle("muted", !cameraOn);
@@ -174,6 +201,7 @@ function bindWebControl() {
     control.armed = !control.armed;
     if (!control.armed) control.actions.clear();
     updateControlUI();
+    showModeTransition();
     sendControl();
   });
   $("emergencyButton").addEventListener("click", () => {
@@ -190,6 +218,7 @@ function bindWebControl() {
       control.mode = button.dataset.mode;
       control.actions.clear();
       updateControlUI();
+      showModeTransition();
       sendControl();
     });
   });

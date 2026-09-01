@@ -9,6 +9,7 @@ from .config import Config
 
 
 def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
+    dashboard.set_runtime("manual", "Starting Manual")
     from .walking_engine import (
         DynamicWalkingEngine,
         STANDING,
