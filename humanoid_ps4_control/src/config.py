@@ -213,7 +213,6 @@ class Config:
     dance_head_pwm: int = 180
 
     # --- Getup ---
-    getup_mode: str = "front"
     getup_speed: float = 0.7
 
     # --- Balance ---

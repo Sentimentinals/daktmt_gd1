@@ -78,13 +78,11 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
     )
     getup = GetupEngine(
         dt=args.update_ms / 1000.0,
-        mode=args.getup_mode,
         speed=args.getup_speed,
     )
     prev_dance_pressed = False
     prev_stop_pressed = False
     prev_getup_pressed = False
-    prev_getup_back_pressed = False
     last_pose = dict(STANDING)
     standing_hold_active = True
 
@@ -160,8 +158,8 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         and (args.imu_balance or args.fall_detection_enabled)
                     ):
                         stationary = (
-                            not any((state.forward, state.turn, state.side, state.dance, state.getup,
-                                     state.getup_back, state.reset, state.stop))
+                            not any((state.forward, state.turn, state.side, state.dance,
+                                     state.getup, state.reset, state.stop))
                             and not arm_dance.running and not getup.running and engine.is_idle_ready()
                         )
                         if not stationary:
@@ -292,21 +290,10 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             recovery_status = "STABLE"
                         standing_hold_active = False
                         protected_pose = extend_arms_forward(last_pose, args.fall_arm_forward_pwm)
-                        label = getup.start(protected_pose, mode="front")
+                        label = getup.start(protected_pose)
                         print(f"[main] G pressed. Running front get-up sequence from step {label}.")
                     prev_getup_pressed = getup_pressed
 
-                    getup_back_pressed = state.getup_back
-                    if getup_back_pressed and not prev_getup_back_pressed:
-                        if fall_detector is not None:
-                            fall_detector.reset()
-                        engine.reset()
-                        arm_dance.reset()
-                        standing_hold_active = False
-                        label = getup.start(last_pose, mode="back")
-                        print(f"[main] B pressed. Running back get-up sequence from step {label}.")
-                    prev_getup_back_pressed = getup_back_pressed
-    
                     dance_pressed = state.dance
                     if (
                         dance_pressed

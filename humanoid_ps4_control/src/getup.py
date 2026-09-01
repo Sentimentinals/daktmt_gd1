@@ -43,9 +43,6 @@ ARM_STANDING = {
 }
 
 ARM_SHOULDER_POSES = {
-    "back_reach": {22: 2100, 11: 900},
-    "back_push": {22: 2500, 11: 500},
-    "back_hold": {22: 2200, 11: 800},
     "front_reach": {22: 2100, 11: 900},
     "front_push": {22: 2500, 11: 500},
     "front_hold": {22: 2200, 11: 800},
@@ -159,37 +156,13 @@ def _step(state: GetupPoseState, duration_s: float, speed: float) -> GetupStep:
     )
 
 
-def build_getup_sequence(mode: str = "front", speed: float = 0.7) -> list[GetupStep]:
-    """Return an open-loop recovery sequence.
-
-    `back` assumes the robot is lying face-up. `front` assumes face-down.
-    Both sequences use measured leg transitions so the arm support is kept
-    loaded until the feet can carry the body.
-    """
-    mode = mode.lower().strip()
-    if mode not in {"back", "front"}:
-        raise ValueError("getup mode must be 'back' or 'front'")
-
+def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
+    """Return the face-down stand-up sequence."""
     standing_angles = _leg_angles()
-    box_clear_angles = _symmetric_leg_angles(
-        ankle_pitch=30.0,
-        knee=0.0,
-        hip_pitch=-24.0,
-    )
-    tuck_angles = _symmetric_leg_angles(
-        ankle_pitch=42.0,
-        knee=-28.0,
-        hip_pitch=-40.0,
-    )
     front_tuck_angles = _symmetric_leg_angles(
         ankle_pitch=50.0,
         knee=-38.0,
         hip_pitch=-50.0,
-    )
-    snap_angles = _symmetric_leg_angles(
-        ankle_pitch=26.0,
-        knee=8.0,
-        hip_pitch=0.0,
     )
     plant_angles = _symmetric_leg_angles(
         ankle_pitch=24.0,
@@ -213,42 +186,6 @@ def build_getup_sequence(mode: str = "front", speed: float = 0.7) -> list[GetupS
     )
 
     states = {
-        "back_box_clear": GetupPoseState(
-            "box-clear",
-            ("back_case", "feet_light"),
-            box_clear_angles,
-            _arm_pose("back_reach"),
-        ),
-        "back_load_knees": GetupPoseState(
-            "load-knees",
-            ("back_case", "hands", "feet"),
-            tuck_angles,
-            _arm_pose("back_push"),
-        ),
-        "back_leg_snap": GetupPoseState(
-            "leg-drive",
-            ("hands", "feet"),
-            snap_angles,
-            _arm_pose("back_push"),
-        ),
-        "back_plant_feet": GetupPoseState(
-            "plant-feet",
-            ("hands", "feet"),
-            plant_angles,
-            _arm_pose("back_push"),
-        ),
-        "back_power_stand": GetupPoseState(
-            "power-stand",
-            ("feet",),
-            standing_angles,
-            _arm_pose("standing"),
-        ),
-        "back_stand_hold": GetupPoseState(
-            "stand-hold",
-            ("feet",),
-            standing_angles,
-            {},
-        ),
         "front_arms_forward": GetupPoseState(
             "arms-forward",
             ("chest", "hands", "knees"),
@@ -299,36 +236,25 @@ def build_getup_sequence(mode: str = "front", speed: float = 0.7) -> list[GetupS
         ),
     }
 
-    if mode == "back":
-        plan = [
-            (states["back_box_clear"], 0.62),
-            (states["back_load_knees"], 0.52),
-            (states["back_leg_snap"], 0.45),
-            (states["back_plant_feet"], 0.26),
-            (states["back_power_stand"], 0.55),
-            (states["back_stand_hold"], 0.55),
-        ]
-    else:
-        plan = [
-            (states["front_arms_forward"], 0.95),
-            (states["front_push_floor"], 1.05),
-            (states["front_plant_knees"], 0.80),
-            (states["front_kneel_low"], 1.05),
-            (states["front_squat_deep"], 0.85),
-            (states["front_squat_high"], 0.75),
-            (states["front_arms_down"], 0.45),
-            (states["front_stand"], 1.05),
-        ]
+    plan = [
+        (states["front_arms_forward"], 0.95),
+        (states["front_push_floor"], 1.05),
+        (states["front_plant_knees"], 0.80),
+        (states["front_kneel_low"], 1.05),
+        (states["front_squat_deep"], 0.85),
+        (states["front_squat_high"], 0.75),
+        (states["front_arms_down"], 0.45),
+        (states["front_stand"], 1.05),
+    ]
 
     return [_step(state, duration, speed) for state, duration in plan]
 
 
 class GetupEngine:
-    def __init__(self, dt: float = 0.04, mode: str = "front", speed: float = 0.7) -> None:
+    def __init__(self, dt: float = 0.04, speed: float = 0.7) -> None:
         self.dt = dt
-        self.mode_name = mode
         self.speed = speed
-        self.steps = build_getup_sequence(mode, speed)
+        self.steps = build_getup_sequence(speed)
         self.reset()
 
     @property
@@ -354,10 +280,7 @@ class GetupEngine:
         self.step_start_pose = dict(STANDING)
         self.current_pose = dict(STANDING)
 
-    def start(self, current_pose: dict[int, int] | None = None, mode: str | None = None) -> str:
-        if mode is not None and mode != self.mode_name:
-            self.mode_name = mode
-            self.steps = build_getup_sequence(self.mode_name, self.speed)
+    def start(self, current_pose: dict[int, int] | None = None) -> str:
         self._running = True
         self.step_index = 0
         self.step_t = 0.0

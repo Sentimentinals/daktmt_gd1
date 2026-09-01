@@ -577,7 +577,7 @@ class DynamicWalkingEngine:
         support_leg_for_pose = self.support_leg
         if swing_leg_now in ("left", "right"):
             old_support_leg = "right" if swing_leg_now == "left" else "left"
-            if phase_mode_now in ("swing", "land"):
+            if phase_mode_now == "swing":
                 support_leg_for_pose = old_support_leg
         self.support_leg = support_leg_for_pose
 
@@ -675,6 +675,9 @@ class DynamicWalkingEngine:
                 STANDING[support_ankle] + support_delta * (1.0 - landing_t_now)
             )
         elif leg_active:
+            ankle_gain = self.ankle_roll_gain
+            if phase_mode_now == "land" and not input_active:
+                ankle_gain *= 1.0 - landing_t_now
             pose = compute_pose(
                 com_x,
                 pose_com_y,
@@ -684,7 +687,7 @@ class DynamicWalkingEngine:
                 support_leg=support_leg_for_pose,
                 phase_mode="shift",
                 zmp_support_ratio=self.zmp_support_ratio,
-                ankle_roll_gain=self.ankle_roll_gain,
+                ankle_roll_gain=ankle_gain,
             )
         else:
             pose = dict(STANDING)

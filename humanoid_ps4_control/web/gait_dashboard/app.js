@@ -221,7 +221,6 @@ function bindWebControl() {
     " ": "stop",
     l: "dance",
     g: "getup_front",
-    b: "getup_back",
     c: "reset",
     v: "terrain_toggle",
     u: "stair_toggle",
