@@ -158,8 +158,6 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
                 if control.pickup_toggle:
                     if phase == "idle":
                         enter("acquire")
-                    elif phase == "holding":
-                        cancel()
 
                 snapshot = sensor_hub.read() if sensor_hub is not None else None
                 object_frame = camera.object_frame() if detector is not None else None
@@ -303,7 +301,7 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
                         args.pickup_elbow_reach_pwm,
                     )
                     gait = stationary_gait("hold")
-                    status = "PICKUP COMPLETE - PRESS R TO RESET"
+                    status = "PICKUP COMPLETE"
 
                 gait["crouch_mm"] = squat.depth_mm
 
