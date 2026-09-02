@@ -165,22 +165,22 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
         hip_pitch=-60.0,
     )
     plant_angles = _symmetric_leg_angles(
-        ankle_pitch=24.0,
+        ankle_pitch=12.0,
         knee=20.0,
         hip_pitch=8.0,
     )
     kneel_low_angles = _symmetric_leg_angles(
-        ankle_pitch=30.0,
+        ankle_pitch=2.0,
         knee=-8.0,
         hip_pitch=-10.0,
     )
     squat_deep_angles = _symmetric_leg_angles(
-        ankle_pitch=26.0,
+        ankle_pitch=4.0,
         knee=8.0,
         hip_pitch=4.0,
     )
     squat_high_angles = _symmetric_leg_angles(
-        ankle_pitch=22.0,
+        ankle_pitch=12.0,
         knee=24.0,
         hip_pitch=12.0,
     )
@@ -208,7 +208,7 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
             "kneel-low",
             ("hands", "knees", "feet"),
             kneel_low_angles,
-            _arm_pose("front_hold", {23: 980, 10: 1970}),
+            _arm_pose("front_push"),
         ),
         "front_squat_deep": GetupPoseState(
             "squat-deep",
@@ -225,26 +225,26 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
         "front_arms_down": GetupPoseState(
             "arms-down",
             ("feet",),
-            squat_high_angles,
+            standing_angles,
             _arm_pose("standing"),
         ),
         "front_stand": GetupPoseState(
             "stand",
             ("feet",),
             standing_angles,
-            {},
+            _arm_pose("front_hold", {24: 1520, 23: 660, 10: 2300, 9: 1480}),
         ),
     }
 
     plan = [
         (states["front_arms_forward"], 0.95),
-        (states["front_push_floor"], 1.05),
-        (states["front_plant_knees"], 0.80),
-        (states["front_kneel_low"], 1.05),
-        (states["front_squat_deep"], 0.85),
-        (states["front_squat_high"], 0.75),
+        (states["front_push_floor"], 0.55),
+        (states["front_plant_knees"], 0.55),
+        (states["front_kneel_low"], 0.65),
+        (states["front_squat_deep"], 0.38),
+        (states["front_squat_high"], 0.30),
+        (states["front_stand"], 0.38),
         (states["front_arms_down"], 0.45),
-        (states["front_stand"], 1.05),
     ]
 
     return [_step(state, duration, speed) for state, duration in plan]
