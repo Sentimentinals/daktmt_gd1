@@ -95,6 +95,7 @@ class Config:
     walk_step_length_mm: float = 42.0
     walk_step_height_mm: float = 60.0
     walk_crouch_depth_mm: float = 12.0
+    walk_forward_lean_deg: float = 10.0
     walk_lift_start_phase: float = 0.24
     walk_swing_advance_end_phase: float = 0.60
     walk_lift_end_phase: float = 1.0

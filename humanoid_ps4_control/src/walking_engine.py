@@ -152,6 +152,7 @@ class DynamicWalkingEngine:
         max_side_step_len: float | None = None,
         step_height: float = 52.0,
         crouch_depth_mm: float = 0.0,
+        forward_lean_deg: float = 0.0,
         zmp_support_ratio: float | None = None,
         ankle_roll_gain: float | None = None,
         step_x_ratio: float = 1.0,
@@ -178,6 +179,7 @@ class DynamicWalkingEngine:
         self.hw = ROBOT["half_hip"]
         self.step_height = max(0.0, step_height)
         self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
+        self.forward_lean_deg = max(0.0, float(forward_lean_deg))
         self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
@@ -217,6 +219,7 @@ class DynamicWalkingEngine:
         self.zmp_y_queue: Deque[float] = deque()
         self.zmp_x_queue: Deque[float] = deque()
         self.body_drop_queue: Deque[float] = deque()
+        self.body_lean_queue: Deque[float] = deque()
         self.foot_L_queue: Deque[np.ndarray] = deque()
         self.foot_R_queue: Deque[np.ndarray] = deque()
         self.arm_queue: Deque[tuple[int, int]] = deque()
@@ -236,18 +239,22 @@ class DynamicWalkingEngine:
         self.last_landing_progress = 0.0
         self.last_phase_mode = "idle"
         self.last_body_drop = 0.0
+        self.last_body_lean = 0.0
         self._com_y = 0.0
         self._com_x = 0.0
         self._zmp_y = 0.0
         self._zmp_x = 0.0
-        self._crouch_pending = self.crouch_transition_s > 0.0 and self.crouch_depth_mm > 0.0
+        self._crouch_pending = self.crouch_transition_s > 0.0 and (
+            self.crouch_depth_mm > 0.0 or self.forward_lean_deg > 0.0
+        )
 
         self.prev_pose = dict(self.ready_pose)
 
-    def _enqueue_body_transition(self, target_depth: float) -> None:
+    def _enqueue_body_transition(self, target_depth: float, target_lean: float = 0.0) -> None:
         base_L = self.foot_L_queue[-1].copy() if self.foot_L_queue else self.last_foot_L.copy()
         base_R = self.foot_R_queue[-1].copy() if self.foot_R_queue else self.last_foot_R.copy()
         start_depth = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
+        start_lean = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
         target_depth = max(0.0, min(self.crouch_depth_mm, target_depth))
         transition_frames = max(1, round(self.crouch_transition_s / self.dt))
         center_x = 0.5 * (base_L[0] + base_R[0])
@@ -258,6 +265,7 @@ class DynamicWalkingEngine:
             self.zmp_x_queue.append(center_x)
             self.zmp_y_queue.append(center_y)
             self.body_drop_queue.append(start_depth + (target_depth - start_depth) * blend)
+            self.body_lean_queue.append(start_lean + (target_lean - start_lean) * blend)
             self.foot_L_queue.append(base_L.copy())
             self.foot_R_queue.append(base_R.copy())
             self.arm_queue.append((0, 0))
@@ -278,6 +286,8 @@ class DynamicWalkingEngine:
         if any(abs(zmp_y) > tolerance for zmp_y in self.zmp_y_queue):
             return False
         if any(depth > tolerance for depth in self.body_drop_queue) or self.last_body_drop > tolerance:
+            return False
+        if any(abs(lean) > tolerance for lean in self.body_lean_queue) or abs(self.last_body_lean) > tolerance:
             return False
         if any(delta != (0, 0) for delta in self.arm_queue):
             return False
@@ -308,11 +318,13 @@ class DynamicWalkingEngine:
             settle_frames = self.n_s + self.n_d
             stance_center_x = (base_L[0] + base_R[0]) / 2.0
             drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
+            lean_start = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
             for frame in range(settle_frames):
                 stand_t = self._phase_curve((frame + 1) / settle_frames)
                 self.zmp_x_queue.append(stance_center_x)
                 self.zmp_y_queue.append(0.0)
                 self.body_drop_queue.append(drop_start * (1.0 - stand_t))
+                self.body_lean_queue.append(lean_start * (1.0 - stand_t))
                 self.foot_L_queue.append(base_L.copy())
                 self.foot_R_queue.append(base_R.copy())
                 self.arm_queue.append((0, 0))
@@ -325,7 +337,9 @@ class DynamicWalkingEngine:
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
         drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
+        lean_start = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
         drop_target = self.crouch_depth_mm if abs(step_len) > 0.1 and not side_dominant else 0.0
+        lean_target = self.forward_lean_deg if step_len > 0.1 and not side_dominant else 0.0
         side_step_len = side_len * 1.80 if side_dominant else side_len
         next_step_count = self.step_count + 1
         if side_dominant and side_len > 0.0:
@@ -396,6 +410,7 @@ class DynamicWalkingEngine:
             self.zmp_y_queue.append(zmp_y)
             drop_t = self._phase_curve((k + 1) / step_n_s)
             self.body_drop_queue.append(drop_start + (drop_target - drop_start) * drop_t)
+            self.body_lean_queue.append(lean_start + (lean_target - lean_start) * drop_t)
 
             lift_height_scale = self.side_lift_scale if side_dominant else 1.0
             swing_base_z = swing_start_z + (swing_target_z - swing_start_z) * swing_t
@@ -535,10 +550,13 @@ class DynamicWalkingEngine:
             crouch_requested = abs(requested_step_len) > 0.1 and not side_dominant_request
             if self._crouch_pending and crouch_requested:
                 self._crouch_pending = False
-                self._enqueue_body_transition(self.crouch_depth_mm)
-            elif input_active and not crouch_requested and self.last_body_drop > 0.05:
+                lean_target = self.forward_lean_deg if requested_step_len > 0.1 else 0.0
+                self._enqueue_body_transition(self.crouch_depth_mm, lean_target)
+            elif input_active and not crouch_requested and (
+                self.last_body_drop > 0.05 or abs(self.last_body_lean) > 0.05
+            ):
                 self._crouch_pending = True
-                self._enqueue_body_transition(0.0)
+                self._enqueue_body_transition(0.0, 0.0)
             # Commit the requested step together with its preparation.
             if input_active or not self.zmp_y_queue:
                 self._enqueue_next_step(
@@ -550,6 +568,7 @@ class DynamicWalkingEngine:
         zmp_now = self.zmp_y_queue.popleft()
         zmp_x_now = self.zmp_x_queue.popleft()
         body_drop_now = self.body_drop_queue.popleft()
+        body_lean_now = self.body_lean_queue.popleft()
         foot_L_now = self.foot_L_queue.popleft()
         foot_R_now = self.foot_R_queue.popleft()
         arm_delta_now = self.arm_queue.popleft()
@@ -565,6 +584,7 @@ class DynamicWalkingEngine:
         self.last_landing_progress = landing_t_now
         self.last_phase_mode = phase_mode_now
         self.last_body_drop = body_drop_now
+        self.last_body_lean = body_lean_now
 
         lateral_origin_y = 0.5 * (float(foot_L_now[1]) + float(foot_R_now[1]))
         zmp_rel_y = zmp_now - lateral_origin_y
@@ -691,6 +711,10 @@ class DynamicWalkingEngine:
             )
         else:
             pose = dict(STANDING)
+        if body_lean_now > 0.0:
+            lean_pwm = round(body_lean_now * PWM_PER_DEG)
+            pose[13] += lean_pwm
+            pose[20] -= lean_pwm
         pose = self._apply_arm_swing(pose, arm_delta_now)
         self.prev_pose = pose
         return pose
@@ -704,6 +728,7 @@ class DynamicWalkingEngine:
             "lift_factor": self.last_lift_factor,
             "landing_progress": self.last_landing_progress,
             "crouch_mm": self.last_body_drop,
+            "forward_lean_deg": self.last_body_lean,
             "commands": {
                 "forward_mm": self.commanded_step_len,
                 "turn_mm": self.commanded_turn_len,

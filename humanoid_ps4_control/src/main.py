@@ -46,6 +46,7 @@ def run_manual(
         max_side_step_len=args.max_side_step_len,
         step_height=args.walk_step_height_mm,
         crouch_depth_mm=args.walk_crouch_depth_mm,
+        forward_lean_deg=args.walk_forward_lean_deg,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
         step_x_ratio=1.0,
