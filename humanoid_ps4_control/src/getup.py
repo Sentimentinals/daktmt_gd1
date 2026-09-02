@@ -162,7 +162,7 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
     front_tuck_angles = _symmetric_leg_angles(
         ankle_pitch=50.0,
         knee=-38.0,
-        hip_pitch=-50.0,
+        hip_pitch=-60.0,
     )
     plant_angles = _symmetric_leg_angles(
         ankle_pitch=24.0,
