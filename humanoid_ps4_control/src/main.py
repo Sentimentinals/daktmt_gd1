@@ -256,7 +256,7 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                             dashboard.set_runtime("manual", "Fall - holding protective pose")
                             continue
                         if not prev_stop_pressed:
-                            print("[main] C pressed. Hard stop to STANDING.")
+                            print("[main] Space pressed. Hard stop to STANDING.")
                         prev_stop_pressed = True
                         engine.reset()
                         arm_dance.reset()
@@ -320,10 +320,10 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                                     abs(angle_error_deg(reading.pitch_deg, imu_reference[1])),
                                 )
                             if reset_tilt is None or reset_tilt > args.fall_reset_tilt_deg:
-                                print("[main] FALL reset blocked. Hold the robot upright, then press E/T again.")
+                                print("[main] FALL reset blocked. Hold the robot upright, then press C again.")
                                 dashboard.set_runtime("manual", "Fall reset blocked")
                                 continue
-                        print("[main] E/T pressed. Resetting walking engine and arm dance.")
+                        print("[main] C pressed. Resetting Manual control to STANDING.")
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
@@ -332,13 +332,21 @@ def run_manual(args: Config, dashboard, camera_ready: bool) -> None:
                         if recovery is not None:
                             recovery.reset()
                             recovery_status = "STABLE"
+                        if balance is not None:
+                            balance.reset()
+                            balance_has_valid_imu = False
                         if fall_detector is not None:
                             fall_detector.reset()
                         standing_hold_active = True
-                        vy = 0.0
-                        turn_cmd = 0.0
-                        side_cmd = 0.0
-                        motion_requested = False
+                        pose = dict(STANDING)
+                        try:
+                            backend.send(pose, duration_ms=args.stop_ms, force=True)
+                            last_pose = dict(pose)
+                            dashboard.set_runtime("manual", "Reset / standing")
+                        except Exception as exc:
+                            print(f"[main] Backend send exception during reset: {exc}")
+                            dashboard.set_runtime("manual", "Reset failed")
+                        continue
 
                     pose_from_getup = False
                     if getup.running:
