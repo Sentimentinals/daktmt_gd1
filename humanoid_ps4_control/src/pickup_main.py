@@ -4,12 +4,9 @@ import math
 import time
 from pathlib import Path
 
-from .backends import make_backend
-from .balance import configured_fall_detector, extend_arms_forward, update_fall_detector
 from .config import Config, STANDING
 from .gait_dashboard import stationary_gait
 from .object_detection import PickupObjectDetector
-from .sensors import RobotSensorHub
 from .walking_engine import AdaptiveSquatEngine, DynamicWalkingEngine
 
 
@@ -29,7 +26,15 @@ def _pickup_arm_pose(
     return pose
 
 
-def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
+def run_pickup(
+    args: Config,
+    dashboard,
+    camera,
+    camera_ready: bool,
+    backend,
+    sensor_hub,
+    fall_safety,
+) -> None:
     dashboard.set_runtime("pickup", "Starting Pick Up")
     squat = AdaptiveSquatEngine(
         min_depth_mm=args.squat_min_depth_mm,
@@ -67,36 +72,6 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
         except Exception as exc:
             print(f"[pickup] Object detector unavailable: {exc}")
 
-    need_imu = args.fall_detection_enabled
-    need_depth = args.sensor_feedback and args.sensor_use_depth
-    sensor_hub = None
-    if need_imu or need_depth:
-        sensor_hub = RobotSensorHub(
-            port=args.sensor_port,
-            baudrate=args.sensor_baudrate,
-            timeout_s=args.sensor_timeout_s,
-            depth_timeout_s=args.sensor_depth_timeout_s,
-            use_imu=need_imu,
-            use_foot_fsr=False,
-            use_depth=need_depth,
-            imu_roll_sign=args.imu_roll_sign,
-            imu_pitch_sign=args.imu_pitch_sign,
-            imu_yaw_sign=args.imu_yaw_sign,
-            imu_vertical_mount=args.imu_vertical_mount,
-            imu_board_face_sign=args.imu_board_face_sign,
-        )
-        try:
-            sensor_hub.open(wait_for_connection=False)
-        except Exception as exc:
-            sensor_hub = None
-            print(f"[pickup] Sensors unavailable: {exc}. Camera positioning remains available.")
-
-    backend = make_backend(
-        mode=args.backend,
-        port=args.port,
-        baudrate=args.baudrate,
-        csv_path=args.csv,
-    )
     phase = "idle"
     phase_started = time.monotonic()
     target_key = None
@@ -105,9 +80,7 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
     target_upper_arm_pwm = args.pickup_upper_arm_min_pwm
     last_detection_at = None
     previous_stop = False
-    imu_reference = None
-    fall_detector = None
-    last_fall_at = time.monotonic()
+    previous_fall_active = fall_safety.active
     last_pose = dict(STANDING)
 
     def enter(next_phase: str) -> None:
@@ -125,22 +98,7 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
 
     try:
         with backend:
-            backend.send(STANDING, duration_ms=900, force=True)
-            time.sleep(0.9)
-            if sensor_hub is not None and need_imu:
-                print("[pickup] Keep the robot upright while fall protection calibrates.")
-                imu_reference = sensor_hub.capture_imu_reference(
-                    sample_seconds=args.imu_reference_seconds,
-                    timeout_s=args.imu_reference_timeout_s,
-                    min_gyro_cal=args.imu_min_gyro_cal,
-                    min_accel_cal=args.imu_min_accel_cal,
-                    max_rms_deg=args.imu_reference_max_rms_deg,
-                )
-                if imu_reference is not None:
-                    fall_detector = configured_fall_detector(args)
-                else:
-                    print("[pickup] IMU reference failed. Pickup remains available.")
-
+            last_pose = backend.current_pose
             dashboard.set_runtime("pickup", "Show one object, then press R")
             while True:
                 loop_started = time.monotonic()
@@ -305,50 +263,33 @@ def run_pickup(args: Config, dashboard, camera, camera_ready: bool) -> None:
 
                 gait["crouch_mm"] = squat.depth_mm
 
-                fall_active = False
-                was_triggered = fall_detector.triggered if fall_detector is not None else False
-                if fall_detector is not None:
-                    imu = snapshot.imu if snapshot is not None else None
-                    fall_active = update_fall_detector(
-                        fall_detector,
-                        imu,
-                        imu_reference,
-                        now - last_fall_at,
-                        args,
-                    )
-                    if fall_active:
-                        if not was_triggered:
-                            cancel()
-                            print(f"[pickup] FALL: {fall_detector.reason}. Arms forward.")
-                        pose = extend_arms_forward(last_pose, args.fall_arm_forward_pwm)
-                        status = f"FALL: {fall_detector.reason}"
-                    elif was_triggered:
-                        pose = dict(STANDING)
-                        status = "UPRIGHT - ARMS RETURNED"
-                last_fall_at = now
+                fall_active = fall_safety.active
+                if fall_active:
+                    if not previous_fall_active:
+                        cancel()
+                    pose = backend.current_pose
+                    status = f"FALL: {fall_safety.reason}"
+                elif previous_fall_active:
+                    pose = dict(STANDING)
+                    status = "UPRIGHT - ARMS RETURNED"
+                previous_fall_active = fall_active
 
                 backend.send(pose, duration_ms=args.update_ms)
-                last_pose = dict(pose)
+                last_pose = backend.current_pose
                 dashboard.publish(
-                    pose=pose,
+                    pose=last_pose,
                     gait=gait,
                     sensor_snapshot=snapshot,
                     status=status,
                     active=phase != "idle" or fall_active,
                     camera_ready=camera_ready,
-                    balance_status=(
-                        "FALL ACTIVE"
-                        if fall_active
-                        else "FALL READY" if fall_detector is not None else "PICKUP"
-                    ),
+                    balance_status=fall_safety.status,
                 )
                 dashboard.set_runtime("pickup", status)
                 remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
                 if remaining > 0.0:
                     time.sleep(remaining)
     finally:
-        if sensor_hub is not None:
-            sensor_hub.close()
         camera.set_detector(None)
         dashboard.set_runtime("idle", "Pickup stopped")
         print("[pickup] Pick Up exited.")
