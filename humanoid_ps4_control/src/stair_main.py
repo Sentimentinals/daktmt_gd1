@@ -179,6 +179,7 @@ def run_terrain_auto(
                         vertical_fov_deg=args.stair_tof_vertical_fov_deg,
                         flip_vertical=args.stair_tof_flip_vertical,
                         forward_offset_mm=args.stair_tof_forward_offset_mm,
+                        range_edge_min_delta_mm=args.stair_tof_edge_min_delta_mm,
                     )
                     depth_timestamp = depth.sensor_time_ms if depth is not None else None
                     if geometry.direction != last_direction or depth is None:
@@ -206,7 +207,19 @@ def run_terrain_auto(
                     edge_far = geometry.edge_distance_mm + geometry.edge_uncertainty_mm
                     landing_stride = edge_far + args.stair_foot_heel_mm + args.stair_landing_margin_mm
                     landing_max = edge_near + args.stair_tread_depth_mm - args.stair_foot_toe_mm - args.stair_landing_margin_mm
+                preview = ""
+                if geometry is not None:
+                    if geometry.direction == "unknown":
+                        preview = "CAMERA EDGE | TOF EDGE UNKNOWN"
+                    else:
+                        lift_mm = geometry.riser_height_mm + args.stair_foot_clearance_mm
+                        preview = (
+                            f"{geometry.direction.upper()} {geometry.edge_distance_mm} MM"
+                            f" | LIFT {lift_mm:.0f} MM"
+                        )
                 status = "BALANCE ON | STAIR OFF" if balance_enabled else "TERRAIN IDLE"
+                if not enabled and preview:
+                    status += f" | PREVIEW {preview}"
                 if stepper.active:
                     pose = stepper.update(now)
                     gait = stepper.telemetry_snapshot()
@@ -222,8 +235,8 @@ def run_terrain_auto(
                     status = "FINISHING APPROACH STEP"
                 elif enabled and now < cooldown_until:
                     status = "VERIFYING NEXT STEP"
-                elif enabled and (calibration_error or not detector.model_ready):
-                    status = calibration_error or "STAIR LOCKED | TRAINED MODEL MISSING"
+                elif enabled and calibration_error:
+                    status = f"{calibration_error} | {preview}" if preview else calibration_error
                 elif enabled and (imu is None or reference is None or not balance_enabled or abs(roll_delta) > 3.0 or abs(pitch_delta) > 3.0):
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
@@ -235,7 +248,7 @@ def run_terrain_auto(
                 elif enabled and geometry.direction == "unknown":
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
-                    status = "STAIR FOUND | TOF HAS NOT RESOLVED TWO LEVELS"
+                    status = "STAIR FOUND | TOF EDGE UNKNOWN"
                 elif enabled and stable_frames < args.stair_detect_stable_frames:
                     pose = approach.update(0.0)
                     gait = approach.telemetry_snapshot()
@@ -293,6 +306,7 @@ def run_terrain_auto(
                         "confidence": geometry.confidence,
                         "edge_mm": geometry.edge_distance_mm,
                         "riser_mm": geometry.riser_height_mm,
+                        "lift_mm": geometry.riser_height_mm + args.stair_foot_clearance_mm,
                         "center_error": geometry.center_error,
                         "source": geometry.source,
                         "edge_uncertainty_mm": geometry.edge_uncertainty_mm,

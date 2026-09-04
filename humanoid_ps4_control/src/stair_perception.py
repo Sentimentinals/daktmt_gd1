@@ -87,7 +87,7 @@ class StairDetector:
                 source="model+lines",
             )
         else:
-            detection = model_detection if self.model_ready else line_detection
+            detection = model_detection or line_detection
 
         stairs = (detection,) if detection is not None else ()
         self._last = StairFrame(stairs, time.monotonic())
@@ -190,7 +190,7 @@ class StairDetector:
             length = math.hypot(x2 - x1, y2 - y1)
             if angle <= 11.0 and length >= width * 0.22:
                 lines.append((x1, y1 + roi_top, x2, y2 + roi_top, length))
-        if len(lines) < 4:
+        if not lines:
             return None
 
         lines.sort(key=lambda item: (item[1] + item[3]) * 0.5)
@@ -202,24 +202,35 @@ class StairDetector:
                     separated[-1] = line
             else:
                 separated.append(line)
-        if len(separated) < 4:
+        if not separated:
             return None
 
         centers = [(line[1] + line[3]) * 0.5 for line in separated]
-        gaps = [b - a for a, b in zip(centers, centers[1:]) if b - a >= 5]
-        if len(gaps) < 3:
-            return None
-        gap_mean = sum(gaps) / len(gaps)
-        gap_error = sum(abs(gap - gap_mean) for gap in gaps) / max(1.0, len(gaps) * gap_mean)
-        consistency = max(0.0, min(1.0, 1.0 - gap_error))
+        if len(separated) == 1:
+            if separated[0][4] < width * 0.38 or centers[0] < height * 0.62:
+                return None
+            gap_mean = height * 0.06
+            consistency = 0.55
+        else:
+            gaps = [b - a for a, b in zip(centers, centers[1:]) if b - a >= 5]
+            if not gaps:
+                return None
+            gap_mean = sum(gaps) / len(gaps)
+            gap_error = sum(abs(gap - gap_mean) for gap in gaps) / max(1.0, len(gaps) * gap_mean)
+            consistency = max(0.0, min(1.0, 1.0 - gap_error))
         x1 = max(0, min(min(line[0], line[2]) for line in separated))
         x2 = min(width, max(max(line[0], line[2]) for line in separated))
         y1 = max(0, round(min(centers) - gap_mean))
         y2 = min(height, round(max(centers) + gap_mean))
-        if x2 - x1 < width * 0.28 or y2 - y1 < height * 0.10:
+        if (
+            x2 - x1 < width * 0.28
+            or y2 - y1 < height * 0.035
+            or max(centers) < height * 0.52
+        ):
             return None
-        line_score = min(1.0, (len(separated) - 3) / 6.0)
-        confidence = 0.38 + 0.30 * line_score + 0.22 * consistency
+        line_score = min(1.0, len(separated) / 6.0)
+        coverage = min(1.0, (x2 - x1) / max(1.0, width * 0.60))
+        confidence = 0.36 + 0.18 * line_score + 0.18 * consistency + 0.10 * coverage
         center_error = ((x1 + x2) * 0.5 / max(1, width) - 0.5) * 2.0
         return StairDetection(
             (x1, y1, x2, y2),
@@ -254,6 +265,7 @@ def estimate_stair_geometry(
     vertical_fov_deg: float,
     flip_vertical: bool,
     forward_offset_mm: float = 0.0,
+    range_edge_min_delta_mm: float = 120.0,
 ) -> StairGeometry:
     direction = "unknown"
     edge_distance = None
@@ -313,11 +325,63 @@ def estimate_stair_geometry(
             edge_distance = round((near_x + far_x) * 0.5)
             edge_uncertainty = (far_x - near_x) * 0.5 + tolerance
             break
-        source += "+tof-levels" if direction != "unknown" else "+tof-unresolved"
+        if direction != "unknown":
+            source += "+tof-levels"
+        else:
+            best_edge = None
+            for split in range(2, 7):
+                upper = [value for value in rows[:split] if value is not None]
+                lower = [value for value in rows[split:] if value is not None]
+                if len(upper) < 2 or len(lower) < 2:
+                    continue
+                upper_boundary = rows[split - 1]
+                lower_boundary = rows[split]
+                if upper_boundary is None or lower_boundary is None:
+                    continue
+                upper_level = median(upper)
+                lower_level = median(lower)
+                contrast = abs(lower_level - upper_level)
+                boundary_delta = abs(lower_boundary - upper_boundary)
+                threshold = max(range_edge_min_delta_mm, min(upper_level, lower_level) * 0.12)
+                if contrast < threshold or boundary_delta < threshold:
+                    continue
+                upper_spread = median(abs(value - upper_level) for value in upper)
+                lower_spread = median(abs(value - lower_level) for value in lower)
+                if max(upper_spread, lower_spread) > contrast * 0.40:
+                    continue
+                score = contrast + boundary_delta - upper_spread - lower_spread
+                if best_edge is None or score > best_edge[0]:
+                    best_edge = (
+                        score,
+                        split,
+                        upper_level,
+                        lower_level,
+                        upper_spread,
+                        lower_spread,
+                    )
+
+            if best_edge is not None:
+                _, split, upper_level, lower_level, upper_spread, lower_spread = best_edge
+                lower_is_near = lower_level < upper_level
+                direction = "up" if lower_is_near else "down"
+                boundary_row = split if lower_is_near else split - 1
+                boundary_distance = rows[boundary_row]
+                ray_offset = ((boundary_row + 0.5) / 8.0 - 0.5) * vertical_fov_deg
+                ray_down = math.radians(pitch_down_deg + ray_offset)
+                forward_scale = math.cos(ray_down) if 0.0 < ray_down < math.pi / 2 else 1.0
+                edge_distance = round(boundary_distance * forward_scale + forward_offset_mm)
+                near_spread = lower_spread if lower_is_near else upper_spread
+                edge_uncertainty = max(18.0, min(45.0, 18.0 + near_spread * 0.10))
+                riser_height = default_riser_mm
+                source += "+tof-range-edge"
+            else:
+                source += "+tof-unresolved"
 
     confidence = detection.confidence
     if direction == "unknown":
         confidence *= 0.72
+    elif source.endswith("+tof-range-edge"):
+        confidence = min(0.95, confidence + 0.12)
     return StairGeometry(
         direction=direction,
         confidence=confidence,
