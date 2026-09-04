@@ -195,7 +195,6 @@ class FallSafety:
                     reading,
                     reference,
                     now - last_update,
-                    self.args,
                 )
                 reason = self._detector.reason
                 self._active = active

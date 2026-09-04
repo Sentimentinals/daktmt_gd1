@@ -201,7 +201,6 @@ class Config:
     stair_tof_edge_min_delta_mm: float = 120.0
 
     # --- Terrain IMU Balance ---
-    terrain_emergency_tilt_deg: float = 18.0
     terrain_balance_limit_deg: float = 8.0
     terrain_balance_deadband_deg: float = 0.35
 

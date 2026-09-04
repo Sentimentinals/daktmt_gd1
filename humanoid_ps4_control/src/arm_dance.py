@@ -37,11 +37,7 @@ class ArmDanceEngine:
         self.elbow_pwm = abs(elbow_pwm)
         self.lift_pwm = abs(lift_pwm)
         self.head_pwm = abs(head_pwm)
-        self.mode = "off"
-        self.phase_t = 0.0
-        self.transition_t = 0.0
-        self.start_pose = dict(STANDING)
-        self.current_pose = dict(STANDING)
+        self.reset()
 
     @property
     def running(self) -> bool:

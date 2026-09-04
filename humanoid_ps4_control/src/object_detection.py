@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .vision_yolo import detect_yolo
+
 
 @dataclass(frozen=True)
 class ObjectDetection:
@@ -65,83 +67,26 @@ class PickupObjectDetector:
         if frame is None or frame.ndim != 3 or frame.shape[2] != 3:
             raise ValueError("Pickup detector expects a three-channel BGR frame")
 
-        cv2 = self._cv2
-        height, width = frame.shape[:2]
-        scale = min(self.input_size / width, self.input_size / height)
-        resized_width = max(1, round(width * scale))
-        resized_height = max(1, round(height * scale))
-        resized = cv2.resize(frame, (resized_width, resized_height))
-        pad_x = (self.input_size - resized_width) // 2
-        pad_y = (self.input_size - resized_height) // 2
-        padded = cv2.copyMakeBorder(
-            resized,
-            pad_y,
-            self.input_size - resized_height - pad_y,
-            pad_x,
-            self.input_size - resized_width - pad_x,
-            cv2.BORDER_CONSTANT,
-            value=(114, 114, 114),
+        detected_boxes = detect_yolo(
+            self._cv2,
+            self._net,
+            frame,
+            class_count=len(self.CLASS_NAMES),
+            input_size=self.input_size,
+            confidence=self.confidence,
+            iou_threshold=self.iou_threshold,
         )
-        blob = cv2.dnn.blobFromImage(
-            padded,
-            scalefactor=1.0 / 255.0,
-            size=(self.input_size, self.input_size),
-            swapRB=True,
-            crop=False,
-        )
-        self._net.setInput(blob)
-        raw = self._net.forward()
-        rows = raw[0]
-        expected_columns = 4 + len(self.CLASS_NAMES)
-        if rows.ndim != 2:
-            raise RuntimeError(f"Unsupported pickup model output shape: {raw.shape}")
-        if rows.shape[0] == expected_columns:
-            rows = rows.T
-        if rows.shape[1] != expected_columns:
-            raise RuntimeError(f"Unsupported pickup model output shape: {raw.shape}")
-
-        boxes = []
-        scores = []
-        class_ids = []
-        for row in rows:
-            class_scores = row[4:]
-            class_id = int(class_scores.argmax())
-            confidence = float(class_scores[class_id])
-            if confidence < self.confidence:
-                continue
-            center_x, center_y, box_width, box_height = (float(value) for value in row[:4])
-            x = round((center_x - box_width * 0.5 - pad_x) / scale)
-            y = round((center_y - box_height * 0.5 - pad_y) / scale)
-            box_width = round(box_width / scale)
-            box_height = round(box_height / scale)
-            x1 = max(0, min(width - 1, x))
-            y1 = max(0, min(height - 1, y))
-            x2 = max(0, min(width, x + box_width))
-            y2 = max(0, min(height, y + box_height))
-            if x2 <= x1 or y2 <= y1:
-                continue
-            boxes.append([x1, y1, x2 - x1, y2 - y1])
-            scores.append(confidence)
-            class_ids.append(class_id)
-
-        objects = []
-        indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence, self.iou_threshold)
-        for raw_index in indices:
-            index = int(raw_index[0]) if hasattr(raw_index, "__len__") else int(raw_index)
-            x, y, box_width, box_height = boxes[index]
-            box = (x, y, x + box_width, y + box_height)
-            objects.append(
-                ObjectDetection(
-                    label=self.CLASS_NAMES[class_ids[index]],
-                    color=self._dominant_color(frame, box),
-                    box=box,
-                    confidence=scores[index],
-                    area_ratio=(box_width * box_height) / float(max(1, width * height)),
-                )
+        objects = [
+            ObjectDetection(
+                label=self.CLASS_NAMES[detected.class_id],
+                color=self._dominant_color(frame, detected.box),
+                box=detected.box,
+                confidence=detected.confidence,
+                area_ratio=detected.area_ratio,
             )
-
-        objects.sort(key=lambda item: (item.confidence, item.area_ratio), reverse=True)
-        self._last = ObjectFrame(tuple(objects[:4]), time.monotonic())
+            for detected in detected_boxes[:4]
+        ]
+        self._last = ObjectFrame(tuple(objects), time.monotonic())
         return self._last
 
     def _dominant_color(self, frame, box: tuple[int, int, int, int]) -> str:

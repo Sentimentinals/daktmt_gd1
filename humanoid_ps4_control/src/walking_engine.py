@@ -117,9 +117,6 @@ class AdaptiveSquatEngine:
     def reset(self) -> None:
         self.depth_mm = 0.0
 
-    def is_idle(self) -> bool:
-        return self.depth_mm <= 0.1
-
     def update_depth(self, depth_mm: float) -> dict[int, int]:
         self.depth_mm = max(0.0, min(self.max_depth_mm, depth_mm))
 
@@ -186,17 +183,13 @@ class DynamicWalkingEngine:
         self.step_x_ratio = step_x_ratio
         self.landing_gap_mm = abs(max_step_len if landing_gap_mm is None else landing_gap_mm)
         self.side_lift_scale = 0.55
-        self.lift_start_phase = lift_start_phase
-        self.swing_advance_end_phase = swing_advance_end_phase
-        self.lift_end_phase = lift_end_phase
-        self.landing_roll_release_start = landing_roll_release_start
-        self.lift_start_phase = max(0.0, min(0.30, self.lift_start_phase))
-        self.lift_end_phase = max(self.lift_start_phase + 0.20, min(1.0, self.lift_end_phase))
+        self.lift_start_phase = max(0.0, min(0.30, lift_start_phase))
+        self.lift_end_phase = max(self.lift_start_phase + 0.20, min(1.0, lift_end_phase))
         self.swing_advance_end_phase = max(
             self.lift_start_phase + 0.10,
-            min(self.lift_end_phase - 0.05, self.swing_advance_end_phase),
+            min(self.lift_end_phase - 0.05, swing_advance_end_phase),
         )
-        self.landing_roll_release_start = max(0.0, min(0.95, self.landing_roll_release_start))
+        self.landing_roll_release_start = max(0.0, min(0.95, landing_roll_release_start))
         self.command_deadzone = GAIT["command_deadzone"] if command_deadzone is None else command_deadzone
         self.arm_swing_pwm = int(GAIT["arm_swing_pwm"] if arm_swing_pwm is None else arm_swing_pwm)
         self.arm_right_dir = int(GAIT["arm_right_dir"] if arm_right_dir is None else arm_right_dir)
@@ -405,7 +398,6 @@ class DynamicWalkingEngine:
                 release_t = self._phase_progress(alpha, release_start, self.lift_end_phase)
                 zmp_y = stance_y + (next_stance_y - stance_y) * release_t
             else:
-                release_t = 0.0
                 zmp_y = stance_y
             self.zmp_y_queue.append(zmp_y)
             drop_t = self._phase_curve((k + 1) / step_n_s)
@@ -527,20 +519,9 @@ class DynamicWalkingEngine:
             or abs(requested_turn_len) > 0.1
             or abs(requested_side_len) > 0.1
         )
-        if input_active:
-            target_step_len = requested_step_len
-            target_turn_len = requested_turn_len
-            target_side_len = requested_side_len
-        else:
-            self.commanded_step_len = 0.0
-            self.commanded_turn_len = 0.0
-            self.commanded_side_len = 0.0
-            target_step_len = 0.0
-            target_turn_len = 0.0
-            target_side_len = 0.0
-        self.commanded_step_len = target_step_len
-        self.commanded_turn_len = target_turn_len
-        self.commanded_side_len = target_side_len
+        self.commanded_step_len = requested_step_len if input_active else 0.0
+        self.commanded_turn_len = requested_turn_len if input_active else 0.0
+        self.commanded_side_len = requested_side_len if input_active else 0.0
 
         if not self.zmp_y_queue:
             side_dominant_request = (
@@ -686,10 +667,8 @@ class DynamicWalkingEngine:
                 pose[20] = STANDING[20] - thigh_delta
                 pose[21] = round(STANDING[21] - side_dir * side_hip_roll * swing_blend)
         elif side_active and phase_mode_now == "land":
-            target = dict(STANDING)
             support_ankle = 17 if swing_leg_now == "left" else 16
             support_delta = side_support_roll if support_ankle == 17 else -side_support_roll
-            target[support_ankle] = STANDING[support_ankle] + support_delta
             pose = dict(STANDING)
             pose[support_ankle] = round(
                 STANDING[support_ankle] + support_delta * (1.0 - landing_t_now)

@@ -598,9 +598,9 @@ def main() -> None:
                             args, dashboard, camera_ready, backend, sensor_hub, fall_safety,
                         )
                     elif state.mode == "terrain":
-                        from .terrain_main import run_terrain
+                        from .stair_main import run_terrain_auto
 
-                        run_terrain(
+                        run_terrain_auto(
                             args, dashboard, camera, camera_ready,
                             backend, sensor_hub, fall_safety,
                         )

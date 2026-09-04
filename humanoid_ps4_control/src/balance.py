@@ -199,7 +199,6 @@ def update_fall_detector(
     reading: Optional[IMUReading],
     reference: tuple[float, float] | None,
     dt: float,
-    args: Config,
 ) -> bool:
     if reference is not None and reading is not None:
         detector.update(

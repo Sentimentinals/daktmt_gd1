@@ -8,15 +8,14 @@ from statistics import median
 from typing import Optional
 
 from .sensors import DepthReading
+from .vision_yolo import detect_yolo
 
 
 @dataclass(frozen=True)
 class StairDetection:
     box: tuple[int, int, int, int]
     confidence: float
-    direction: str
     center_error: float
-    line_count: int
     source: str
 
 
@@ -81,9 +80,7 @@ class StairDetector:
             detection = StairDetection(
                 box=model_detection.box,
                 confidence=confidence,
-                direction=model_detection.direction,
                 center_error=model_detection.center_error,
-                line_count=line_detection.line_count,
                 source="model+lines",
             )
         else:
@@ -94,75 +91,23 @@ class StairDetector:
         return self._last
 
     def _detect_model(self, frame) -> Optional[StairDetection]:
-        cv2 = self._cv2
-        height, width = frame.shape[:2]
-        scale = min(self.input_size / width, self.input_size / height)
-        resized_width = max(1, round(width * scale))
-        resized_height = max(1, round(height * scale))
-        resized = cv2.resize(frame, (resized_width, resized_height))
-        pad_x = (self.input_size - resized_width) // 2
-        pad_y = (self.input_size - resized_height) // 2
-        padded = cv2.copyMakeBorder(
-            resized,
-            pad_y,
-            self.input_size - resized_height - pad_y,
-            pad_x,
-            self.input_size - resized_width - pad_x,
-            cv2.BORDER_CONSTANT,
-            value=(114, 114, 114),
+        width = frame.shape[1]
+        detections = detect_yolo(
+            self._cv2,
+            self._net,
+            frame,
+            class_count=1,
+            input_size=self.input_size,
+            confidence=self.confidence,
+            iou_threshold=self.iou_threshold,
         )
-        blob = cv2.dnn.blobFromImage(
-            padded,
-            scalefactor=1.0 / 255.0,
-            size=(self.input_size, self.input_size),
-            swapRB=True,
-            crop=False,
-        )
-        self._net.setInput(blob)
-        raw = self._net.forward()
-        rows = raw[0]
-        if rows.ndim != 2:
+        if not detections:
             return None
-        if rows.shape[0] in (5, 6, 7):
-            rows = rows.T
-        if rows.shape[1] not in (5, 6, 7):
-            return None
-
-        boxes: list[list[int]] = []
-        scores: list[float] = []
-        directions: list[str] = []
-        for row in rows:
-            class_scores = row[4:]
-            class_id = int(class_scores.argmax())
-            score = float(class_scores[class_id])
-            if score < self.confidence:
-                continue
-            center_x, center_y, box_width, box_height = (float(value) for value in row[:4])
-            x = round((center_x - box_width * 0.5 - pad_x) / scale)
-            y = round((center_y - box_height * 0.5 - pad_y) / scale)
-            box_width = round(box_width / scale)
-            box_height = round(box_height / scale)
-            x1 = max(0, min(width - 1, x))
-            y1 = max(0, min(height - 1, y))
-            x2 = max(0, min(width, x + box_width))
-            y2 = max(0, min(height, y + box_height))
-            if x2 <= x1 or y2 <= y1:
-                continue
-            boxes.append([x1, y1, x2 - x1, y2 - y1])
-            scores.append(score)
-            directions.append("up" if class_id == 0 and len(class_scores) > 1 else "down" if class_id == 1 else "unknown")
-
-        if not boxes:
-            return None
-        indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence, self.iou_threshold)
-        kept = [int(item[0]) if hasattr(item, "__len__") else int(item) for item in indices]
-        if not kept:
-            return None
-        index = max(kept, key=lambda item: scores[item] * boxes[item][2] * boxes[item][3])
-        x, y, box_width, box_height = boxes[index]
-        box = (x, y, x + box_width, y + box_height)
-        center_error = ((x + box_width * 0.5) / max(1, width) - 0.5) * 2.0
-        return StairDetection(box, scores[index], directions[index], center_error, 0, "model")
+        detected = max(detections, key=lambda item: item.confidence * item.area_ratio)
+        x1, _, x2, _ = detected.box
+        box_width = x2 - x1
+        center_error = ((x1 + box_width * 0.5) / max(1, width) - 0.5) * 2.0
+        return StairDetection(detected.box, detected.confidence, center_error, "model")
 
     def _detect_lines(self, frame) -> Optional[StairDetection]:
         cv2 = self._cv2
@@ -235,9 +180,7 @@ class StairDetector:
         return StairDetection(
             (x1, y1, x2, y2),
             min(0.88, confidence),
-            "unknown",
             center_error,
-            len(separated),
             "lines",
         )
 

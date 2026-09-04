@@ -106,10 +106,6 @@ class GaitDashboard:
         self._runtime_mode = "idle"
         self._runtime_status = "Waiting for browser control"
 
-    @property
-    def url(self) -> str:
-        return f"http://{self.host}:{self.port}"
-
     def start(self) -> None:
         if self._server is not None:
             return

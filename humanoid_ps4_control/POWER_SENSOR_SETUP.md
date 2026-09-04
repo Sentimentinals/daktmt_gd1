@@ -8,7 +8,7 @@ truc tiep vao GPIO cua Pi khi test robot that.
 ```text
 Raspberry Pi nguon rieng
   USB 1 -> 32-channel servo controller logic/control
-  USB 2 -> ESP32/Pico sensor hub -> BNO055 + FSR tay phai
+  USB 2 -> ESP32 sensor hub -> BNO055 + 2 FSR chan + VL53L5CX
 
 LiPo 3S
   -> relay / emergency cut
@@ -30,14 +30,27 @@ BNO055 SDA     -> ESP32 GPIO21
 BNO055 SCL     -> ESP32 GPIO22
 ```
 
-FSR trong long ban tay phai:
+Hai FSR duoi chan:
 
 ```text
-ESP32 3V3 -> FSR -> GPIO34/ADC -> 10k resistor -> GND
+ESP32 3V3 -> FSR trai  -> GPIO34/ADC -> 10k resistor -> GND
+ESP32 3V3 -> FSR phai  -> GPIO35/ADC -> 10k resistor -> GND
 ```
 
-GPIO35 khong su dung. Khong dat FSR nay duoi chan va khong dung no de suy ra
-chan tru khi walking.
+FSR hien chi tra telemetry luc tiep xuc; walking va balance khong bi khoa neu
+FSR khong co du lieu.
+
+VL53L5CX dung chung bus I2C voi BNO055:
+
+```text
+VL53L5CX VIN/VCC -> ESP32 3V3
+VL53L5CX GND     -> ESP32 GND
+VL53L5CX SDA     -> ESP32 GPIO21
+VL53L5CX SCL     -> ESP32 GPIO22
+```
+
+Tat ca thiet bi I2C phai chung GND, SDA va SCL. BNO055 dung dia chi `0x28`,
+VL53L5CX dung dia chi `0x29`.
 
 Dien tro `10k 1/4W` la du. Tin hieu vao ADC/GPIO cua ESP32 chi duoc toi da
 3.3V.
@@ -64,7 +77,7 @@ nguon ngoai 6V. USB cua Pi chi dung cho logic/control.
 ## Thu tu test
 
 1. Chua bat nguon servo.
-2. Cam ESP32/Pico vao laptop truoc, test BNO055 va FSR tay.
+2. Cam ESP32 vao laptop truoc, test BNO055, hai FSR va VL53L5CX.
 3. Do dien ap: sensor chi co 3.3V, khong co 5V/6V tren signal.
 4. Cam ESP32/Pico vao Pi qua USB.
 5. Kiem tra serial port tren Pi:

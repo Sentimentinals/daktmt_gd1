@@ -73,13 +73,11 @@ class GetupStep:
     label: str
     pose: dict[int, int]
     duration_s: float
-    contacts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class GetupPoseState:
     label: str
-    contacts: tuple[str, ...]
     joint_angles: dict[str, float] = field(default_factory=dict)
     pwm_overrides: dict[int, int] = field(default_factory=dict)
 
@@ -152,7 +150,6 @@ def _step(state: GetupPoseState, duration_s: float, speed: float) -> GetupStep:
         label=state.label,
         pose=_pose_from_state(state),
         duration_s=_scaled(duration_s, speed),
-        contacts=state.contacts,
     )
 
 
@@ -188,49 +185,41 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
     states = {
         "front_arms_forward": GetupPoseState(
             "arms-forward",
-            ("chest", "hands", "knees"),
             front_tuck_angles,
             _arm_pose("front_reach"),
         ),
         "front_push_floor": GetupPoseState(
             "push-floor",
-            ("hands", "knees", "feet"),
             front_tuck_angles,
             _arm_pose("front_push"),
         ),
         "front_plant_knees": GetupPoseState(
             "plant-knees",
-            ("hands", "knees", "feet"),
             plant_angles,
             _arm_pose("front_push"),
         ),
         "front_kneel_low": GetupPoseState(
             "kneel-low",
-            ("hands", "knees", "feet"),
             kneel_low_angles,
             _arm_pose("front_push"),
         ),
         "front_squat_deep": GetupPoseState(
             "squat-deep",
-            ("hands_light", "feet"),
             squat_deep_angles,
             _arm_pose("front_hold", {24: 1520, 23: 800, 10: 2160, 9: 1480}),
         ),
         "front_squat_high": GetupPoseState(
             "squat-high",
-            ("feet",),
             squat_high_angles,
             _arm_pose("front_hold", {24: 1520, 23: 660, 10: 2300, 9: 1480}),
         ),
         "front_arms_down": GetupPoseState(
             "arms-down",
-            ("feet",),
             standing_angles,
             _arm_pose("standing"),
         ),
         "front_stand": GetupPoseState(
             "stand",
-            ("feet",),
             standing_angles,
             _arm_pose("front_hold", {24: 1520, 23: 660, 10: 2300, 9: 1480}),
         ),
@@ -266,12 +255,6 @@ class GetupEngine:
         if not self._running:
             return "off"
         return self.steps[self.step_index].label
-
-    @property
-    def contacts(self) -> tuple[str, ...]:
-        if not self._running:
-            return ()
-        return self.steps[self.step_index].contacts
 
     def reset(self) -> None:
         self._running = False

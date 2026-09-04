@@ -209,7 +209,7 @@ class HeadlessCamera:
             for stair in stair_frame.stairs:
                 x1, y1, x2, y2 = stair.box
                 self._cv2.rectangle(frame, (x1, y1), (x2, y2), (78, 166, 255), 2)
-                label = f"STAIR {stair.direction.upper()} {stair.confidence:.2f}"
+                label = f"STAIR {stair.confidence:.2f}"
                 self._cv2.putText(
                     frame,
                     label,
