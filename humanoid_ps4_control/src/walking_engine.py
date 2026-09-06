@@ -578,7 +578,7 @@ class DynamicWalkingEngine:
         support_leg_for_pose = self.support_leg
         if swing_leg_now in ("left", "right"):
             old_support_leg = "right" if swing_leg_now == "left" else "left"
-            if phase_mode_now == "swing":
+            if phase_mode_now == "swing" or (abs(side_len_now) > 0.1 and lift_factor_now > 0.0):
                 support_leg_for_pose = old_support_leg
         self.support_leg = support_leg_for_pose
 
@@ -619,13 +619,12 @@ class DynamicWalkingEngine:
             or not self.zmp_ctrl_x.is_settled()
         )
         side_active = (
-            (abs(self.commanded_side_len) > 0.1 or abs(side_len_now) > 0.1)
+            abs(side_len_now) > 0.1
             and swing_leg_now in ("left", "right")
         )
         pose_com_y = zmp_rel_y if side_active else com_y - lateral_origin_y
-        side_motion_len = self.commanded_side_len if abs(self.commanded_side_len) > 0.1 else side_len_now
-        side_strength = min(1.0, abs(side_motion_len) / max(1.0, self.max_side_step_len * 0.65)) if side_active else 0.0
-        side_dir = 1 if side_motion_len > 0.0 else -1
+        side_strength = min(1.0, abs(side_len_now) / max(1.0, self.max_side_step_len * 0.65)) if side_active else 0.0
+        side_dir = 1 if side_len_now > 0.0 else -1
         side_opening_swing = side_active and (
             (side_dir > 0 and swing_leg_now == "right")
             or (side_dir < 0 and swing_leg_now == "left")
@@ -644,12 +643,13 @@ class DynamicWalkingEngine:
             )
         elif phase_mode_now == "idle":
             pose = dict(STANDING)
-        elif side_active and phase_mode_now == "swing":
+        elif side_active:
             pose = dict(STANDING)
             thigh_delta, knee_delta, ankle_delta = self._side_swing_pitch_deltas(lift_factor_now)
             swing_blend = self._phase_curve(min(1.0, lift_factor_now / 0.45))
-            if support_leg_for_pose == "right":
-                pose[17] = STANDING[17] + side_support_roll
+            support_roll = round(side_support_roll * (1.0 - landing_t_now))
+            if swing_leg_now == "left":
+                pose[17] = STANDING[17] + support_roll
                 pose[18] = self.prev_pose[18]
                 pose[19] = self.prev_pose[19]
                 pose[20] = self.prev_pose[20]
@@ -658,7 +658,7 @@ class DynamicWalkingEngine:
                 pose[14] = STANDING[14] + knee_delta
                 pose[15] = STANDING[15] + ankle_delta
             else:
-                pose[16] = STANDING[16] - side_support_roll
+                pose[16] = STANDING[16] - support_roll
                 pose[13] = self.prev_pose[13]
                 pose[14] = self.prev_pose[14]
                 pose[15] = self.prev_pose[15]
@@ -666,13 +666,6 @@ class DynamicWalkingEngine:
                 pose[19] = STANDING[19] - knee_delta
                 pose[20] = STANDING[20] - thigh_delta
                 pose[21] = round(STANDING[21] - side_dir * side_hip_roll * swing_blend)
-        elif side_active and phase_mode_now == "land":
-            support_ankle = 17 if swing_leg_now == "left" else 16
-            support_delta = side_support_roll if support_ankle == 17 else -side_support_roll
-            pose = dict(STANDING)
-            pose[support_ankle] = round(
-                STANDING[support_ankle] + support_delta * (1.0 - landing_t_now)
-            )
         elif leg_active:
             ankle_gain = self.ankle_roll_gain
             if phase_mode_now == "land" and not input_active:
