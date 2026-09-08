@@ -20,6 +20,9 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--device", default="0")
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--optimizer", default="auto")
+    parser.add_argument("--lr0", type=float, default=0.01)
+    parser.add_argument("--patience", type=int, default=25)
     args = parser.parse_args()
 
     data_yaml = (args.data / "data.yaml").resolve()
@@ -43,7 +46,10 @@ def main() -> int:
         name=args.name,
         exist_ok=True,
         cache="disk",
-        patience=25,
+        patience=args.patience,
+        optimizer=args.optimizer,
+        lr0=args.lr0,
+        warmup_bias_lr=0.0,
         close_mosaic=10,
         seed=42,
         deterministic=True,
@@ -52,7 +58,10 @@ def main() -> int:
     epochs_completed = int(model.trainer.epoch + 1)
     best = Path(model.trainer.best)
     trained = YOLO(str(best))
-    metrics = trained.val(data=str(data_yaml), imgsz=args.imgsz, device=args.device, plots=True)
+    metrics = trained.val(
+        data=str(data_yaml), imgsz=args.imgsz, device=args.device, plots=True,
+        project=str(runs), name=f"{args.name}_validation", exist_ok=True,
+    )
     exported = Path(
         trained.export(
             format="onnx",
@@ -97,6 +106,9 @@ def main() -> int:
         "image_size": args.imgsz,
         "epochs_requested": args.epochs,
         "epochs_completed": epochs_completed,
+        "optimizer": args.optimizer,
+        "lr0": args.lr0,
+        "warmup_bias_lr": 0.0,
         "map50": float(metrics.box.map50),
         "map50_95": float(metrics.box.map),
         "precision": float(metrics.box.mp),

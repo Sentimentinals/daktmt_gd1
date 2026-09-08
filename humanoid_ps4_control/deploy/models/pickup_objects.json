@@ -1,12 +1,14 @@
 {
-  "model": "yolo11n.pt",
+  "model": "out/training_runs/pickup_public_20260907/weights/best.pt",
   "image_size": 416,
-  "epochs_requested": 120,
-  "epochs_completed": 68,
-  "map50": 0.8650250071843327,
-  "map50_95": 0.7487686568224758,
-  "precision": 0.8650867091701192,
-  "recall": 0.8136411227596935,
+  "epochs_requested": 40,
+  "epochs_completed": 34,
+  "optimizer": "AdamW",
+  "lr0": 0.0001,
+  "map50": 0.9018327950102368,
+  "map50_95": 0.8107225809493052,
+  "precision": 0.9014266630589685,
+  "recall": 0.8625034809245337,
   "classes": [
     "can",
     "ball",
@@ -14,22 +16,22 @@
   ],
   "per_class": {
     "can": {
-      "precision": 0.8631897839673416,
-      "recall": 0.6187011460568582,
-      "map50": 0.7613896126007114,
-      "map50_95": 0.6057565055292146
+      "precision": 0.9265981943492821,
+      "recall": 0.8214285714285714,
+      "map50": 0.8740416332166678,
+      "map50_95": 0.7565128157625324
     },
     "ball": {
-      "precision": 0.7659973870079769,
-      "recall": 0.8222222222222222,
-      "map50": 0.8386854089522866,
-      "map50_95": 0.6793141708205657
+      "precision": 0.808734703705287,
+      "recall": 0.7660818713450293,
+      "map50": 0.8364567518140424,
+      "map50_95": 0.6903799270853828
     },
     "rubik_cube": {
-      "precision": 0.9660729565350392,
+      "precision": 0.9689470911223362,
       "recall": 1.0,
       "map50": 0.995,
-      "map50_95": 0.9612352941176472
+      "map50_95": 0.985275
     }
   },
   "onnx_output_shape": [
@@ -37,5 +39,231 @@
     7,
     3549
   ],
-  "opencv_inference_ms": 35.57
+  "opencv_inference_ms": 155.57,
+  "trained_at": "2026-09-07",
+  "last_evaluated_at": "2026-09-08",
+  "sha256": "c336a832ade479af4db97b882645d4c36319f36cf7ef0d1baa3dfdf6bb2b8281",
+  "previous_model_sha256": "866dbe1c6da8d4034b0309f12ce22adddfed3fe2d9028dee04ad68c887266007",
+  "training_rounds": [
+    {
+      "epochs_completed": 52,
+      "lr0": 0.0003,
+      "warmup_bias_lr": 0.1
+    },
+    {
+      "epochs_completed": 34,
+      "lr0": 0.0001,
+      "warmup_bias_lr": 0.1
+    }
+  ],
+  "rejected_trials": [
+    {
+      "date": "2026-09-08",
+      "epochs_completed": 14,
+      "lr0": 0.0001,
+      "warmup_bias_lr": 0.0,
+      "expanded_validation_map50": 0.8961147759330474,
+      "legacy_map50": 0.8316443660383372,
+      "legacy_production_tp_fp_fn": {
+        "can": [30, 4, 21],
+        "ball": [71, 8, 19],
+        "rubik_cube": [20, 0, 0]
+      },
+      "reason": "Fewer false positives but can recall regresses from 31/51 to 30/51 and validation AP decreases. Retain the previous balanced checkpoint. This trial was not evaluated on the held-out test."
+    }
+  ],
+  "evaluation_dataset": "Expanded validation: 324 images, including 142 held-out-instance Washington frames.",
+  "legacy_map50": {
+    "previous": 0.8650250071843327,
+    "current": 0.8419346670773278
+  },
+  "legacy_map50_95": {
+    "previous": 0.7487686568224758,
+    "current": 0.7597299620357241
+  },
+  "production_threshold_validation": {
+    "previous": {
+      "confidence": 0.5,
+      "nms_iou": 0.45,
+      "match_iou": 0.5,
+      "images": 182,
+      "per_class": {
+        "can": {
+          "tp": 26,
+          "fp": 6,
+          "fn": 25,
+          "precision": 0.8125,
+          "recall": 0.5098039215686274
+        },
+        "ball": {
+          "tp": 71,
+          "fp": 13,
+          "fn": 19,
+          "precision": 0.8452380952380952,
+          "recall": 0.7888888888888889
+        },
+        "rubik_cube": {
+          "tp": 20,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "split": "val"
+    },
+    "current": {
+      "confidence": 0.5,
+      "nms_iou": 0.45,
+      "match_iou": 0.5,
+      "images": 182,
+      "per_class": {
+        "can": {
+          "tp": 31,
+          "fp": 5,
+          "fn": 20,
+          "precision": 0.8611111111111112,
+          "recall": 0.6078431372549019
+        },
+        "ball": {
+          "tp": 71,
+          "fp": 9,
+          "fn": 19,
+          "precision": 0.8875,
+          "recall": 0.7888888888888889
+        },
+        "rubik_cube": {
+          "tp": 20,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "split": "val"
+    }
+  },
+  "held_out_test": {
+    "previous": {
+      "confidence": 0.5,
+      "nms_iou": 0.45,
+      "match_iou": 0.5,
+      "images": 151,
+      "per_class": {
+        "can": {
+          "tp": 1,
+          "fp": 22,
+          "fn": 60,
+          "precision": 0.043478260869565216,
+          "recall": 0.01639344262295082
+        },
+        "ball": {
+          "tp": 21,
+          "fp": 172,
+          "fn": 60,
+          "precision": 0.10880829015544041,
+          "recall": 0.25925925925925924
+        },
+        "rubik_cube": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "split": "test"
+    },
+    "current": {
+      "confidence": 0.5,
+      "nms_iou": 0.45,
+      "match_iou": 0.5,
+      "images": 151,
+      "per_class": {
+        "can": {
+          "tp": 61,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "ball": {
+          "tp": 80,
+          "fp": 1,
+          "fn": 1,
+          "precision": 0.9876543209876543,
+          "recall": 0.9876543209876543
+        },
+        "rubik_cube": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "split": "test"
+    }
+  },
+  "deployment_decision": "Per-class precision and recall at the unchanged production confidence 0.50/NMS 0.45 do not regress on legacy validation. Independent-instance test also improves. Legacy all-threshold mAP50 decreases; this is not a universal improvement.",
+  "training_data": {
+    "first_round_counts": {
+      "base_val": 182,
+      "base_test": 9,
+      "base_train": 451,
+      "removed_exact_duplicates": 52,
+      "washington_train": 570,
+      "washington_val": 142,
+      "washington_test": 142
+    },
+    "second_round_sampling": {
+      "counts": {
+        "unique_images": 903,
+        "sampling_entries": 1007,
+        "extra_legacy_can_replays": 104
+      },
+      "train_list_sha256": "6416514d69f14bc23a52e8c62c21ce11ab7333762a6f4eeb253b98d4280d9012",
+      "policy": "Public cans one in twenty original frames; replay each legacy can image three times. Other training images unchanged. Validation and test unchanged.",
+      "reason": "Round 1 regressed can AP on legacy validation; rebalance based only on validation, not held-out test."
+    },
+    "source_archive_manifest_sha256": "6aa636033c14e213bf48883dc0c62fb55fc3f6f56e1177d3fbffc7a22400803a",
+    "sources": [
+      {
+        "name": "Open Images V7",
+        "url": "https://storage.googleapis.com/openimages/web/download_v7.html",
+        "classes": [
+          "Tin can",
+          "Football",
+          "Cricket ball",
+          "Volleyball",
+          "Golf ball",
+          "Rugby ball",
+          "Tennis ball"
+        ]
+      },
+      {
+        "name": "Rubiks Cube Segmentation",
+        "url": "https://huggingface.co/datasets/seandavidreed/rubiks_cube_segmentation",
+        "license": "CC BY 4.0"
+      },
+      {
+        "name": "Washington RGB-D Object Dataset",
+        "url": "https://rgbd-dataset.cs.washington.edu/dataset.html",
+        "license": "Non-commercial research/educational use only",
+        "citation": "Kevin Lai, Liefeng Bo, Xiaofeng Ren, Dieter Fox. A Large-Scale Hierarchical Multi-View RGB-D Object Dataset. ICRA 2011.",
+        "sampling": "One in ten frames. Full RGB images, largest visual-mask component bounding box.",
+        "split": "Instances 1-4 train; instance 5 validation; instance 6 test, for each category."
+      }
+    ]
+  },
+  "limitations": [
+    "No real Raspberry Pi camera evaluation or physical pickup test performed.",
+    "Test includes 61 views of one unseen can and 81 views of one unseen ball, not 142 independent objects.",
+    "Rubik test contains only 9 legacy images; new source data supplements cans and balls, not Rubik.",
+    "Turntable backgrounds differ from real robot floor scenes.",
+    "HSV color classification remains unchanged and was not trained.",
+    "Washington dataset is restricted to non-commercial research/educational use.",
+    "Open Images labels may not exhaustively annotate all target instances.",
+    "Timing is measured on the laptop, not Raspberry Pi."
+  ]
 }
