@@ -18,6 +18,8 @@ JOINT_TO_SERVO = {
     "L_ankle_roll": (16, "hip_roll"),
 }
 
+GETUP_PLANTED_ANKLES = {15: 500, 18: 2500}
+
 
 def _merge(*parts: dict[int, int]) -> dict[int, int]:
     out: dict[int, int] = {}
@@ -156,7 +158,6 @@ def _step(state: GetupPoseState, duration_s: float, speed: float) -> GetupStep:
 def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
     """Return the face-down stand-up sequence."""
     standing_angles = _leg_angles()
-    planted_ankles = {15: 500, 18: 2500}
     front_tuck_angles = _symmetric_leg_angles(
         ankle_pitch=50.0,
         knee=-38.0,
@@ -187,22 +188,22 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
         "front_arms_forward": GetupPoseState(
             "arms-forward",
             front_tuck_angles,
-            _arm_pose("front_reach"),
+            _merge(_arm_pose("front_reach"), GETUP_PLANTED_ANKLES),
         ),
         "front_push_floor": GetupPoseState(
             "push-floor",
             front_tuck_angles,
-            _arm_pose("front_push"),
+            _merge(_arm_pose("front_push"), GETUP_PLANTED_ANKLES),
         ),
         "front_plant_knees": GetupPoseState(
             "plant-knees",
             plant_angles,
-            _merge(_arm_pose("front_push"), planted_ankles),
+            _merge(_arm_pose("front_push"), GETUP_PLANTED_ANKLES),
         ),
         "front_kneel_low": GetupPoseState(
             "kneel-low",
             kneel_low_angles,
-            _merge(_arm_pose("front_push"), planted_ankles),
+            _merge(_arm_pose("front_push"), GETUP_PLANTED_ANKLES),
         ),
         "front_squat_deep": GetupPoseState(
             "squat-deep",
@@ -270,6 +271,9 @@ class GetupEngine:
         self.step_t = 0.0
         self.step_start_pose = dict(current_pose or self.current_pose or STANDING)
         self.current_pose = dict(self.step_start_pose)
+        ankle_pose = _merge(self.step_start_pose, GETUP_PLANTED_ANKLES)
+        self.steps = [GetupStep("position-ankles", ankle_pose, _scaled(0.65, self.speed))]
+        self.steps.extend(build_getup_sequence(self.speed))
         return self.label
 
     def update(self) -> dict[int, int]:
