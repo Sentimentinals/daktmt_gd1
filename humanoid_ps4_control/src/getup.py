@@ -232,9 +232,9 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
         (states["front_push_floor"], 0.55),
         (states["front_plant_knees"], 0.55),
         (states["front_kneel_low"], 0.65),
-        (states["front_squat_deep"], 0.38),
-        (states["front_squat_high"], 0.30),
-        (states["front_stand"], 0.38),
+        (states["front_squat_deep"], 0.30),
+        (states["front_squat_high"], 0.24),
+        (states["front_stand"], 0.30),
         (states["front_arms_down"], 0.45),
     ]
 
@@ -272,8 +272,11 @@ class GetupEngine:
         self.step_start_pose = dict(current_pose or self.current_pose or STANDING)
         self.current_pose = dict(self.step_start_pose)
         ankle_pose = _merge(self.step_start_pose, GETUP_PLANTED_ANKLES)
+        support_arms = {sid: self.step_start_pose.get(sid, STANDING[sid]) for sid in ARM_STANDING}
         self.steps = [GetupStep("position-ankles", ankle_pose, _scaled(0.65, self.speed))]
-        self.steps.extend(build_getup_sequence(self.speed))
+        for step in build_getup_sequence(self.speed):
+            pose = step.pose if step.label == "arms-down" else _merge(step.pose, support_arms)
+            self.steps.append(GetupStep(step.label, pose, step.duration_s))
         return self.label
 
     def update(self) -> dict[int, int]:
