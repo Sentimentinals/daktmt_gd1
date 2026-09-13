@@ -156,6 +156,7 @@ def _step(state: GetupPoseState, duration_s: float, speed: float) -> GetupStep:
 def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
     """Return the face-down stand-up sequence."""
     standing_angles = _leg_angles()
+    planted_ankles = {15: 500, 18: 2500}
     front_tuck_angles = _symmetric_leg_angles(
         ankle_pitch=50.0,
         knee=-38.0,
@@ -196,12 +197,12 @@ def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
         "front_plant_knees": GetupPoseState(
             "plant-knees",
             plant_angles,
-            _arm_pose("front_push"),
+            _merge(_arm_pose("front_push"), planted_ankles),
         ),
         "front_kneel_low": GetupPoseState(
             "kneel-low",
             kneel_low_angles,
-            _arm_pose("front_push"),
+            _merge(_arm_pose("front_push"), planted_ankles),
         ),
         "front_squat_deep": GetupPoseState(
             "squat-deep",
