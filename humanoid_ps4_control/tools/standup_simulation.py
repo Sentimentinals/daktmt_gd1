@@ -29,7 +29,8 @@ aside{border-left:1px solid #37413d;padding:20px;overflow:auto;background:#191e1
 <input id="seek" aria-label="Timeline" type="range" min="0" step="1" value="0"><div class="time"><span id="time"></span><span id="total"></span></div>
 <label for="phase">Phase</label><select id="phase" style="width:100%"></select>
 <label for="view">View</label><select id="view" style="width:100%"><option value="side">Side</option><option value="front">Front</option><option value="iso" selected>Perspective</option></select>
-<label for="tilt">Goc than gia dinh: <output id="tiltValue">0°</output></label><input id="tilt" type="range" min="0" max="90" value="0" aria-label="Assumed body pitch">
+<label for="tilt">Goc than gia dinh: <output id="tiltValue">90°</output></label><input id="tilt" type="range" min="0" max="90" value="90" aria-label="Assumed body pitch">
+<label for="spacing">Khoang cach hong hien thi: <output id="spacingValue">90 mm</output></label><input id="spacing" type="range" min="56" max="130" value="90" aria-label="Visual hip spacing">
 <table><thead><tr><th>Servo</th><th>PWM (us)</th><th>Delta (deg)</th></tr></thead><tbody id="values"></tbody></table>
 </aside></main>
 <script>__THREE__</script><script>
@@ -56,7 +57,7 @@ box(root,95,82,40,0,56,0,metal);box(root,64,14,36,0,9,0,black);
 const head=joint(root,0,116,0,metal);box(head,35,37,32,0,23,0,black);box(head,25,10,2,0,25,17,left);
 const legs=[];
 for(const side of ['L','R']){const s=side==='L'?-1:1, mat=s<0?left:right;
- let hipRoll=joint(root,s*data.robot.half_hip,0,0,mat),hip=joint(hipRoll,0,0,0,mat);
+ let hipRoll=joint(root,s*Number($('spacing').value)/2,0,0,mat),hip=joint(hipRoll,0,0,0,mat);
  box(hip,21,data.robot.upper_leg,20,0,-data.robot.upper_leg/2,0,metal);
  let knee=joint(hip,0,-data.robot.upper_leg,0,mat);box(knee,19,data.robot.lower_leg,18,0,-data.robot.lower_leg/2,0,metal);
  let ankle=joint(knee,0,-data.robot.lower_leg,0,mat),roll=joint(ankle,0,0,0,mat);
@@ -68,9 +69,13 @@ for(const s of [-1,1]){let shoulder=joint(root,s*64,86,0,s<0?left:right),upper=j
 function delta(p,id){return (p[id]-data.standing[id])/(data.direction[id]||1)/data.pwm_per_degree}
 function angle(p,id,key){return data.angles[key]+delta(p,id)}
 function draw(){let f=frames[index],p=f.pose;root.rotation.x=Number($('tilt').value)*rad;
+ for(const l of legs)l.hipRoll.position.x=(l.side==='L'?-1:1)*Number($('spacing').value)/2;
  for(const l of legs){let [hr,h,k,a,r]=l.ids;l.hipRoll.rotation.z=(l.side==='L'?1:-1)*angle(p,hr,l.side+'_hip_abduct')*rad;l.hip.rotation.x=-angle(p,h,l.side+'_hip_pitch')*rad;l.knee.rotation.x=angle(p,k,l.side+'_knee')*rad;l.ankle.rotation.x=-angle(p,a,l.side+'_ankle')*rad;l.roll.rotation.z=-delta(p,r)*rad}
  for(const a of arms){let [s,u,e]=a.ids;a.shoulder.rotation.x=-(p[s]-data.standing[s])/data.pwm_per_degree*a.s*rad;a.upper.rotation.z=(p[u]-data.standing[u])/data.pwm_per_degree*a.s*rad;a.elbow.rotation.x=-(p[e]-data.standing[e])/data.pwm_per_degree*a.s*rad}
  head.rotation.y=delta(p,25)*rad;
+ root.position.y=0;root.updateMatrixWorld(true);
+ root.position.y=grid.position.y-new THREE.Box3().setFromObject(root).min.y;
+ $('spacingValue').textContent=$('spacing').value+' mm';
  $('label').textContent=f.phase;$('time').textContent=f.t.toFixed(2)+' s';$('seek').value=index;$('phase').value=bounds.filter(b=>b<=index).at(-1);$('tiltValue').textContent=$('tilt').value+'°';
  for(const id of Object.keys(data.standing)){$('p'+id).textContent=p[id];$('a'+id).textContent=delta(p,id).toFixed(1)}
  $('play').innerHTML=playing?'&#10074;&#10074;':'&#9654;';renderer.render(scene,camera);
@@ -81,7 +86,7 @@ function seek(i){index=Math.max(0,Math.min(frames.length-1,i));clock=frames[inde
 $('seek').oninput=()=>{playing=false;seek(Number($('seek').value))};$('phase').onchange=()=>{playing=false;seek(Number($('phase').value))};
 $('play').onclick=()=>{if(index===frames.length-1)seek(0);playing=!playing;draw()};$('reset').onclick=()=>{playing=false;seek(0)};
 $('next').onclick=()=>{playing=false;seek(bounds.find(b=>b>index)??frames.length-1)};$('back').onclick=()=>{playing=false;seek(bounds.filter(b=>b<index).at(-1)??0)};
-$('tilt').oninput=draw;$('view').onchange=view;
+$('tilt').oninput=draw;$('spacing').oninput=draw;$('view').onchange=view;
 new ResizeObserver(()=>{let w=$('scene').clientWidth,h=$('scene').clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();draw()}).observe($('scene'));
 let dragging=false,startX=0;renderer.domElement.style.touchAction='none';renderer.domElement.onpointerdown=e=>{dragging=true;startX=e.clientX;renderer.domElement.setPointerCapture(e.pointerId)};renderer.domElement.onpointerup=()=>dragging=false;
 renderer.domElement.onpointermove=e=>{if(!dragging)return;let a=(e.clientX-startX)*.008;startX=e.clientX;camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),-a);camera.lookAt(0,-35,0);draw()};
