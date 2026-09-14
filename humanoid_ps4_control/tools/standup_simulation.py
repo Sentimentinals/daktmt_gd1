@@ -70,7 +70,7 @@ function delta(p,id){return (p[id]-data.standing[id])/(data.direction[id]||1)/da
 function angle(p,id,key){return data.angles[key]+delta(p,id)}
 function draw(){let f=frames[index],p=f.pose;root.rotation.x=Number($('tilt').value)*rad;
  for(const l of legs)l.hipRoll.position.x=(l.side==='L'?-1:1)*Number($('spacing').value)/2;
- for(const l of legs){let [hr,h,k,a,r]=l.ids;l.hipRoll.rotation.z=(l.side==='L'?1:-1)*angle(p,hr,l.side+'_hip_abduct')*rad;l.hip.rotation.x=-angle(p,h,l.side+'_hip_pitch')*rad;l.knee.rotation.x=angle(p,k,l.side+'_knee')*rad;l.ankle.rotation.x=-angle(p,a,l.side+'_ankle')*rad;l.roll.rotation.z=-delta(p,r)*rad}
+ for(const l of legs){let [hr,h,k,a,r]=l.ids;l.hipRoll.rotation.z=(l.side==='L'?1:-1)*angle(p,hr,l.side+'_hip_abduct')*rad;l.hip.rotation.x=angle(p,h,l.side+'_hip_pitch')*rad;l.knee.rotation.x=-angle(p,k,l.side+'_knee')*rad;l.ankle.rotation.x=angle(p,a,l.side+'_ankle')*rad;l.roll.rotation.z=-delta(p,r)*rad}
  for(const a of arms){let [s,u,e]=a.ids;a.shoulder.rotation.x=-(p[s]-data.standing[s])/data.pwm_per_degree*a.s*rad;a.upper.rotation.z=(p[u]-data.standing[u])/data.pwm_per_degree*a.s*rad;a.elbow.rotation.x=-(p[e]-data.standing[e])/data.pwm_per_degree*a.s*rad}
  head.rotation.y=delta(p,25)*rad;
  root.position.y=0;root.updateMatrixWorld(true);
