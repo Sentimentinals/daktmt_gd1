@@ -96,9 +96,8 @@ def build_model(torque_nm: float = 2.0, friction: float = 0.8, hip_spacing_mm: f
     return mujoco.MjModel.from_xml_string(ET.tostring(xml, encoding='unicode'))
 
 
-def simulate(commands, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, initial_pitch_deg=90.0,
-             settle_s=0.5, hold_s=2.0, upper_arm_mm=61.0, forearm_mm=66.0,
-             gate_arm_release=False, max_gate_wait_s=3.0):
+def simulate(engine, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, initial_pitch_deg=90.0,
+             settle_s=0.5, hold_s=3.0, upper_arm_mm=75.0, forearm_mm=75.0):
     model = build_model(torque_nm, friction, hip_spacing_mm, upper_arm_mm, forearm_mm)
     state = mujoco.MjData(model)
     root = model.body('pelvis').id
@@ -107,7 +106,8 @@ def simulate(commands, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, init
     servo_ids = list(STANDING)
     qaddrs = [model.jnt_qposadr[model.joint(f'j{s}').id] for s in servo_ids]
     aaddrs = [model.actuator(f'a{s}').id for s in servo_ids]
-    initial = joint_targets(commands[0]['pose'])
+    pose = dict(engine.current_pose)
+    initial = joint_targets(pose)
     for s, q, a in zip(servo_ids, qaddrs, aaddrs):
         state.qpos[q] = state.ctrl[a] = initial[s]
     pitch = math.radians(initial_pitch_deg) / 2
@@ -120,33 +120,18 @@ def simulate(commands, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, init
     geometry = [{'name': model.geom(g).name, 'size': (model.geom_size[g] * 2000).tolist(),
                  'color': model.geom_rgba[g, :3].tolist()} for g in geoms]
     output = []
-    end_command = commands[-1]['t']
-    end_time = settle_s + end_command + hold_s + (max_gate_wait_s if gate_arm_release else 0.0)
+    end_command = sum(max(1, round(step.duration_s / engine.dt)) * engine.dt for step in engine.steps)
+    end_time = settle_s + end_command + hold_s + 3.0
     next_sample = 0.0
-    command_index = 0
+    next_command = settle_s + engine.dt
+    phase = engine.label
     success_time = 0.0
     success_at_end = False
     max_torque = 0.0
     quat = np.empty(4)
     contact_force = np.empty(6)
-    gate_delay = 0.0
-    release_blocked = False
     for _ in range(round(end_time / model.opt.timestep) + 1):
         elapsed = float(state.time)
-        command_t = max(0.0, elapsed - settle_s - gate_delay)
-        waiting = False
-        while not release_blocked and command_index + 1 < len(commands) and commands[command_index + 1]['t'] <= command_t + 1e-9:
-            if (gate_arm_release and commands[command_index + 1]['phase'] == 'release-arms'
-                    and commands[command_index]['phase'] != 'release-arms' and success_time < 0.3):
-                waiting = True
-                gate_delay += model.opt.timestep
-                release_blocked = gate_delay >= max_gate_wait_s
-                break
-            command_index += 1
-        command = commands[command_index]
-        targets = joint_targets(command['pose'])
-        for s, a in zip(servo_ids, aaddrs):
-            state.ctrl[a] += np.clip(targets[s] - state.ctrl[a], -4 * model.opt.timestep, 4 * model.opt.timestep)
         mujoco.mj_forward(model, state)
         tilt = math.degrees(math.acos(float(np.clip(state.xmat[root].reshape(3, 3)[1, 1], -1, 1))))
         contacts = set()
@@ -165,16 +150,25 @@ def simulate(commands, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, init
         success_time = success_time + model.opt.timestep if upright else 0.0
         success_at_end = success_time >= 1.0
         max_torque = max(max_torque, float(np.max(np.abs(state.actuator_force))))
+        if elapsed + 1e-9 >= next_command:
+            phase = engine.label
+            pose = engine.update((tilt, 0.0) if upright else None)
+            if engine.blocked or engine.label == 'wait-upright':
+                phase = engine.label
+            if not engine.running:
+                phase = 'standing-check'
+            next_command += engine.dt
+        targets = joint_targets(pose)
+        for s, a in zip(servo_ids, aaddrs):
+            state.ctrl[a] += np.clip(targets[s] - state.ctrl[a], -4 * model.opt.timestep, 4 * model.opt.timestep)
         if elapsed + 1e-9 >= next_sample:
             transforms = []
             for g in geoms:
                 mujoco.mju_mat2Quat(quat, state.geom_xmat[g])
                 transforms.append([*(state.geom_xpos[g] * 1000).round(5).tolist(),
                                    *quat[[1, 2, 3, 0]].round(8).tolist()])
-            phase = 'initial-contact' if elapsed < settle_s else ('standing-check' if command_t > end_command else command['phase'])
-            if waiting or release_blocked:
-                phase = 'support-not-ready' if release_blocked else 'wait-foot-support'
-            output.append(dict(t=round(elapsed, 5), phase=phase, pose=command['pose'], transforms=transforms,
+            output.append(dict(t=round(elapsed, 5), phase='initial-contact' if elapsed < settle_s else phase,
+                               pose=pose, transforms=transforms,
                                actual_deg={s: round(math.degrees(state.qpos[q]), 2) for s, q in zip(servo_ids, qaddrs)},
                                tilt_deg=round(tilt, 2), height_mm=round(float(state.xpos[root, 1] * 1000), 2),
                                contacts=sorted(contacts), foot_tilts=foot_tilts, stable_s=round(success_time, 3),
@@ -187,7 +181,7 @@ def simulate(commands, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, init
         raise RuntimeError(f'MuJoCo warnings: {state.warning.number.tolist()}')
     return dict(frames=output, geometry=geometry,
                 result='STANDING IN MODEL' if success_at_end else 'NOT STANDING IN MODEL',
-                release_blocked=release_blocked,
+                release_blocked=engine.blocked,
                 assumptions=dict(engine=f'MuJoCo {mujoco.__version__}', calibrated=False,
                                  mass_kg=round(float(model.body_mass.sum()), 3), torque_nm=torque_nm,
                                  friction=friction, hip_spacing_mm=hip_spacing_mm,

@@ -1,73 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass
 
-from .walking_engine import STAND_ANG, STANDING, angle_to_pwm
-
-
-JOINT_TO_SERVO = {
-    "R_ankle_roll": (17, "hip_roll"),
-    "R_ankle_pitch": (18, "R_ankle"),
-    "R_knee": (19, "R_knee"),
-    "R_hip_pitch": (20, "R_hip_pitch"),
-    "R_hip_roll": (21, "R_hip_abduct"),
-    "L_hip_roll": (12, "L_hip_abduct"),
-    "L_hip_pitch": (13, "L_hip_pitch"),
-    "L_knee": (14, "L_knee"),
-    "L_ankle_pitch": (15, "L_ankle"),
-    "L_ankle_roll": (16, "hip_roll"),
-}
-
-GETUP_PLANTED_ANKLES = {15: 500, 18: 2500}
-
-
-def _merge(*parts: dict[int, int]) -> dict[int, int]:
-    out: dict[int, int] = {}
-    for part in parts:
-        out.update(part)
-    return out
-
-
-ARM_AUX_DOWN = {
-    24: STANDING[24],
-    23: STANDING[23],
-    10: STANDING[10],
-    9: STANDING[9],
-}
-
-ARM_STANDING = {
-    9: STANDING[9],
-    10: STANDING[10],
-    11: STANDING[11],
-    22: STANDING[22],
-    23: STANDING[23],
-    24: STANDING[24],
-}
-
-ARM_SHOULDER_POSES = {
-    "front_reach": {22: 2100, 11: 900},
-    "front_push": {22: 2500, 11: 500},
-    "front_hold": {22: 2200, 11: 800},
-}
-
-
-def _arm_pose(name: str, extra: dict[int, int] | None = None) -> dict[int, int]:
-    if name == "standing":
-        base = dict(ARM_STANDING)
-    else:
-        base = _merge(ARM_SHOULDER_POSES[name], ARM_AUX_DOWN)
-    if extra:
-        base.update(extra)
-    return base
-
-
-def _blend_pose(a: dict[int, int], b: dict[int, int], t: float) -> dict[int, int]:
-    alpha = max(0.0, min(1.0, t))
-    ids = set(STANDING) | set(a) | set(b)
-    return {
-        sid: round(a.get(sid, STANDING.get(sid, 1500)) * (1.0 - alpha) + b.get(sid, STANDING.get(sid, 1500)) * alpha)
-        for sid in ids
-    }
+from .config import STANDING, STAND_ANG
+from .walking_engine import angle_to_pwm
 
 
 @dataclass(frozen=True)
@@ -77,175 +14,36 @@ class GetupStep:
     duration_s: float
 
 
-@dataclass(frozen=True)
-class GetupPoseState:
-    label: str
-    joint_angles: dict[str, float] = field(default_factory=dict)
-    pwm_overrides: dict[int, int] = field(default_factory=dict)
-
-
-def _scaled(duration_s: float, speed: float) -> float:
-    return max(0.16, duration_s / max(0.2, speed))
-
-
-def _leg_angles(
-    *,
-    r_ankle_roll: float = STAND_ANG["hip_roll"],
-    r_ankle_pitch: float = STAND_ANG["R_ankle"],
-    r_knee: float = STAND_ANG["R_knee"],
-    r_hip_pitch: float = STAND_ANG["R_hip_pitch"],
-    r_hip_roll: float = STAND_ANG["R_hip_abduct"],
-    l_hip_roll: float = STAND_ANG["L_hip_abduct"],
-    l_hip_pitch: float = STAND_ANG["L_hip_pitch"],
-    l_knee: float = STAND_ANG["L_knee"],
-    l_ankle_pitch: float = STAND_ANG["L_ankle"],
-    l_ankle_roll: float = STAND_ANG["hip_roll"],
-) -> dict[str, float]:
-    return {
-        "R_ankle_roll": r_ankle_roll,
-        "R_ankle_pitch": r_ankle_pitch,
-        "R_knee": r_knee,
-        "R_hip_pitch": r_hip_pitch,
-        "R_hip_roll": r_hip_roll,
-        "L_hip_roll": l_hip_roll,
-        "L_hip_pitch": l_hip_pitch,
-        "L_knee": l_knee,
-        "L_ankle_pitch": l_ankle_pitch,
-        "L_ankle_roll": l_ankle_roll,
-    }
-
-
-def _symmetric_leg_angles(
-    *,
-    ankle_pitch: float,
-    knee: float,
-    hip_pitch: float,
-    ankle_roll: float = STAND_ANG["hip_roll"],
-    hip_roll: float = STAND_ANG["R_hip_abduct"],
-) -> dict[str, float]:
-    return _leg_angles(
-        r_ankle_roll=ankle_roll,
-        r_ankle_pitch=ankle_pitch,
-        r_knee=knee,
-        r_hip_pitch=hip_pitch,
-        r_hip_roll=hip_roll,
-        l_hip_roll=hip_roll,
-        l_hip_pitch=hip_pitch,
-        l_knee=knee,
-        l_ankle_pitch=ankle_pitch,
-        l_ankle_roll=ankle_roll,
+def build_getup_sequence(initial: dict[int, int], speed: float = 1.0) -> list[GetupStep]:
+    # Hip, knee, ankle pitch in degrees; all other joints keep their starting pose.
+    stages = (
+        ("plant-feet", 0.9, 30, 55, 90),
+        ("tuck-knees", 1.6, 108, 110, 62),
+        ("shift-over-feet", 1.4, 100, 126, 61),
+        ("upright-crouch", 1.6, 70, 120, 50),
+        ("extend-legs", 1.6, None, None, None),
+        ("hold-standing", 0.6, None, None, None),
+        ("release-arms", 1.0, None, None, None),
     )
-
-
-def _pose_from_state(state: GetupPoseState) -> dict[int, int]:
-    pose = dict(STANDING)
-    for joint_name, angle_deg in state.joint_angles.items():
-        sid, base_key = JOINT_TO_SERVO[joint_name]
-        pose[sid] = angle_to_pwm(sid, STAND_ANG[base_key], angle_deg, STANDING[sid])
-    for sid, pwm in state.pwm_overrides.items():
-        pose[sid] = round(pwm)
-    return pose
-
-
-def _step(state: GetupPoseState, duration_s: float, speed: float) -> GetupStep:
-    return GetupStep(
-        label=state.label,
-        pose=_pose_from_state(state),
-        duration_s=_scaled(duration_s, speed),
-    )
-
-
-def build_getup_sequence(speed: float = 0.7) -> list[GetupStep]:
-    """Return the face-down stand-up sequence."""
-    standing_angles = _leg_angles()
-    front_tuck_angles = _symmetric_leg_angles(
-        ankle_pitch=50.0,
-        knee=-38.0,
-        hip_pitch=-60.0,
-    )
-    plant_angles = _symmetric_leg_angles(
-        ankle_pitch=12.0,
-        knee=20.0,
-        hip_pitch=8.0,
-    )
-    kneel_low_angles = _symmetric_leg_angles(
-        ankle_pitch=2.0,
-        knee=-8.0,
-        hip_pitch=-10.0,
-    )
-    squat_deep_angles = _symmetric_leg_angles(
-        ankle_pitch=4.0,
-        knee=8.0,
-        hip_pitch=4.0,
-    )
-    squat_high_angles = _symmetric_leg_angles(
-        ankle_pitch=12.0,
-        knee=24.0,
-        hip_pitch=12.0,
-    )
-
-    states = {
-        "front_arms_forward": GetupPoseState(
-            "arms-forward",
-            front_tuck_angles,
-            _merge(_arm_pose("front_reach"), GETUP_PLANTED_ANKLES),
-        ),
-        "front_push_floor": GetupPoseState(
-            "push-floor",
-            front_tuck_angles,
-            _merge(_arm_pose("front_push"), GETUP_PLANTED_ANKLES),
-        ),
-        "front_plant_knees": GetupPoseState(
-            "plant-knees",
-            plant_angles,
-            _merge(_arm_pose("front_push"), GETUP_PLANTED_ANKLES),
-        ),
-        "front_kneel_low": GetupPoseState(
-            "kneel-low",
-            kneel_low_angles,
-            _merge(_arm_pose("front_push"), GETUP_PLANTED_ANKLES),
-        ),
-        "front_squat_deep": GetupPoseState(
-            "squat-deep",
-            squat_deep_angles,
-            _arm_pose("front_hold", {24: 1520, 23: 800, 10: 2160, 9: 1480}),
-        ),
-        "front_squat_high": GetupPoseState(
-            "squat-high",
-            squat_high_angles,
-            _arm_pose("front_hold", {24: 1520, 23: 660, 10: 2300, 9: 1480}),
-        ),
-        "front_arms_down": GetupPoseState(
-            "arms-down",
-            standing_angles,
-            _arm_pose("standing"),
-        ),
-        "front_stand": GetupPoseState(
-            "stand",
-            standing_angles,
-            _arm_pose("front_hold", {24: 1520, 23: 660, 10: 2300, 9: 1480}),
-        ),
-    }
-
-    plan = [
-        (states["front_arms_forward"], 0.95),
-        (states["front_push_floor"], 0.55),
-        (states["front_plant_knees"], 0.55),
-        (states["front_kneel_low"], 0.65),
-        (states["front_squat_deep"], 0.30),
-        (states["front_squat_high"], 0.24),
-        (states["front_stand"], 0.30),
-        (states["front_arms_down"], 0.45),
-    ]
-
-    return [_step(state, duration, speed) for state, duration in plan]
+    steps = []
+    for label, duration, hip, knee, ankle in stages:
+        pose = dict(initial)
+        for side, ids in (("L", (13, 14, 15)), ("R", (20, 19, 18))):
+            for sid, name, value in zip(ids, ("hip_pitch", "knee", "ankle"), (hip, knee, ankle)):
+                base = STAND_ANG[f"{side}_{name}"]
+                pose[sid] = angle_to_pwm(sid, base, base if value is None else value, STANDING[sid])
+        if label == "release-arms":
+            pose = dict(STANDING)
+        steps.append(GetupStep(label, pose, duration / speed))
+    return steps
 
 
 class GetupEngine:
-    def __init__(self, dt: float = 0.04, speed: float = 0.7) -> None:
+    def __init__(self, dt: float = 0.03, speed: float = 1.0) -> None:
+        if not math.isfinite(dt) or dt <= 0 or not math.isfinite(speed) or speed <= 0:
+            raise ValueError("Get-up dt and speed must be finite and positive")
         self.dt = dt
         self.speed = speed
-        self.steps = build_getup_sequence(speed)
         self.reset()
 
     @property
@@ -254,47 +52,71 @@ class GetupEngine:
 
     @property
     def label(self) -> str:
-        if not self._running:
+        if self.blocked:
+            return "support-not-ready"
+        if not self.running:
             return "off"
+        if self._wait_s > 0:
+            return "wait-upright"
         return self.steps[self.step_index].label
 
     def reset(self) -> None:
         self._running = False
+        self.blocked = False
+        self.steps: list[GetupStep] = []
         self.step_index = 0
-        self.step_t = 0.0
-        self.step_start_pose = dict(STANDING)
+        self._tick = 0
+        self._upright_s = 0.0
+        self._wait_s = 0.0
+        self._previous_tilt: tuple[float, float] | None = None
         self.current_pose = dict(STANDING)
+        self.step_start_pose = dict(STANDING)
 
     def start(self, current_pose: dict[int, int] | None = None) -> str:
+        initial = {**STANDING, **(current_pose or self.current_pose)}
+        if set(initial) != set(STANDING) or any(not 500 <= value <= 2500 for value in initial.values()):
+            raise ValueError("Get-up requires servo IDs 9..25 and PWM 500..2500")
+        self.reset()
+        self.current_pose = dict(initial)
+        self.step_start_pose = dict(initial)
+        self.steps = build_getup_sequence(initial, self.speed)
         self._running = True
-        self.step_index = 0
-        self.step_t = 0.0
-        self.step_start_pose = dict(current_pose or self.current_pose or STANDING)
-        self.current_pose = dict(self.step_start_pose)
-        ankle_pose = _merge(self.step_start_pose, GETUP_PLANTED_ANKLES)
-        support_arms = {sid: self.step_start_pose.get(sid, STANDING[sid]) for sid in ARM_STANDING}
-        self.steps = [GetupStep("position-ankles", ankle_pose, _scaled(0.65, self.speed))]
-        for step in build_getup_sequence(self.speed):
-            pose = step.pose if step.label == "arms-down" else _merge(step.pose, support_arms)
-            self.steps.append(GetupStep(step.label, pose, step.duration_s))
         return self.label
 
-    def update(self) -> dict[int, int]:
-        if not self._running:
-            self.current_pose = dict(STANDING)
-            return self.current_pose
+    def update(self, tilt: tuple[float, float] | None = None) -> dict[int, int]:
+        """Tilt is fresh IMU roll/pitch relative to standing, never a commanded angle."""
+        if not self.running or self.blocked:
+            return dict(self.current_pose)
+
+        valid = tilt is not None and all(math.isfinite(value) for value in tilt)
+        steady = valid and self._previous_tilt is not None and max(abs(value) for value in tilt) <= 8.0
+        if steady:
+            rate = max(abs((a - b + 180.0) % 360.0 - 180.0) for a, b in zip(tilt, self._previous_tilt)) / self.dt
+            steady = rate <= 20.0
+        self._upright_s = self._upright_s + self.dt if steady else 0.0
+        self._previous_tilt = tilt if valid else None
 
         step = self.steps[self.step_index]
-        self.step_t += self.dt
-        t = self.step_t / step.duration_s
-        self.current_pose = _blend_pose(self.step_start_pose, step.pose, t)
-
-        if t >= 1.0:
+        if step.label == "release-arms" and self._tick > 0 and not steady:
+            self.blocked = True
+            return dict(self.current_pose)
+        if step.label == "release-arms" and self._tick == 0 and self._upright_s < 0.3:
+            self._wait_s += self.dt
+            self.blocked = self._wait_s >= 3.0
+            return dict(self.current_pose)
+        self._wait_s = 0.0
+        self._tick += 1
+        ticks = max(1, round(step.duration_s / self.dt))
+        progress = min(1.0, self._tick / ticks)
+        alpha = progress * progress * (3.0 - 2.0 * progress)
+        self.current_pose = {
+            sid: round(start + alpha * (step.pose[sid] - start))
+            for sid, start in self.step_start_pose.items()
+        }
+        if self._tick >= ticks:
             self.step_index += 1
-            self.step_t = 0.0
+            self._tick = 0
             self.step_start_pose = dict(self.current_pose)
-            if self.step_index >= len(self.steps):
-                self.reset()
-                return dict(STANDING)
-
-        return self.current_pose
+            if self.step_index == len(self.steps):
+                self._running = False
+        return dict(self.current_pose)

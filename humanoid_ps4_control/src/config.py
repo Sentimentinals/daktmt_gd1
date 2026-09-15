@@ -218,7 +218,7 @@ class Config:
     dance_head_pwm: int = 180
 
     # --- Getup ---
-    getup_speed: float = 0.7
+    getup_speed: float = 1.0
 
     # --- Balance ---
     imu_balance: bool = True

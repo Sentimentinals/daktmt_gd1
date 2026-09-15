@@ -179,6 +179,9 @@ def run_manual(
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
+                        if fall_recovery_active:
+                            fall_safety.end_recovery()
+                            fall_recovery_active = False
                         recovery_engine.reset()
                         recovery_step_active = False
                         if recovery is not None:
@@ -262,13 +265,25 @@ def run_manual(
                         turn_cmd = 0.0
                         side_cmd = 0.0
                         motion_requested = False
-                        pose = getup.update()
+                        reading = sensor_snapshot.imu if sensor_snapshot is not None else None
+                        tilt = None
+                        if reading is not None and imu_reference is not None and reading.balance_ready(
+                            args.imu_min_gyro_cal, args.imu_min_accel_cal,
+                        ):
+                            tilt = (
+                                angle_error_deg(reading.roll_deg, imu_reference[0]),
+                                angle_error_deg(reading.pitch_deg, imu_reference[1]),
+                            )
+                        pose = getup.update(tilt)
                         pose_from_getup = True
+                        # Restore fall protection once upright, or when the attempt is blocked.
+                        releasing_arms = getup.label == "release-arms" and pose != getup.steps[-2].pose
+                        if fall_recovery_active and (releasing_arms or getup.blocked or not getup.running):
+                            fall_safety.end_recovery()
+                            fall_recovery_active = False
                         if not getup.running:
                             engine.reset()
                             standing_hold_active = True
-                            fall_safety.end_recovery()
-                            fall_recovery_active = False
                             print("[main] Get-up finished. Holding exact STANDING until movement input.")
                     elif arm_dance.running:
                         vy = 0.0
@@ -295,6 +310,7 @@ def run_manual(
                         side_cmd = 0.0
                         motion_requested = False
                         if not previous_fall_active:
+                            getup.reset()
                             engine.reset()
                             arm_dance.reset()
                             recovery_engine.reset()
@@ -305,7 +321,7 @@ def run_manual(
                                 balance.reset()
                             standing_hold_active = False
                         pose = backend.current_pose
-                    elif previous_fall_active:
+                    elif previous_fall_active and not pose_from_getup:
                         standing_hold_active = True
                         pose = dict(STANDING)
                     previous_fall_active = fall_active

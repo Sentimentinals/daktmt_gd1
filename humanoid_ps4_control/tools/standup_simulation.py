@@ -11,9 +11,8 @@ from pathlib import Path
 from urllib.request import urlopen
 
 from src.balance import extend_arms_forward
-from src.config import Config, STANDING, STAND_ANG
+from src.config import Config, STANDING
 from src.getup import GetupEngine
-from src.walking_engine import angle_to_pwm
 from .standup_physics import simulate
 
 
@@ -34,7 +33,6 @@ dl{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0;font-size:12
 <main><section id="scene"><div id="label"></div><div id="error" role="alert"></div></section>
 <aside><h2>Playback</h2><div class="bar"><button id="back" title="Previous phase" aria-label="Previous phase">&#9198;</button><button id="play" title="Play / pause" aria-label="Play / pause">&#9654;</button><button id="next" title="Next phase" aria-label="Next phase">&#9197;</button><button id="reset" title="Restart" aria-label="Restart">&#8634;</button><select id="speed" aria-label="Playback speed"><option value=".25">0.25x</option><option value=".5">0.5x</option><option selected value="1">1x</option><option value="2">2x</option></select></div>
 <input id="seek" aria-label="Timeline" type="range" min="0" step="1" value="0"><div class="time"><span id="time"></span><span id="total"></span></div>
-<label for="case">Mô hình / quỹ đạo</label><select id="case" style="width:100%"></select>
 <label for="phase">Phase</label><select id="phase" style="width:100%"></select>
 <label for="view">View</label><select id="view" style="width:100%"><option value="side">Side</option><option value="front">Front</option><option value="iso" selected>Perspective</option></select>
 <dl><dt>Độ nghiêng thân</dt><dd id="tilt"></dd><dt>Cao độ hông</dt><dd id="height"></dd><dt>Tiếp xúc sàn</dt><dd id="contacts"></dd><dt>Đứng ổn định</dt><dd id="stable"></dd></dl>
@@ -43,15 +41,13 @@ dl{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0;font-size:12
 <table><thead><tr><th>Servo</th><th>Lệnh (us)</th><th>Khớp mô phỏng (°)</th></tr></thead><tbody id="values"></tbody></table>
 </aside></main>
 <script>__THREE__</script><script>
-const dataset=__DATA__;
-let data=dataset.cases[0];
+const data=__DATA__;
 const $=id=>document.getElementById(id);
 window.addEventListener('error',e=>{$('error').textContent=e.message});
 let index=0,playing=false,clock=0,last=0;
-let frames=data.frames, duration=frames.at(-1).t;
+const frames=data.frames, duration=frames.at(-1).t;
 $('seek').max=frames.length-1;$('total').textContent=duration.toFixed(2)+' s';
-let bounds=frames.reduce((a,f,i)=>{if(!i||f.phase!==frames[i-1].phase)a.push(i);return a},[]);
-dataset.cases.forEach((c,i)=>{const o=document.createElement('option');o.value=i;o.textContent=c.label;$('case').append(o)});
+const bounds=frames.reduce((a,f,i)=>{if(!i||f.phase!==frames[i-1].phase)a.push(i);return a},[]);
 for(const i of bounds){const o=document.createElement('option');o.value=i;o.textContent=frames[i].phase;$('phase').append(o)}
 for(const id of Object.keys(frames[0].pose)){
  const tr=document.createElement('tr');if(id==='15'||id==='18')tr.className='ankle';
@@ -70,10 +66,9 @@ const camera=new THREE.PerspectiveCamera(40,1,1,4000);
 scene.add(new THREE.HemisphereLight(0xffffff,0x64786a,2.5));
 const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(200,400,200);scene.add(light);
 const grid=new THREE.GridHelper(1200,48,0x57695d,0x27352d);grid.position.y=-.5;scene.add(grid);
-function createMeshes(){return data.geometry.map(g=>{
+const meshes=data.geometry.map(g=>{
  const m=new THREE.Mesh(new THREE.BoxGeometry(...g.size),new THREE.MeshStandardMaterial({color:new THREE.Color(...g.color),roughness:.65,metalness:.2}));scene.add(m);return m;
-})}
-let meshes=createMeshes();
+});
 // Frame the recorded path without changing the robot's simulated transform.
 const center=new THREE.Vector3();let distance;
 function framePath(){const extents=new THREE.Box3();
@@ -90,7 +85,7 @@ function draw(){
  $('verdict').textContent=index===frames.length-1?(data.result==='STANDING IN MODEL'?'ĐỨNG ĐƯỢC TRONG MÔ HÌNH':data.release_blocked?'CHƯA ĐỨNG ĐƯỢC - GIỮ TAY CHỐNG':'CHƯA ĐỨNG ĐƯỢC TRONG MÔ HÌNH'):'Chưa kết thúc lượt kiểm tra';
  for(const id of Object.keys(f.pose)){$('p'+id).textContent=f.pose[id];$('a'+id).textContent=f.actual_deg[id].toFixed(1)}
  $('play').innerHTML=playing?'&#10074;&#10074;':'&#9654;';renderer.render(scene,camera);
- window.simState={index,phase:f.phase,pwm:f.pose,playing,frames:frames.length,tilt:f.tilt_deg,height:f.height_mm,contacts:f.contacts,stable:f.stable_s,result:data.result,root:f.root_mm,caseLabel:data.label,releaseBlocked:data.release_blocked};
+ window.simState={index,phase:f.phase,pwm:f.pose,playing,frames:frames.length,tilt:f.tilt_deg,height:f.height_mm,contacts:f.contacts,stable:f.stable_s,result:data.result,root:f.root_mm,releaseBlocked:data.release_blocked};
 }
 function view(){
  const v=$('view').value,offset=new THREE.Vector3(...(v==='front'?[0,.2,1]:v==='side'?[1,.2,0]:[.8,.5,1])).normalize().multiplyScalar(distance);
@@ -101,14 +96,6 @@ $('seek').oninput=()=>{playing=false;seek(Number($('seek').value))};$('phase').o
 $('play').onclick=()=>{if(index===frames.length-1)seek(0);playing=!playing;draw()};$('reset').onclick=()=>{playing=false;seek(0)};
 $('next').onclick=()=>{playing=false;seek(bounds.find(b=>b>index)??frames.length-1)};$('back').onclick=()=>{playing=false;seek(bounds.filter(b=>b<index).at(-1)??0)};
 $('view').onchange=view;
-$('case').onchange=()=>{
- playing=false;index=0;clock=0;data=dataset.cases[Number($('case').value)];frames=data.frames;duration=frames.at(-1).t;
- $('seek').max=frames.length-1;$('total').textContent=duration.toFixed(2)+' s';
- bounds=frames.reduce((a,f,i)=>{if(!i||f.phase!==frames[i-1].phase)a.push(i);return a},[]);
- $('phase').replaceChildren();for(const i of bounds){const o=document.createElement('option');o.value=i;o.textContent=frames[i].phase;$('phase').append(o)}
- for(const m of meshes){scene.remove(m);m.geometry.dispose();m.material.dispose()}meshes=createMeshes();
- showAssumptions();framePath();view();
-};
 new ResizeObserver(()=>{const w=$('scene').clientWidth,h=$('scene').clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();draw()}).observe($('scene'));
 let dragging=false,startX=0;renderer.domElement.style.touchAction='none';
 renderer.domElement.onpointerdown=e=>{dragging=true;startX=e.clientX;renderer.domElement.setPointerCapture(e.pointerId)};
@@ -117,51 +104,6 @@ renderer.domElement.onpointermove=e=>{if(!dragging)return;const a=(e.clientX-sta
 function tick(t){if(playing){clock+=Math.min((t-last)/1000,.1)*Number($('speed').value);while(index<frames.length-1&&frames[index+1].t<=clock)index++;if(clock>=duration){index=frames.length-1;playing=false}draw()}last=t;requestAnimationFrame(tick)}
 view();requestAnimationFrame(tick);
 </script></html>'''
-
-
-def command_frames(config: Config, initial: dict[int, int]):
-    engine = GetupEngine(dt=config.update_ms / 1000, speed=config.getup_speed)
-    engine.start(initial)
-    frames = [{'t': 0.0, 'phase': engine.label, 'pose': initial}]
-    while engine.running:
-        phase = engine.label
-        pose = engine.update()
-        frames.append({'t': round(len(frames) * engine.dt, 6), 'phase': phase, 'pose': pose})
-        if len(frames) > 10000:
-            raise RuntimeError('Getup sequence did not finish')
-    return frames
-
-
-def recovery_command_frames(config: Config, initial: dict[int, int]):
-    """Simulation-only candidate; keep arms until measured support allows release."""
-    stages = [
-        ('plant-feet', 0.9, 30, 55, 90),
-        ('tuck-knees', 1.6, 108, 110, 62),
-        ('shift-over-feet', 1.4, 100, 126, 61),
-        ('upright-crouch', 1.6, 70, 120, 50),
-        ('extend-legs', 1.6, 18, 36, 18),
-        ('hold-standing', 0.6, 18, 36, 18),
-        ('release-arms', 1.0, 18, 36, 18),
-    ]
-    dt = config.update_ms / 1000
-    pose = dict(initial)
-    frames = [dict(t=0.0, phase='support', pose=pose)]
-    for label, duration, hip, knee, ankle in stages:
-        target = dict(pose)
-        for side, ids in (('L', (13, 14, 15)), ('R', (20, 19, 18))):
-            bases = [STAND_ANG[side + '_' + name] for name in ('hip_pitch', 'knee', 'ankle')]
-            for sid, base, value in zip(ids, bases, (hip, knee, ankle)):
-                target[sid] = angle_to_pwm(sid, base, value, STANDING[sid])
-        if label == 'release-arms':
-            target = dict(STANDING)
-        ticks = max(1, round(duration / dt))
-        for tick in range(1, ticks + 1):
-            progress = tick / ticks
-            progress = progress * progress * (3 - 2 * progress)
-            blended = {sid: round(pose[sid] + progress * (target[sid] - pose[sid])) for sid in pose}
-            frames.append(dict(t=round(len(frames) * dt, 6), phase=label, pose=blended))
-        pose = target
-    return frames
 
 
 def main() -> None:
@@ -186,18 +128,10 @@ def main() -> None:
         initial = {**STANDING, **{int(k): int(v) for k, v in raw.get('pose_pwm', raw).items()}}
         if set(initial) != set(STANDING) or any(not 500 <= v <= 2500 for v in initial.values()):
             raise ValueError('Initial pose must contain valid servo IDs and PWM 500..2500')
-    physics = dict(torque_nm=args.torque_nm, friction=args.friction, hip_spacing_mm=args.hip_spacing_mm,
-                   upper_arm_mm=args.upper_arm_mm, forearm_mm=args.forearm_mm, hold_s=3.0)
-    proposed = recovery_command_frames(config, initial)
-    cases = [
-        dict(label=f'Quy dao moi | tay {args.upper_arm_mm:g}/{args.forearm_mm:g} mm (gia dinh)',
-             **simulate(proposed, **physics, gate_arm_release=True)),
-        dict(label='Code hien tai | cung kich thuoc tham chieu',
-             **simulate(command_frames(config, initial), **physics)),
-        dict(label='Quy dao moi | tay 61/66 mm (mo hinh cu)',
-             **simulate(proposed, **{**physics, 'upper_arm_mm': 61.0, 'forearm_mm': 66.0}, gate_arm_release=True)),
-    ]
-    data = {'cases': cases}
+    engine = GetupEngine(dt=config.update_ms / 1000, speed=config.getup_speed)
+    engine.start(initial)
+    data = simulate(engine, torque_nm=args.torque_nm, friction=args.friction, hip_spacing_mm=args.hip_spacing_mm,
+                    upper_arm_mm=args.upper_arm_mm, forearm_mm=args.forearm_mm)
     if args.three_js:
         library = args.three_js.read_text(encoding='utf-8')
     else:
@@ -210,8 +144,7 @@ def main() -> None:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(data, allow_nan=False), encoding='utf-8')
     print(f'Offline physics replay: {args.output.resolve()}')
-    for case in cases:
-        print(case['label'], case['result'], 'release_blocked=', case['release_blocked'])
+    print(data['result'], 'release_blocked=', data['release_blocked'])
     print('Uncalibrated geometry, mass, friction and actuators. Not a hardware validation.')
 
 
