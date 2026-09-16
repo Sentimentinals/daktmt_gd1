@@ -162,6 +162,11 @@ class Config:
     stair_tof_flip_vertical: bool = True
     stair_tof_edge_min_delta_mm: float = 120.0
 
+    # --- Standing Push Recovery ---
+    standing_push_recovery_enabled: bool = True
+    standing_push_recovery_limit_deg: float = 6.0
+    standing_push_recovery_deadband_deg: float = 0.4
+
     # --- Terrain IMU Balance ---
     terrain_balance_limit_deg: float = 8.0
     terrain_balance_deadband_deg: float = 0.35
