@@ -149,7 +149,7 @@ def run_terrain_auto(
                     stable_frames = 0
                     stepper.reset()
                     approach.reset()
-                    backend.send(STANDING, duration_ms=args.stop_ms, force=True)
+                    cooldown_until = loop_started + args.stop_ms / 1000.0
                 previous_stop = control.stop
 
                 snapshot = sensor_hub.read() if sensor_hub is not None else None
@@ -324,8 +324,15 @@ def run_terrain_auto(
                 elif previous_fall_active:
                     pose = dict(STANDING)
                     status = "UPRIGHT - ARMS RETURNED"
+                    cooldown_until = now + args.stop_ms / 1000.0
                 previous_fall_active = fall_active
-                if not fall_active and approach.is_idle_ready() and imu is not None and balance is not None and balance_enabled:
+                balance_active = (
+                    balance_enabled and balance is not None and imu is not None
+                    and not fall_active and not enabled and not stepper.active
+                    and approach.is_idle_ready() and gait["phase"] == "terrain-wait"
+                    and now >= cooldown_until
+                )
+                if balance_active:
                     pose = balance.apply(
                         pose,
                         roll_deg=imu.roll_deg,
@@ -333,8 +340,10 @@ def run_terrain_auto(
                         dt=dt,
                         support_leg=str(gait.get("support_leg", "double")),
                     )
+                elif balance is not None:
+                    balance.reset()
 
-                backend.send(pose, duration_ms=args.update_ms)
+                backend.send(pose, duration_ms=args.stop_ms if control.stop else args.update_ms, force=control.stop)
                 last_pose = backend.current_pose
                 dashboard.publish(
                     pose=last_pose,
@@ -346,7 +355,7 @@ def run_terrain_auto(
                     balance_status=(
                         fall_safety.status
                         if fall_active or balance is None
-                        else f"{'IMU ON' if balance_enabled else 'IMU OFF'} | {fall_safety.status}"
+                        else f"{'IMU ON' if balance_active else 'IMU PAUSED' if balance_enabled else 'IMU OFF'} | {fall_safety.status}"
                     ),
                 )
                 dashboard.set_runtime("terrain", status)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
-from math import isfinite
 import time
 
 from .backends import make_backend
@@ -17,7 +16,7 @@ def run_manual(
     fall_safety,
 ) -> None:
     from .arm_dance import ArmDanceEngine
-    from .balance import BalanceConfig, IMUBalanceController, angle_error_deg
+    from .balance import angle_error_deg
     from .gait_dashboard import stationary_gait
     from .getup import GetupEngine
     from .sensors import DepthObstacleGuard
@@ -42,11 +41,6 @@ def run_manual(
         head_pwm=args.dance_head_pwm,
     )
     getup = GetupEngine(dt=args.update_ms / 1000.0, speed=args.getup_speed)
-    standing_balance = IMUBalanceController(BalanceConfig(
-        max_correction_deg=args.standing_push_recovery_limit_deg,
-        roll_deadband_deg=args.standing_push_recovery_deadband_deg,
-        pitch_deadband_deg=args.standing_push_recovery_deadband_deg,
-    ))
     obstacle_guard = DepthObstacleGuard(
         stop_distance_mm=args.tof_obstacle_stop_mm,
         clear_margin_mm=args.tof_obstacle_clear_margin_mm,
@@ -56,7 +50,6 @@ def run_manual(
     previous_dance = False
     previous_fall = fall_safety.active
     recovery_active = False
-    standing_after = 0.0
     dashboard.set_runtime("manual", "Manual control ready")
 
     try:
@@ -73,7 +66,6 @@ def run_manual(
                     side = state.side * args.side_speed
                     reset_requested = state.stop or state.reset
                     if reset_requested and not fall_safety.active:
-                        standing_after = started + args.stop_ms / 1000.0
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
@@ -96,7 +88,6 @@ def run_manual(
                     previous_dance = state.dance
 
                     gait = stationary_gait()
-                    standing_ready = False
                     if getup.running:
                         reading = snapshot.imu if snapshot is not None else None
                         reference = fall_safety.reference
@@ -123,7 +114,6 @@ def run_manual(
                         status = "ARM DANCE"
                         gait = stationary_gait("dance")
                     else:
-                        standing_ready = engine.is_idle_ready() and not any((forward, turn, side)) and started >= standing_after
                         pose = engine.update(forward, turn_cmd=turn, side_cmd=side)
                         pose[25] = round(STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
                             1 if turn > 0.0 else -1 if turn < 0.0 else 0
@@ -153,34 +143,10 @@ def run_manual(
                         status = "FALL DETECTED - ARMS FORWARD"
                         gait = stationary_gait("fall")
                     elif previous_fall:
-                        standing_after = started + args.stop_ms / 1000.0
                         engine.reset()
                         pose = dict(STANDING)
                         status = "UPRIGHT - STANDING"
                         gait = stationary_gait()
-                    push_active = False
-                    push_status = "PUSH OFF" if not args.standing_push_recovery_enabled else "PUSH PAUSED"
-                    if args.standing_push_recovery_enabled and standing_ready and not fall_active and not previous_fall:
-                        reading = snapshot.imu if snapshot is not None else None
-                        reference = fall_safety.reference
-                        if reading is not None and reference is not None and all(isfinite(value) for value in (
-                            reading.roll_deg, reading.pitch_deg, *reference,
-                        )):
-                            pose = standing_balance.apply(
-                                pose,
-                                roll_deg=-angle_error_deg(reading.roll_deg, reference[0]),
-                                pitch_deg=-angle_error_deg(reading.pitch_deg, reference[1]),
-                                dt=args.update_ms / 1000.0,
-                            )
-                            push_active = pose != STANDING
-                            push_status = "PUSH ACTIVE" if push_active else "PUSH READY"
-                            if push_active:
-                                status = "STANDING - PUSH RECOVERY"
-                        else:
-                            standing_balance.reset()
-                            push_status = "PUSH IMU WAIT"
-                    else:
-                        standing_balance.reset()
                     previous_fall = fall_active
 
                     depth = snapshot.depth if snapshot is not None else None
@@ -194,9 +160,9 @@ def run_manual(
                         gait=gait,
                         sensor_snapshot=snapshot,
                         status=status,
-                        active=fall_active or push_active or getup.running or arm_dance.running or not engine.is_idle_ready(),
+                        active=fall_active or getup.running or arm_dance.running or not engine.is_idle_ready(),
                         camera_ready=camera_ready,
-                        balance_status=f"{fall_safety.status} | {push_status}",
+                        balance_status=fall_safety.status,
                     )
                     dashboard.set_runtime("manual", status)
                     remaining = args.update_ms / 1000.0 - (time.monotonic() - started)

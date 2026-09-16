@@ -52,10 +52,9 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
 - Fall detection chạy toàn cục khi IMU hoạt động và ưu tiên hơn mọi mode.
 - Khi phát hiện ngã, hai tay đưa nhanh ra trước; khi robot thẳng lại, tay trở về
   tư thế đứng.
-- Manual: push recovery bù ankle/hip bằng IMU chỉ khi đã về standing và không
-  có lệnh di chuyển. Không tạo bước dậm, không sửa knee hoặc gait. Khi control
-  bị tắt, đang dừng bước, dance, stand-up hoặc fall thì push recovery không chạy.
-- Terrain Auto giữ bộ IMU balance riêng; không ghi đè walking mặt phẳng.
+- Balance/push recovery chỉ dùng bộ IMU balance sẵn có trong Terrain Auto khi
+  standing, Auto stair đã tắt và không còn động tác đang chạy hoặc đang dừng.
+  Không áp dụng trong Manual/Person Follow; không tạo bộ bù hay bước dậm riêng.
 - FSR hiện chỉ trả lực hai chân lên dashboard, không khóa walking hoặc balance.
 
 ## Phần cứng
