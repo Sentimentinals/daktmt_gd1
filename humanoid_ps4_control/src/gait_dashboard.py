@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlparse
 
 
 STATIC_ROOT = Path(__file__).resolve().parent.parent / "web" / "gait_dashboard"
-CONTROL_MODES = {"manual", "terrain", "follow", "pickup"}
+CONTROL_MODES = {"manual", "terrain", "follow"}
 CONTROL_ACTIONS = {
     "stop",
     "reset",
@@ -25,7 +25,6 @@ CONTROL_ACTIONS = {
     "stair_toggle",
     "follow",
     "ignore_person",
-    "pickup_toggle",
 }
 
 
@@ -44,7 +43,6 @@ class WebControlState:
     auto_toggle: bool = False
     follow: bool = False
     ignore_person: bool = False
-    pickup_toggle: bool = False
     stair_toggle: bool = False
 
 
@@ -191,7 +189,12 @@ class GaitDashboard:
             self._control_sequence = sequence
             self._control_last_at = now
             requested_mode = str(request.get("mode", self._control_mode))
-            if requested_mode in CONTROL_MODES and requested_mode != self._control_mode:
+            if requested_mode not in CONTROL_MODES:
+                self._control_armed = False
+                self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
+                self._control_actions.clear()
+                return 400, {"error": "Unsupported control mode"}
+            if requested_mode != self._control_mode:
                 self._control_mode = requested_mode
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
                 self._control_actions.clear()
@@ -248,7 +251,6 @@ class GaitDashboard:
                 auto_toggle="terrain_toggle" in actions,
                 follow="follow" in actions,
                 ignore_person="ignore_person" in actions,
-                pickup_toggle="pickup_toggle" in actions,
                 stair_toggle="stair_toggle" in actions,
             )
 

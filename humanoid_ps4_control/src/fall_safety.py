@@ -107,7 +107,6 @@ class FallSafety:
         if (
             self._thread is not None
             or self.sensor_hub is None
-            or not (self.args.fall_detection_enabled or self.args.imu_balance)
         ):
             return
         self._stop.clear()

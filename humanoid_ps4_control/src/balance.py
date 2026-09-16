@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 from typing import Dict, Optional
 
 from .config import Config, STANDING
@@ -79,43 +78,6 @@ class BalanceConfig:
 
     swing_leg_gain: float = 0.0
     double_support_gain: float = 0.70
-
-
-class RecoveryState(str, Enum):
-    STABLE = "stable"
-    ANKLE_HIP = "ankle-hip"
-    STOMP = "stomp"
-    COUNTER_LEAN = "counter-lean"
-    SAFE_LOWER = "safe-lower"
-
-
-@dataclass
-class PushRecoveryConfig:
-    warning_tilt_deg: float = 3.0
-    recovery_tilt_deg: float = 5.0
-    safe_lower_tilt_deg: float = 9.0
-    recovery_rate_deg_s: float = 28.0
-    settle_tilt_deg: float = 1.4
-    recovery_step_forward_cmd: float = 0.10
-    recovery_step_side_cmd: float = 0.08
-    recovery_step_timeout_s: float = 3.0
-    counter_lean_s: float = 0.40
-    counter_lean_deg: float = 1.5
-
-
-@dataclass(frozen=True)
-class RecoveryDecision:
-    state: RecoveryState
-    reason: str
-    start_step: bool = False
-    forward_cmd: float = 0.0
-    side_cmd: float = 0.0
-    target_roll_offset_deg: float = 0.0
-    target_pitch_offset_deg: float = 0.0
-
-    @property
-    def safe_lower(self) -> bool:
-        return self.state is RecoveryState.SAFE_LOWER
 
 
 @dataclass
@@ -209,140 +171,6 @@ def update_fall_detector(
     return detector.triggered
 
 
-class PushRecoveryController:
-    """Safety state machine around the bounded ankle/hip stabilizer.
-
-    It does not generate servo corrections itself. The caller keeps the IMU
-    PID post-IK and uses the walking engine for the short recovery step.
-    """
-
-    def __init__(self, config: Optional[PushRecoveryConfig] = None) -> None:
-        self.config = config or PushRecoveryConfig()
-        self.reset()
-
-    def reset(self) -> None:
-        self.state = RecoveryState.STABLE
-        self.reason = "stable"
-        self._previous_roll: Optional[float] = None
-        self._previous_pitch: Optional[float] = None
-        self._started_at = 0.0
-        self._counter_roll_deg = 0.0
-        self._counter_pitch_deg = 0.0
-        self._step_forward_cmd = 0.0
-        self._step_side_cmd = 0.0
-
-    def force_safe_lower(self, reason: str) -> RecoveryDecision:
-        self.state = RecoveryState.SAFE_LOWER
-        self.reason = reason
-        self._step_forward_cmd = 0.0
-        self._step_side_cmd = 0.0
-        return RecoveryDecision(self.state, self.reason)
-
-    def complete_step(self, now: float) -> RecoveryDecision:
-        if self.state is RecoveryState.STOMP:
-            self.state = RecoveryState.COUNTER_LEAN
-            self.reason = "stomp landed; counter-lean"
-            self._started_at = now
-            self._step_forward_cmd = 0.0
-            self._step_side_cmd = 0.0
-        return self._decision()
-
-    def update(
-        self,
-        roll_deg: float,
-        pitch_deg: float,
-        dt: float,
-        walking: bool = False,
-        now: float = 0.0,
-    ) -> RecoveryDecision:
-        cfg = self.config
-        dt = max(0.005, min(0.10, dt))
-        roll_rate = _angle_rate_deg(roll_deg, self._previous_roll, dt)
-        pitch_rate = _angle_rate_deg(pitch_deg, self._previous_pitch, dt)
-        self._previous_roll = roll_deg
-        self._previous_pitch = pitch_deg
-        max_tilt = max(abs(roll_deg), abs(pitch_deg))
-        max_rate = max(abs(roll_rate), abs(pitch_rate))
-
-        if self.state is RecoveryState.SAFE_LOWER:
-            if max_tilt <= cfg.settle_tilt_deg:
-                self.reset()
-            return self._decision()
-
-        if max_tilt >= cfg.safe_lower_tilt_deg:
-            return self.force_safe_lower("tilt limit")
-        if self.state is RecoveryState.STOMP:
-            if now > 0.0 and now - self._started_at > cfg.recovery_step_timeout_s:
-                return self.force_safe_lower("stomp timeout")
-            return self._decision()
-        if self.state is RecoveryState.COUNTER_LEAN:
-            if now > 0.0 and now - self._started_at >= cfg.counter_lean_s:
-                self.state = RecoveryState.ANKLE_HIP
-                self.reason = "settling"
-                self._counter_roll_deg = 0.0
-                self._counter_pitch_deg = 0.0
-            return self._decision()
-
-        step_triggered = max_tilt >= cfg.recovery_tilt_deg and (
-            max_rate >= cfg.recovery_rate_deg_s or max_tilt >= cfg.recovery_tilt_deg + 1.0
-        )
-        if step_triggered and walking:
-            self.state = RecoveryState.ANKLE_HIP
-            self.reason = "walking ankle/hip correction"
-            return self._decision()
-        if step_triggered:
-            self.state = RecoveryState.STOMP
-            self.reason = "stomp recovery"
-            self._started_at = now
-            forward_cmd, side_cmd = self._fall_command(roll_deg, pitch_deg)
-            self._step_forward_cmd = forward_cmd
-            self._step_side_cmd = side_cmd
-            counter = abs(cfg.counter_lean_deg)
-            self._counter_roll_deg = -counter if roll_deg > 0.0 else counter if roll_deg < 0.0 else 0.0
-            self._counter_pitch_deg = -counter if pitch_deg > 0.0 else counter if pitch_deg < 0.0 else 0.0
-            return RecoveryDecision(
-                self.state,
-                self.reason,
-                start_step=True,
-                forward_cmd=forward_cmd,
-                side_cmd=side_cmd,
-            )
-
-        if max_tilt >= cfg.warning_tilt_deg:
-            self.state = RecoveryState.ANKLE_HIP
-            self.reason = "ankle/hip correction"
-        elif max_tilt <= cfg.settle_tilt_deg:
-            self.state = RecoveryState.STABLE
-            self.reason = "stable"
-        else:
-            self.state = RecoveryState.ANKLE_HIP
-            self.reason = "settling"
-        return self._decision()
-
-    def _decision(self) -> RecoveryDecision:
-        if self.state is RecoveryState.STOMP:
-            return RecoveryDecision(
-                self.state,
-                self.reason,
-                forward_cmd=self._step_forward_cmd,
-                side_cmd=self._step_side_cmd,
-            )
-        if self.state is RecoveryState.COUNTER_LEAN:
-            return RecoveryDecision(
-                self.state,
-                self.reason,
-                target_roll_offset_deg=self._counter_roll_deg,
-                target_pitch_offset_deg=self._counter_pitch_deg,
-            )
-        return RecoveryDecision(self.state, self.reason)
-
-    def _fall_command(self, roll_deg: float, pitch_deg: float) -> tuple[float, float]:
-        cfg = self.config
-        if abs(pitch_deg) >= abs(roll_deg):
-            return (cfg.recovery_step_forward_cmd if pitch_deg > 0.0 else -cfg.recovery_step_forward_cmd), 0.0
-        return 0.0, (cfg.recovery_step_side_cmd if roll_deg > 0.0 else -cfg.recovery_step_side_cmd)
-
-
 def extend_arms_forward(
     pose: Pose,
     forward_pwm: int,
@@ -400,12 +228,10 @@ class IMUBalanceController:
         pitch_deg: float,
         dt: float,
         support_leg: str = "double",
-        target_roll_offset_deg: float = 0.0,
-        target_pitch_offset_deg: float = 0.0,
     ) -> Pose:
         cfg = self.config
-        roll_error = angle_error_deg(roll_deg, cfg.target_roll_deg + target_roll_offset_deg)
-        pitch_error = angle_error_deg(pitch_deg, cfg.target_pitch_deg + target_pitch_offset_deg)
+        roll_error = angle_error_deg(roll_deg, cfg.target_roll_deg)
+        pitch_error = angle_error_deg(pitch_deg, cfg.target_pitch_deg)
 
         if abs(roll_error) < cfg.roll_deadband_deg:
             roll_error = 0.0

@@ -44,15 +44,11 @@ def run_terrain_auto(
     approach = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
         t_step=max(1.25, args.t_step),
-        t_dbl=args.t_dbl,
         max_step_len=18.0,
         max_turn_step_len=4.0,
         max_side_step_len=0.0,
-        step_height=24.0,
-        crouch_depth_mm=0.0,
-        zmp_support_ratio=args.zmp_support_ratio,
-        ankle_roll_gain=args.ankle_roll_gain,
-        arm_swing_pwm=0,
+        crouch_depth_mm=args.walk_crouch_depth_mm,
+        weight_shift_mm=args.walk_weight_shift_mm,
     )
     stepper = StairStepEngine(
         clearance_mm=args.stair_foot_clearance_mm,
@@ -329,7 +325,7 @@ def run_terrain_auto(
                     pose = dict(STANDING)
                     status = "UPRIGHT - ARMS RETURNED"
                 previous_fall_active = fall_active
-                if not fall_active and imu is not None and balance is not None and balance_enabled:
+                if not fall_active and approach.is_idle_ready() and imu is not None and balance is not None and balance_enabled:
                     pose = balance.apply(
                         pose,
                         roll_deg=imu.roll_deg,

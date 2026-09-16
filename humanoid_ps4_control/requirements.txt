@@ -4,7 +4,7 @@
 # Serial communication with RTrobot controller board
 pyserial>=3.5
 
-# ZMP preview controller and IK trajectory math
+# IK and foot trajectory math
 numpy>=1.24
 
 # BNO055, foot FSR, and VL53L5CX data arrive from the ESP32 over pyserial.

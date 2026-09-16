@@ -15,60 +15,21 @@ def run_manual(
     sensor_hub,
     fall_safety,
 ) -> None:
-    dashboard.set_runtime("manual", "Starting Manual")
-    from .walking_engine import (
-        DynamicWalkingEngine,
-        STANDING,
-    )
     from .arm_dance import ArmDanceEngine
+    from .balance import angle_error_deg
+    from .gait_dashboard import stationary_gait
     from .getup import GetupEngine
-    from .balance import (
-        BalanceConfig,
-        IMUBalanceController,
-        PushRecoveryConfig,
-        PushRecoveryController,
-        RecoveryState,
-        angle_error_deg,
-    )
     from .sensors import DepthObstacleGuard
+    from .walking_engine import DynamicWalkingEngine, STANDING
 
-    obstacle_guard = DepthObstacleGuard(
-        stop_distance_mm=args.tof_obstacle_stop_mm,
-        clear_margin_mm=args.tof_obstacle_clear_margin_mm,
-        stable_frames=args.tof_obstacle_stable_frames,
-    )
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
         t_step=args.t_step,
-        t_dbl=args.t_dbl,
         max_step_len=args.walk_step_length_mm,
         max_turn_step_len=args.max_turn_step_len,
         max_side_step_len=args.max_side_step_len,
-        step_height=args.walk_step_height_mm,
         crouch_depth_mm=args.walk_crouch_depth_mm,
-        forward_lean_deg=args.walk_forward_lean_deg,
-        zmp_support_ratio=args.zmp_support_ratio,
-        ankle_roll_gain=args.ankle_roll_gain,
-        step_x_ratio=1.0,
-        landing_gap_mm=args.walk_step_length_mm,
-        lift_start_phase=args.walk_lift_start_phase,
-        swing_advance_end_phase=args.walk_swing_advance_end_phase,
-        lift_end_phase=args.walk_lift_end_phase,
-        landing_roll_release_start=args.walk_landing_roll_release_start,
-        arm_swing_pwm=args.arm_swing_pwm,
-        arm_right_dir=args.arm_right_dir,
-        arm_left_dir=args.arm_left_dir,
-        crouch_transition_s=args.walk_crouch_transition_s,
-    )
-    recovery_engine = DynamicWalkingEngine(
-        dt=args.update_ms / 1000.0,
-        t_step=args.push_recovery_step_time_s,
-        t_dbl=args.t_dbl,
-        max_step_len=args.walk_step_length_mm,
-        max_side_step_len=args.max_side_step_len,
-        step_height=args.push_recovery_step_height_mm,
-        step_x_ratio=1.0,
-        landing_gap_mm=0.0,
+        weight_shift_mm=args.walk_weight_shift_mm,
     )
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,
@@ -79,434 +40,140 @@ def run_manual(
         lift_pwm=args.dance_lift_pwm,
         head_pwm=args.dance_head_pwm,
     )
-    getup = GetupEngine(
-        dt=args.update_ms / 1000.0,
-        speed=args.getup_speed,
+    getup = GetupEngine(dt=args.update_ms / 1000.0, speed=args.getup_speed)
+    obstacle_guard = DepthObstacleGuard(
+        stop_distance_mm=args.tof_obstacle_stop_mm,
+        clear_margin_mm=args.tof_obstacle_clear_margin_mm,
+        stable_frames=args.tof_obstacle_stable_frames,
     )
-    prev_dance_pressed = False
-    prev_stop_pressed = False
-    prev_getup_pressed = False
-    fall_recovery_active = False
-    last_pose = dict(STANDING)
-    standing_hold_active = True
+    previous_getup = False
+    previous_dance = False
+    previous_fall = fall_safety.active
+    recovery_active = False
+    dashboard.set_runtime("manual", "Manual control ready")
 
-    balance = None
-    imu_reference = None
-    recovery = None
-    recovery_step_active = False
-    recovery_status = "STABLE"
-    previous_recovery_status = recovery_status
-    sensor_snapshot = None
-    last_balance_t = time.monotonic()
-    balance_has_valid_imu = False
-    previous_fall_active = fall_safety.active
-    obstacle_blocked = False
-    obstacle_mm = None
-    previous_obstacle_blocked = False
     try:
         with backend:
-            last_pose = backend.current_pose
-            dashboard.set_runtime("manual", "Manual control ready")
             try:
                 while True:
-                    loop_started = time.monotonic()
+                    started = time.monotonic()
                     state = dashboard.control_state()
                     if not state.armed or state.mode != "manual":
                         break
-
-                    shared_reference = fall_safety.reference
-                    if shared_reference is not None and shared_reference != imu_reference:
-                        imu_reference = shared_reference
-                        target_roll, target_pitch = imu_reference
-                        if args.imu_balance:
-                            balance = IMUBalanceController(
-                                BalanceConfig(
-                                    target_roll_deg=target_roll,
-                                    target_pitch_deg=target_pitch,
-                                    max_correction_deg=args.balance_limit_deg,
-                                    roll_deadband_deg=args.balance_deadband_deg,
-                                    pitch_deadband_deg=args.balance_deadband_deg,
-                                )
-                            )
-                        if args.imu_balance and args.push_recovery_enabled:
-                            recovery = PushRecoveryController(
-                                PushRecoveryConfig(
-                                    warning_tilt_deg=args.push_recovery_warning_tilt_deg,
-                                    recovery_tilt_deg=args.push_recovery_tilt_deg,
-                                    safe_lower_tilt_deg=args.push_recovery_safe_lower_tilt_deg,
-                                    recovery_rate_deg_s=args.push_recovery_rate_deg_s,
-                                    settle_tilt_deg=args.push_recovery_settle_tilt_deg,
-                                    recovery_step_forward_cmd=args.push_recovery_step_forward_cmd,
-                                    recovery_step_side_cmd=args.push_recovery_step_side_cmd,
-                                    recovery_step_timeout_s=args.push_recovery_timeout_s,
-                                    counter_lean_s=args.push_recovery_counter_lean_s,
-                                    counter_lean_deg=args.push_recovery_counter_lean_deg,
-                                )
-                            )
-                        print(
-                            f"[main] Shared IMU reference roll={target_roll:.2f}, "
-                            f"pitch={target_pitch:.2f}."
-                        )
-
-                    if sensor_hub is not None:
-                        sensor_snapshot = sensor_hub.read()
-                        depth = sensor_snapshot.depth
-                        guarded_blocked, guarded_mm = obstacle_guard.update(depth)
-                        obstacle_blocked = guarded_blocked if depth is not None else False
-                        obstacle_mm = guarded_mm if depth is not None else None
-                        if obstacle_blocked != previous_obstacle_blocked:
-                            print(
-                                f"[main] ToF obstacle {'detected' if obstacle_blocked else 'cleared'}"
-                                f"{f' at {obstacle_mm} mm' if obstacle_mm is not None else ''}."
-                            )
-                            previous_obstacle_blocked = obstacle_blocked
-    
-                    vy = state.forward * args.walk_speed
-                    turn_cmd = state.turn * args.turn_speed
-                    side_cmd = state.side * args.side_speed
-                    motion_requested = vy != 0.0 or turn_cmd != 0.0 or side_cmd != 0.0
-
-                    head_turn_cmd = turn_cmd
-
-                    stop_pressed = state.stop
-                    if stop_pressed:
-                        if fall_safety.active:
-                            dashboard.set_runtime("manual", "Fall - holding protective pose")
-                            continue
-                        if not prev_stop_pressed:
-                            print("[main] Space pressed. Hard stop to STANDING.")
-                        prev_stop_pressed = True
+                    snapshot = sensor_hub.read() if sensor_hub is not None else None
+                    forward = state.forward * args.walk_speed
+                    turn = state.turn * args.turn_speed
+                    side = state.side * args.side_speed
+                    reset_requested = state.stop or state.reset
+                    if reset_requested and not fall_safety.active:
                         engine.reset()
                         arm_dance.reset()
                         getup.reset()
-                        if fall_recovery_active:
+                        if recovery_active:
                             fall_safety.end_recovery()
-                            fall_recovery_active = False
-                        recovery_engine.reset()
-                        recovery_step_active = False
-                        if recovery is not None:
-                            recovery.reset()
-                            recovery_status = "STABLE"
-                        standing_hold_active = True
-                        pose = dict(STANDING)
-
-                        try:
-                            backend.send(pose, duration_ms=args.stop_ms, force=True)
-                            last_pose = dict(pose)
-                        except Exception as exc:
-                            print(f"[main] Backend send exception: {exc}")
-                        dashboard.set_runtime("manual", "Stop / standing")
-                        continue
-                    prev_stop_pressed = False
-
-                    getup_pressed = state.getup
-                    if getup_pressed and not prev_getup_pressed:
+                            recovery_active = False
+                    elif state.getup and not previous_getup:
                         protected_pose = backend.current_pose
                         fall_safety.begin_recovery()
-                        fall_recovery_active = True
+                        recovery_active = True
                         engine.reset()
                         arm_dance.reset()
-                        recovery_engine.reset()
-                        recovery_step_active = False
-                        if recovery is not None:
-                            recovery.reset()
-                            recovery_status = "STABLE"
-                        standing_hold_active = False
-                        label = getup.start(protected_pose)
-                        print(f"[main] G pressed. Running front get-up sequence from step {label}.")
-                    prev_getup_pressed = getup_pressed
-
-                    dance_pressed = state.dance
-                    if (
-                        dance_pressed
-                        and not prev_dance_pressed
-                        and not getup.running
-                    ):
-                        enabled = arm_dance.toggle()
+                        getup.start(protected_pose)
+                        previous_fall = False
+                        print("[main] G: starting stand-up.")
+                    elif state.dance and not previous_dance and not getup.running and not fall_safety.active:
+                        arm_dance.toggle()
                         engine.reset()
-                        standing_hold_active = not enabled
-                        print("[main] L/M arm dance ON." if enabled else "[main] L/M arm dance OFF - returning to STANDING.")
-                    prev_dance_pressed = dance_pressed
+                    previous_getup = state.getup
+                    previous_dance = state.dance
 
-                    if state.reset:
-                        if fall_safety.active:
-                            print("[main] FALL reset blocked. Hold upright or press G for Stand up.")
-                            dashboard.set_runtime("manual", "Fall reset blocked")
-                            continue
-                        print("[main] C pressed. Resetting Manual control to STANDING.")
-                        engine.reset()
-                        arm_dance.reset()
-                        getup.reset()
-                        recovery_engine.reset()
-                        recovery_step_active = False
-                        if recovery is not None:
-                            recovery.reset()
-                            recovery_status = "STABLE"
-                        if balance is not None:
-                            balance.reset()
-                            balance_has_valid_imu = False
-                        if fall_recovery_active:
-                            fall_safety.end_recovery()
-                            fall_recovery_active = False
-                        standing_hold_active = True
-                        pose = dict(STANDING)
-                        try:
-                            backend.send(pose, duration_ms=args.stop_ms, force=True)
-                            last_pose = dict(pose)
-                            dashboard.set_runtime("manual", "Reset / standing")
-                        except Exception as exc:
-                            print(f"[main] Backend send exception during reset: {exc}")
-                            dashboard.set_runtime("manual", "Reset failed")
-                        continue
-
-                    pose_from_getup = False
+                    gait = stationary_gait()
                     if getup.running:
-                        vy = 0.0
-                        turn_cmd = 0.0
-                        side_cmd = 0.0
-                        motion_requested = False
-                        reading = sensor_snapshot.imu if sensor_snapshot is not None else None
+                        reading = snapshot.imu if snapshot is not None else None
+                        reference = fall_safety.reference
                         tilt = None
-                        if reading is not None and imu_reference is not None and reading.balance_ready(
+                        if reading is not None and reference is not None and reading.balance_ready(
                             args.imu_min_gyro_cal, args.imu_min_accel_cal,
                         ):
                             tilt = (
-                                angle_error_deg(reading.roll_deg, imu_reference[0]),
-                                angle_error_deg(reading.pitch_deg, imu_reference[1]),
+                                angle_error_deg(reading.roll_deg, reference[0]),
+                                angle_error_deg(reading.pitch_deg, reference[1]),
                             )
                         pose = getup.update(tilt)
-                        pose_from_getup = True
-                        # Restore fall protection once upright, or when the attempt is blocked.
-                        releasing_arms = getup.label == "release-arms" and pose != getup.steps[-2].pose
-                        if fall_recovery_active and (releasing_arms or getup.blocked or not getup.running):
+                        releasing = getup.label == "release-arms" and pose != getup.steps[-2].pose
+                        if recovery_active and (releasing or getup.blocked or not getup.running):
                             fall_safety.end_recovery()
-                            fall_recovery_active = False
-                        if not getup.running:
-                            engine.reset()
-                            standing_hold_active = True
-                            print("[main] Get-up finished. Holding exact STANDING until movement input.")
-                    elif arm_dance.running:
-                        vy = 0.0
-                        turn_cmd = 0.0
-                        side_cmd = 0.0
-                        motion_requested = False
-                        pose = arm_dance.update()
-                    elif standing_hold_active and not motion_requested:
+                            recovery_active = False
+                        status = f"GET-UP: {getup.label.upper()}" if getup.running else "STANDING"
+                        gait = stationary_gait(getup.label)
+                    elif reset_requested:
                         pose = dict(STANDING)
-                    elif not motion_requested and engine.is_idle_ready():
-                        engine.reset()
-                        standing_hold_active = True
-                        pose = dict(engine.ready_pose)
+                        status = "Stop / standing" if state.stop else "Reset / standing"
+                    elif arm_dance.running:
+                        pose = arm_dance.update()
+                        status = "ARM DANCE"
+                        gait = stationary_gait("dance")
                     else:
-                        if motion_requested and standing_hold_active:
-                            engine.reset()
-                            standing_hold_active = False
-                        pose = engine.update(vy, turn_cmd=turn_cmd, side_cmd=side_cmd)
+                        pose = engine.update(forward, turn_cmd=turn, side_cmd=side)
+                        pose[25] = round(STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
+                            1 if turn > 0.0 else -1 if turn < 0.0 else 0
+                        ))
+                        gait = engine.telemetry_snapshot()
+                        directions = []
+                        if forward:
+                            directions.append("FORWARD" if forward > 0 else "BACKWARD")
+                        if turn:
+                            directions.append("TURN LEFT" if turn > 0 else "TURN RIGHT")
+                        if side:
+                            directions.append("SIDE LEFT" if side > 0 else "SIDE RIGHT")
+                        status = " + ".join(directions) if directions else (
+                            "SETTLING" if not engine.is_idle_ready() else "WALK READY"
+                        )
 
                     fall_active = fall_safety.active
                     if fall_active:
-                        vy = 0.0
-                        turn_cmd = 0.0
-                        side_cmd = 0.0
-                        motion_requested = False
-                        if not previous_fall_active:
-                            getup.reset()
+                        if not previous_fall:
                             engine.reset()
                             arm_dance.reset()
-                            recovery_engine.reset()
-                            recovery_step_active = False
-                            if recovery is not None:
-                                recovery.reset()
-                            if balance is not None:
-                                balance.reset()
-                            standing_hold_active = False
+                            getup.reset()
+                            if recovery_active:
+                                fall_safety.end_recovery()
+                                recovery_active = False
                         pose = backend.current_pose
-                    elif previous_fall_active and not pose_from_getup:
-                        standing_hold_active = True
+                        status = "FALL DETECTED - ARMS FORWARD"
+                        gait = stationary_gait("fall")
+                    elif previous_fall:
+                        engine.reset()
                         pose = dict(STANDING)
-                    previous_fall_active = fall_active
+                        status = "UPRIGHT - STANDING"
+                        gait = stationary_gait()
+                    previous_fall = fall_active
 
-                    if balance is not None and not pose_from_getup and not fall_active:
-                        now = time.monotonic()
-                        balance_dt = now - last_balance_t
-                        last_balance_t = now
-                        reading = sensor_snapshot.imu if sensor_snapshot is not None else None
-                        if reading is not None and reading.balance_ready(
-                            args.imu_min_gyro_cal,
-                            args.imu_min_accel_cal,
-                        ):
-                            support_leg = (
-                                recovery_engine.support_leg
-                                if recovery_step_active
-                                else engine.support_leg
-                            )
-                            recovery_roll_offset = 0.0
-                            recovery_pitch_offset = 0.0
-                            walking_active = (
-                                not recovery_step_active
-                                and (motion_requested or not engine.is_idle_ready())
-                            )
-                            recovery_allowed = recovery_step_active or not arm_dance.running
-                            if recovery is not None and recovery_allowed:
-                                decision = recovery.update(
-                                    -angle_error_deg(reading.roll_deg, balance.config.target_roll_deg),
-                                    -angle_error_deg(reading.pitch_deg, balance.config.target_pitch_deg),
-                                    balance_dt,
-                                    walking=walking_active,
-                                    now=now,
-                                )
-                                recovery_status = f"{decision.state.value}: {decision.reason}"
-                                recovery_roll_offset = decision.target_roll_offset_deg
-                                recovery_pitch_offset = decision.target_pitch_offset_deg
-                                if decision.start_step:
-                                    recovery_engine.reset()
-                                    recovery_step_active = True
-                                    engine.reset()
-                                    standing_hold_active = False
-                                    print("[main] Push recovery: starting near-in-place stomp.")
-                                if decision.safe_lower:
-                                    recovery_step_active = False
-                                    recovery_engine.reset()
-                                    engine.reset()
-                                    standing_hold_active = True
-                                    pose = dict(STANDING)
-                                elif recovery_step_active:
-                                    pose = recovery_engine.update(
-                                        decision.forward_cmd if recovery_engine.step_count == 0 else 0.0,
-                                        side_cmd=(
-                                            decision.side_cmd
-                                            if recovery_engine.step_count == 0
-                                            else 0.0
-                                        ),
-                                    )
-                                    support_leg = recovery_engine.support_leg
-                                    if recovery_engine.is_idle_ready():
-                                        completed = recovery.complete_step(now)
-                                        recovery_status = f"{completed.state.value}: {completed.reason}"
-                                        recovery_roll_offset = completed.target_roll_offset_deg
-                                        recovery_pitch_offset = completed.target_pitch_offset_deg
-                                        recovery_step_active = False
-                            balance_pose_enabled = (
-                                not walking_active
-                                or recovery_step_active
-                            )
-                            if balance_pose_enabled:
-                                pose = balance.apply(
-                                    pose,
-                                    roll_deg=reading.roll_deg,
-                                    pitch_deg=reading.pitch_deg,
-                                    dt=balance_dt,
-                                    support_leg=support_leg,
-                                    target_roll_offset_deg=recovery_roll_offset,
-                                    target_pitch_offset_deg=recovery_pitch_offset,
-                                )
-                            else:
-                                balance.reset()
-                            balance_has_valid_imu = True
-                        else:
-                            sensor_safe_lower = (
-                                recovery_step_active
-                                or (
-                                    recovery is not None
-                                    and recovery.state is RecoveryState.SAFE_LOWER
-                                )
-                            )
-                            if sensor_safe_lower:
-                                if recovery is not None:
-                                    recovery.force_safe_lower("IMU stream lost")
-                                recovery_status = "safe-lower: IMU stream lost"
-                                recovery_step_active = False
-                                recovery_engine.reset()
-                                engine.reset()
-                                standing_hold_active = True
-                                pose = dict(STANDING)
-                            if balance_has_valid_imu:
-                                balance.reset()
-                                balance_has_valid_imu = False
-                    elif balance is not None and balance_has_valid_imu:
-                        balance.reset()
-                        balance_has_valid_imu = False
-
-                    if recovery_status != previous_recovery_status:
-                        print(f"[main] Push recovery: {recovery_status}.")
-                        previous_recovery_status = recovery_status
-
-                    if not pose_from_getup and not arm_dance.running and not fall_active:
-                        head_target = STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
-                            1 if head_turn_cmd > 0.0 else -1 if head_turn_cmd < 0.0 else 0
-                        )
-                        pose[25] = round(head_target)
-    
-                    try:
-                        backend.send(pose, duration_ms=args.update_ms)
-                        last_pose = backend.current_pose
-                    except Exception as exc:
-                        print(f"[main] Backend send exception: {exc}")
-
-                    if fall_active:
-                        camera_status = "FALL DETECTED - ARMS FORWARD"
-                    elif getup.running:
-                        camera_status = f"GET-UP: {getup.label.upper()}"
-                    elif arm_dance.running:
-                        camera_status = "ARM DANCE"
-                    elif recovery is not None and recovery.state is not RecoveryState.STABLE:
-                        camera_status = f"BALANCE: {recovery_status.upper()}"
-                    else:
-                        directions = []
-                        if vy > 0.0:
-                            directions.append("FORWARD")
-                        elif vy < 0.0:
-                            directions.append("BACKWARD")
-                        if turn_cmd > 0.0:
-                            directions.append("TURN LEFT")
-                        elif turn_cmd < 0.0:
-                            directions.append("TURN RIGHT")
-                        if side_cmd > 0.0:
-                            directions.append("SIDE LEFT")
-                        elif side_cmd < 0.0:
-                            directions.append("SIDE RIGHT")
-                        camera_status = " + ".join(directions) if directions else "WALK READY"
-                    if obstacle_blocked and not fall_active:
-                        camera_status += f" | TOF NEAR {obstacle_mm} MM (MANUAL)"
-                    gait_state = (
-                        recovery_engine.telemetry_snapshot()
-                        if recovery_step_active
-                        else engine.telemetry_snapshot()
-                    )
+                    depth = snapshot.depth if snapshot is not None else None
+                    blocked, distance = obstacle_guard.update(depth)
+                    if depth is not None and blocked and not fall_active:
+                        status += f" | TOF NEAR {distance} MM (MANUAL)"
+                    duration = args.stop_ms if reset_requested and not fall_active else args.update_ms
+                    backend.send(pose, duration_ms=duration, force=reset_requested)
                     dashboard.publish(
-                        pose=last_pose,
-                        gait=gait_state,
-                        sensor_snapshot=sensor_snapshot,
-                        status=camera_status,
-                        active=(
-                            motion_requested
-                            or not engine.is_idle_ready()
-                            or recovery_step_active
-                            or arm_dance.running
-                            or getup.running
-                            or fall_active
-                        ),
+                        pose=backend.current_pose,
+                        gait=gait,
+                        sensor_snapshot=snapshot,
+                        status=status,
+                        active=fall_active or getup.running or arm_dance.running or not engine.is_idle_ready(),
                         camera_ready=camera_ready,
-                        balance_status=f"{recovery_status} | {fall_safety.status}",
+                        balance_status=fall_safety.status,
                     )
-                    dashboard.set_runtime("manual", camera_status)
-                    remaining = args.update_ms / 1000.0 - (time.monotonic() - loop_started)
-                    if remaining > 0.0:
+                    dashboard.set_runtime("manual", status)
+                    remaining = args.update_ms / 1000.0 - (time.monotonic() - started)
+                    if remaining > 0:
                         time.sleep(remaining)
-            except KeyboardInterrupt:
-                print("\n[main] Ctrl+C received. Stopping control output.")
-                raise
             finally:
-                try:
-                    if fall_recovery_active:
-                        fall_safety.end_recovery()
-                    exit_pose = (
-                        backend.current_pose if fall_safety.active or getup.running else STANDING
-                    )
-                    backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
-                    time.sleep(args.stop_ms / 1000.0)
-                except Exception as exc:
-                    print(f"[main] Backend send exception while stopping: {exc}")
+                if recovery_active:
+                    fall_safety.end_recovery()
+                exit_pose = backend.current_pose if fall_safety.active or getup.running else STANDING
+                backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
+                time.sleep(args.stop_ms / 1000.0)
     finally:
         dashboard.set_runtime("idle", "Manual control stopped")
         print("[main] Manual web control exited.")
@@ -624,13 +291,6 @@ def main() -> None:
                         from .follow_main import run_follow
 
                         run_follow(
-                            args, dashboard, camera, camera_ready,
-                            backend, sensor_hub, fall_safety,
-                        )
-                    elif state.mode == "pickup":
-                        from .pickup_main import run_pickup
-
-                        run_pickup(
                             args, dashboard, camera, camera_ready,
                             backend, sensor_hub, fall_safety,
                         )

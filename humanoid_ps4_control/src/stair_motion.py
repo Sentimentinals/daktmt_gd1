@@ -217,8 +217,6 @@ class StairStepEngine:
             foot_right,
             com_z=body_z,
             support_leg=self.support_leg,
-            phase_mode="full",
-            zmp_support_ratio=self.zmp_support_ratio,
             ankle_roll_gain=self.ankle_roll_gain,
         )
         # Continuous load transfer instead of a discrete support-leg PWM jump.

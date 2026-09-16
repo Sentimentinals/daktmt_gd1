@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101411">
   <title>Humanoid Control</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='6' fill='%23151e12'/%3E%3Cpath d='M1 1h62v62H1z' fill='none' stroke='%23afe06f' stroke-width='2'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%23afe06f'%3EH17%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css?v=20260831">
+  <link rel="stylesheet" href="/style.css?v=20260916">
 </head>
 <body>
   <a class="skip-link" href="#controlSection">Skip to controls</a>
@@ -47,7 +47,6 @@
             <button type="button" class="active" data-mode="manual"><strong>Manual</strong><span>Walking and actions</span></button>
             <button type="button" data-mode="terrain"><strong>Terrain Auto</strong><span>IMU balance + stair traversal</span></button>
             <button type="button" data-mode="follow"><strong>Person Follow</strong><span>Camera + ToF tracking</span></button>
-            <button type="button" data-mode="pickup"><strong>Pick Up</strong><span>Camera + ToF positioning</span></button>
           </div>
         </aside>
 
@@ -85,9 +84,6 @@
               <button type="button" data-action="follow"><span>Follow person</span><kbd>Y</kbd></button>
               <button type="button" data-action="ignore_person"><span>Stop follow</span><kbd>N</kbd></button>
             </div>
-            <div data-mode-actions="pickup">
-              <button type="button" data-action="pickup_toggle"><span>Pick up object</span><kbd>R</kbd></button>
-            </div>
           </div>
         </section>
 
@@ -104,7 +100,7 @@
             <div><span>Status</span><strong id="motionStatus">Waiting</strong></div>
             <div><span>Balance</span><strong id="balanceStatus">--</strong></div>
             <div><span>Step</span><strong id="stepCount">0</strong></div>
-            <div><span>Swing</span><strong id="swingLeg">NONE</strong></div>
+            <div><span>Moving foot</span><strong id="swingLeg">NONE</strong></div>
           </div>
         </section>
       </div>
@@ -112,6 +108,6 @@
 
   </main>
 
-  <script type="module" src="/app.js?v=20260831"></script>
+  <script type="module" src="/app.js?v=20260916"></script>
 </body>
 </html>

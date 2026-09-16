@@ -4,7 +4,6 @@ const MODE_LABELS = {
   manual: "MANUAL",
   terrain: "TERRAIN AUTO",
   follow: "PERSON FOLLOW",
-  pickup: "PICK UP",
 };
 
 let lastEventAt = 0;
@@ -255,7 +254,6 @@ function bindWebControl() {
     u: "stair_toggle",
     y: "follow",
     n: "ignore_person",
-    r: "pickup_toggle",
   };
   window.addEventListener("keydown", (event) => {
     if (event.target.matches("input, select")) return;

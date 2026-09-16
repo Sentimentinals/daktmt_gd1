@@ -20,6 +20,13 @@ cảm biến.
 Manual vẫn điều khiển được khi ESP32 hoặc cảm biến mất kết nối. ToF chỉ hiển
 thị cảnh báo vật cản trong mode này, không ghi đè lệnh của người điều khiển.
 
+Walking mặt phẳng dùng bước lết: mục tiêu hai bàn chân luôn ở Z = 0, thân hạ
+8 mm trong bước đầu và giữ thấp khi còn di chuyển. Thả phím sẽ hoàn tất bước,
+khép tư thế chân rồi về standing. Một bộ IK điều khiển chân; không có ZMP
+preview, offset nâng chân/sidewalk, chúi người hoặc IMU/push recovery ghi đè.
+Fall detection vẫn được ưu tiên. Z = 0 là mục tiêu hình học, không phải xác nhận
+lực tiếp xúc; cần thử trên mặt phẳng, giữ chắc robot và kiểm tra tải servo.
+
 ### Terrain Auto
 
 - `V`: bật/tắt cân bằng bằng BNO055.
@@ -40,20 +47,12 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
 - Camera điều khiển hướng; ToF giữ khoảng cách và chặn tiến khi có vật cản.
 - Đầu giữ cố định trong khi follow.
 
-### Pick Up
-
-- Model nhận diện lon nước, bóng và Rubik.
-- `R`: bắt đầu chu trình căn hướng, tiến gần, squat, đưa tay, duỗi khuỷu, nâng
-  thân và giữ vật.
-- Camera xác định loại, màu, vị trí; ToF bổ sung khoảng cách.
-- Nhận diện vật thể chỉ chạy trong mode Pick Up.
-
 ### Balance và an toàn
 
 - Fall detection chạy toàn cục khi IMU hoạt động và ưu tiên hơn mọi mode.
 - Khi phát hiện ngã, hai tay đưa nhanh ra trước; khi robot thẳng lại, tay trở về
   tư thế đứng.
-- Push recovery dùng IMU để bù ankle/hip khi đứng và có thể tạo bước dậm ngắn.
+- IMU balance chỉ thuộc Terrain Auto; không sửa tư thế của walking mặt phẳng.
 - FSR hiện chỉ trả lực hai chân lên dashboard, không khóa walking hoặc balance.
 
 ## Phần cứng
@@ -106,7 +105,7 @@ giữ cổng serial ESP32.
 ## Trạng thái hiện tại
 
 - Manual, dashboard và keyboard đã được tích hợp vào `src.main`.
-- Person Follow và Pick Up đã có state machine nhưng cần kiểm tra thực tế với
+- Person Follow đã có state machine nhưng cần kiểm tra thực tế với
   camera/ToF đúng vị trí.
 - Terrain balance cần IMU hợp lệ và mốc đứng yên.
 - Camera-ToF đã nhận diện hình học cầu thang; chuyển động auto-step chỉ được mở

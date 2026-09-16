@@ -21,11 +21,8 @@ GAIT = {
     "zmp_support_ratio": 0.65,
     "ankle_roll_gain": -1.00,
     "command_deadzone": 0.02,
-    "arm_swing_pwm": 240,
-    "arm_right_dir": 1,
-    "arm_left_dir": -1,
-    "max_side_step_len": 38.0,
-    "max_turn_step_len": 7.0,
+    "max_side_step_len": 12.0,
+    "max_turn_step_len": 6.0,
 }
 
 # --- Calibrated standing pulse widths ---
@@ -92,23 +89,13 @@ class Config:
     side_speed: float = 0.50
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
-    walk_step_length_mm: float = 42.0
-    walk_step_height_mm: float = 60.0
-    walk_crouch_depth_mm: float = 12.0
-    walk_forward_lean_deg: float = 10.0
-    walk_lift_start_phase: float = 0.24
-    walk_swing_advance_end_phase: float = 0.60
-    walk_lift_end_phase: float = 1.0
-    walk_landing_roll_release_start: float = 0.42
-    walk_crouch_transition_s: float = 0.45
+    walk_step_length_mm: float = 24.0
+    walk_crouch_depth_mm: float = 8.0
+    walk_weight_shift_mm: float = 4.0
     t_step: float = 1.3
-    t_dbl: float = 0.12
+    # Terrain-only support settings; flat walking has no post-IK correction.
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
-    # --- Arms (Linked to GAIT values by default) ---
-    arm_swing_pwm: int = GAIT["arm_swing_pwm"]
-    arm_right_dir: int = GAIT["arm_right_dir"]
-    arm_left_dir: int = GAIT["arm_left_dir"]
 
     # --- Live Camera & Person Follow ---
     vision_camera_width: int = 480
@@ -138,31 +125,6 @@ class Config:
     person_follow_distance_deadband_mm: int = 100
     person_follow_slow_range_mm: int = 700
     person_follow_tof_filter_alpha: float = 0.30
-
-    # --- Adaptive Squat ---
-    squat_min_depth_mm: float = 12.0
-    squat_max_depth_mm: float = 60.0
-    pickup_object_model: str = "deploy/models/pickup_objects.onnx"
-    pickup_object_confidence: float = 0.50
-    pickup_object_iou_threshold: float = 0.45
-    pickup_object_input_size: int = 416
-    pickup_detect_every_frames: int = 3
-    pickup_target_stable_frames: int = 3
-    pickup_target_timeout_s: float = 0.8
-    pickup_align_deadband: float = 0.10
-    pickup_turn_speed: float = 0.20
-    pickup_approach_speed: float = 0.18
-    pickup_target_distance_mm: int = 420
-    pickup_distance_deadband_mm: int = 70
-    pickup_target_area_ratio: float = 0.10
-    pickup_squat_duration_s: float = 1.0
-    pickup_arm_position_duration_s: float = 0.7
-    pickup_reach_duration_s: float = 0.7
-    pickup_lift_duration_s: float = 1.0
-    pickup_shoulder_forward_pwm: int = 360
-    pickup_upper_arm_min_pwm: int = 480
-    pickup_upper_arm_max_pwm: int = 760
-    pickup_elbow_reach_pwm: int = 360
 
     # --- Stair Detection & Climbing ---
     stair_model: str = "deploy/models/stair_detector.onnx"
@@ -221,32 +183,16 @@ class Config:
     getup_speed: float = 1.0
 
     # --- Balance ---
-    imu_balance: bool = True
     imu_roll_sign: float = 1.0
     imu_pitch_sign: float = 1.0
     imu_yaw_sign: float = 1.0
     imu_vertical_mount: bool = True
     imu_board_face_sign: float = 1.0  # +Z/component side faces robot front; use -1 if it faces rear
-    balance_limit_deg: float = 6.0
-    balance_deadband_deg: float = 0.4
     imu_reference_seconds: float = 1.5
     imu_reference_timeout_s: float = 8.0
     imu_reference_max_rms_deg: float = 2.0
     imu_min_gyro_cal: int = 2
     imu_min_accel_cal: int = 0
-    push_recovery_enabled: bool = True
-    push_recovery_warning_tilt_deg: float = 3.0
-    push_recovery_tilt_deg: float = 5.0
-    push_recovery_safe_lower_tilt_deg: float = 9.0
-    push_recovery_rate_deg_s: float = 28.0
-    push_recovery_settle_tilt_deg: float = 1.4
-    push_recovery_step_forward_cmd: float = 0.10
-    push_recovery_step_side_cmd: float = 0.08
-    push_recovery_step_time_s: float = 0.80
-    push_recovery_step_height_mm: float = 8.0
-    push_recovery_timeout_s: float = 3.0
-    push_recovery_counter_lean_s: float = 0.40
-    push_recovery_counter_lean_deg: float = 1.5
     fall_detection_enabled: bool = True
     fall_trigger_tilt_deg: float = 18.0
     fall_trigger_rate_deg_s: float = 70.0
