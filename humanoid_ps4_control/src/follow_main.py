@@ -41,10 +41,15 @@ def run_follow(
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
         t_step=args.t_step,
+        t_dbl=args.t_dbl,
         max_step_len=args.walk_step_length_mm,
         max_turn_step_len=args.max_turn_step_len,
+        step_height=args.walk_step_height_mm,
         crouch_depth_mm=args.walk_crouch_depth_mm,
-        weight_shift_mm=args.walk_weight_shift_mm,
+        zmp_support_ratio=args.zmp_support_ratio,
+        ankle_roll_gain=args.ankle_roll_gain,
+        landing_gap_mm=0.0,
+        arm_swing_pwm=0,
     )
     obstacle_guard = DepthObstacleGuard(
         stop_distance_mm=args.tof_obstacle_stop_mm,

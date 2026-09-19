@@ -21,8 +21,11 @@ GAIT = {
     "zmp_support_ratio": 0.65,
     "ankle_roll_gain": -1.00,
     "command_deadzone": 0.02,
-    "max_side_step_len": 12.0,
-    "max_turn_step_len": 6.0,
+    "arm_swing_pwm": 240,
+    "arm_right_dir": 1,
+    "arm_left_dir": -1,
+    "max_side_step_len": 38.0,
+    "max_turn_step_len": 7.0,
 }
 
 # --- Calibrated standing pulse widths ---
@@ -89,13 +92,22 @@ class Config:
     side_speed: float = 0.50
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
-    walk_step_length_mm: float = 24.0
-    walk_crouch_depth_mm: float = 8.0
-    walk_weight_shift_mm: float = 4.0
+    walk_step_length_mm: float = 42.0
+    walk_step_height_mm: float = 20.0
+    walk_crouch_depth_mm: float = 12.0
+    walk_forward_lean_deg: float = 10.0
+    walk_lift_start_phase: float = 0.24
+    walk_swing_advance_end_phase: float = 0.60
+    walk_lift_end_phase: float = 1.0
+    walk_landing_roll_release_start: float = 0.42
+    walk_crouch_transition_s: float = 0.45
     t_step: float = 1.3
-    # Terrain-only support settings; flat walking has no post-IK correction.
+    t_dbl: float = 0.12
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
+    arm_swing_pwm: int = GAIT["arm_swing_pwm"]
+    arm_right_dir: int = GAIT["arm_right_dir"]
+    arm_left_dir: int = GAIT["arm_left_dir"]
 
     # --- Live Camera & Person Follow ---
     vision_camera_width: int = 480

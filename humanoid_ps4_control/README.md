@@ -20,12 +20,12 @@ cảm biến.
 Manual vẫn điều khiển được khi ESP32 hoặc cảm biến mất kết nối. ToF chỉ hiển
 thị cảnh báo vật cản trong mode này, không ghi đè lệnh của người điều khiển.
 
-Walking mặt phẳng dùng bước lết: mục tiêu hai bàn chân luôn ở Z = 0, thân hạ
-8 mm trong bước đầu và giữ thấp khi còn di chuyển. Thả phím sẽ hoàn tất bước,
-khép tư thế chân rồi về standing. Một bộ IK điều khiển chân; không có ZMP
-preview, offset nâng chân/sidewalk, chúi người hoặc IMU/push recovery ghi đè.
-Fall detection vẫn được ưu tiên. Z = 0 là mục tiêu hình học, không phải xác nhận
-lực tiếp xúc; cần thử trên mặt phẳng, giữ chắc robot và kiểm tra tải servo.
+Walking mặt phẳng dùng lại gait trước bản bước lết, với độ nâng mục tiêu giảm
+từ 60 xuống 20 mm (`walk_step_height_mm`). Giữ sải bước và chuyển trọng tâm cũ;
+chân trụ ở mặt sàn, chân bước vẫn có nâng/hạ, không khóa cả hai chân tại Z = 0.
+Thả phím sẽ hoàn tất bước rồi về standing. Manual không có IMU/push recovery
+ghi đè; fall detection vẫn được ưu tiên. Các giá trị là quỹ đạo tính toán, cần
+thử có người giữ robot để xác nhận tiếp xúc sàn và tải servo thực tế.
 
 ### Terrain Auto
 
