@@ -248,6 +248,7 @@ function bindWebControl() {
   const actionKeys = {
     " ": "stop",
     l: "dance",
+    r: "squat",
     g: "getup_front",
     c: "reset",
     v: "terrain_toggle",

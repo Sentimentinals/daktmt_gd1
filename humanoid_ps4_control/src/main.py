@@ -20,7 +20,7 @@ def run_manual(
     from .gait_dashboard import stationary_gait
     from .getup import GetupEngine
     from .sensors import DepthObstacleGuard
-    from .walking_engine import DynamicWalkingEngine, STANDING
+    from .walking_engine import DynamicWalkingEngine, SquatEngine, STANDING
 
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
@@ -53,6 +53,11 @@ def run_manual(
         lift_pwm=args.dance_lift_pwm,
         head_pwm=args.dance_head_pwm,
     )
+    squat = SquatEngine(
+        dt=args.update_ms / 1000.0,
+        depth_mm=args.manual_squat_depth_mm,
+        transition_s=args.manual_squat_transition_s,
+    )
     getup = GetupEngine(dt=args.update_ms / 1000.0, speed=args.getup_speed)
     obstacle_guard = DepthObstacleGuard(
         stop_distance_mm=args.tof_obstacle_stop_mm,
@@ -82,6 +87,7 @@ def run_manual(
                     if reset_requested and not fall_safety.active:
                         engine.reset()
                         arm_dance.reset()
+                        squat.reset()
                         getup.reset()
                         if recovery_active:
                             fall_safety.end_recovery()
@@ -92,14 +98,32 @@ def run_manual(
                         recovery_active = True
                         engine.reset()
                         arm_dance.reset()
+                        squat.reset()
                         getup.start(protected_pose)
                         previous_fall = False
                         print("[main] G: starting stand-up.")
-                    elif state.dance and not previous_dance and not getup.running and not fall_safety.active:
+                    elif (
+                        state.squat
+                        and not locomotion_requested
+                        and not getup.running
+                        and not fall_safety.active
+                    ):
+                        engine.reset()
+                        arm_dance.reset()
+                        squat.toggle()
+                    elif (
+                        state.dance
+                        and not previous_dance
+                        and not getup.running
+                        and not squat.active
+                        and not fall_safety.active
+                    ):
                         arm_dance.toggle()
                         engine.reset()
                     previous_getup = state.getup
                     previous_dance = state.dance
+                    if locomotion_requested and squat.active:
+                        squat.stop()
 
                     gait = stationary_gait()
                     if getup.running:
@@ -123,6 +147,11 @@ def run_manual(
                     elif reset_requested:
                         pose = dict(STANDING)
                         status = "Stop / standing" if state.stop else "Reset / standing"
+                    elif squat.active:
+                        pose = squat.update()
+                        status = squat.phase.upper()
+                        gait = stationary_gait(squat.phase)
+                        gait["crouch_mm"] = squat.depth_mm
                     elif arm_dance.running and not locomotion_requested:
                         pose = arm_dance.update()
                         status = "ARM DANCE"
@@ -151,6 +180,7 @@ def run_manual(
                         if not previous_fall:
                             engine.reset()
                             arm_dance.reset()
+                            squat.reset()
                             getup.reset()
                             if recovery_active:
                                 fall_safety.end_recovery()
@@ -160,6 +190,7 @@ def run_manual(
                         gait = stationary_gait("fall")
                     elif previous_fall:
                         engine.reset()
+                        squat.reset()
                         pose = dict(STANDING)
                         status = "UPRIGHT - STANDING"
                         gait = stationary_gait()
@@ -176,7 +207,13 @@ def run_manual(
                         gait=gait,
                         sensor_snapshot=snapshot,
                         status=status,
-                        active=fall_active or getup.running or arm_dance.running or not engine.is_idle_ready(),
+                        active=(
+                            fall_active
+                            or getup.running
+                            or squat.active
+                            or arm_dance.running
+                            or not engine.is_idle_ready()
+                        ),
                         camera_ready=camera_ready,
                         balance_status=fall_safety.status,
                     )

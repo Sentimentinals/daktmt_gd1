@@ -191,6 +191,10 @@ class Config:
     dance_lift_pwm: int = 820
     dance_head_pwm: int = 180
 
+    # --- Manual Squat ---
+    manual_squat_depth_mm: float = 50.0
+    manual_squat_transition_s: float = 1.0
+
     # --- Getup ---
     getup_speed: float = 1.0
 

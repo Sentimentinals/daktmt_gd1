@@ -96,6 +96,64 @@ def compute_pose(
     return pose
 
 
+class SquatEngine:
+    def __init__(self, dt: float, depth_mm: float, transition_s: float) -> None:
+        self.dt = max(0.001, dt)
+        self.max_depth_mm = max(0.0, depth_mm)
+        self.transition_s = max(self.dt, transition_s)
+        self.reset()
+
+    @property
+    def active(self) -> bool:
+        return self.depth_mm > 0.1 or self.target_depth_mm > 0.1
+
+    @property
+    def phase(self) -> str:
+        if abs(self.depth_mm - self.target_depth_mm) <= 0.1:
+            return "squat-hold" if self.target_depth_mm > 0.1 else "idle"
+        return "squat-down" if self.target_depth_mm > self.depth_mm else "squat-up"
+
+    def reset(self) -> None:
+        self.depth_mm = 0.0
+        self.target_depth_mm = 0.0
+        self._start_depth_mm = 0.0
+        self._elapsed_s = self.transition_s
+
+    def _set_target(self, depth_mm: float) -> None:
+        target = max(0.0, min(self.max_depth_mm, depth_mm))
+        if abs(target - self.target_depth_mm) <= 0.1:
+            return
+        self._start_depth_mm = self.depth_mm
+        self.target_depth_mm = target
+        self._elapsed_s = 0.0
+
+    def toggle(self) -> None:
+        self._set_target(0.0 if self.target_depth_mm > 0.1 else self.max_depth_mm)
+
+    def stop(self) -> None:
+        self._set_target(0.0)
+
+    def update(self) -> dict[int, int]:
+        if self._elapsed_s < self.transition_s:
+            self._elapsed_s = min(self.transition_s, self._elapsed_s + self.dt)
+            progress = self._elapsed_s / self.transition_s
+            blend = progress * progress * (3.0 - 2.0 * progress)
+            self.depth_mm = self._start_depth_mm + (
+                self.target_depth_mm - self._start_depth_mm
+            ) * blend
+        if self.depth_mm <= 0.1:
+            return dict(STANDING)
+        half_hip = ROBOT["half_hip"]
+        return compute_pose(
+            0.0,
+            0.0,
+            np.array([0.0, -half_hip, 0.0]),
+            np.array([0.0, half_hip, 0.0]),
+            com_z=ROBOT["com_height"] - self.depth_mm,
+            support_leg="double",
+        )
+
+
 class DynamicWalkingEngine:
     def __init__(
         self,

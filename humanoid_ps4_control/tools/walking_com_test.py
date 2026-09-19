@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from src.arm_dance import ArmDanceEngine
 from src.backends import MockBackend, SerialRTBackend
 from src.config import Config, STANDING
-from src.walking_engine import DynamicWalkingEngine
+from src.walking_engine import DynamicWalkingEngine, SquatEngine
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,7 @@ class Controls:
     left: bool = False
     right: bool = False
     dance: bool = False
+    squat: bool = False
     stop: bool = False
 
 
@@ -28,6 +29,7 @@ class WindowsKeyboard:
     VK_LEFT = 0x25
     VK_RIGHT = 0x27
     VK_A = 0x41
+    VK_R = 0x52
     VK_SPACE = 0x20
     VK_ESCAPE = 0x1B
 
@@ -46,6 +48,7 @@ class WindowsKeyboard:
             left=self._down(self.VK_LEFT),
             right=self._down(self.VK_RIGHT),
             dance=self._down(self.VK_A),
+            squat=self._down(self.VK_R),
             stop=self._down(self.VK_SPACE),
         )
 
@@ -92,23 +95,36 @@ class WalkingComTest:
             lift_pwm=config.dance_lift_pwm,
             head_pwm=config.dance_head_pwm,
         )
+        self.squat = SquatEngine(
+            dt=config.update_ms / 1000.0,
+            depth_mm=config.manual_squat_depth_mm,
+            transition_s=config.manual_squat_transition_s,
+        )
         self._dance_pressed = False
+        self._squat_pressed = False
 
     def reset(self) -> None:
         self.walking.reset()
         self.dance.reset()
+        self.squat.reset()
 
     def update(self, controls: Controls) -> tuple[dict[int, int], str]:
         forward = float(controls.forward) - float(controls.backward)
         turn = float(controls.left) - float(controls.right)
         moving = bool(forward or turn)
         dance_tapped = controls.dance and not self._dance_pressed
+        squat_tapped = controls.squat and not self._squat_pressed
         self._dance_pressed = controls.dance
+        self._squat_pressed = controls.squat
 
         if controls.stop:
             self.reset()
             pose = dict(STANDING)
             status = "STOP / STANDING"
+        elif moving and self.squat.active:
+            self.squat.stop()
+            pose = self.squat.update()
+            status = "SQUAT RETURN"
         elif moving:
             if self.dance.running:
                 self.dance.reset()
@@ -122,6 +138,15 @@ class WalkingComTest:
             if turn:
                 directions.append("TURN LEFT" if turn > 0 else "TURN RIGHT")
             status = " + ".join(directions)
+        elif squat_tapped:
+            self.walking.reset()
+            self.dance.reset()
+            self.squat.toggle()
+            pose = self.squat.update()
+            status = self.squat.phase.upper()
+        elif self.squat.active:
+            pose = self.squat.update()
+            status = self.squat.phase.upper()
         elif dance_tapped:
             self.walking.reset()
             self.dance.toggle()
@@ -165,7 +190,7 @@ def main() -> None:
         backend.send(STANDING, duration_ms=800, force=True)
         time.sleep(0.8)
         print("Arrow keys: Up/Down walk, Left/Right turn")
-        print("A: arm dance | Space: stop | Esc: exit")
+        print("A: arm dance | R: squat | Space: stop | Esc: exit")
         while not keyboard.exit_pressed():
             started = time.monotonic()
             _, status = controller.update(keyboard.read())

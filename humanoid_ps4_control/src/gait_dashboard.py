@@ -21,6 +21,7 @@ CONTROL_ACTIONS = {
     "stop",
     "reset",
     "dance",
+    "squat",
     "getup_front",
     "terrain_toggle",
     "stair_toggle",
@@ -38,6 +39,7 @@ class WebControlState:
     turn: float = 0.0
     side: float = 0.0
     dance: bool = False
+    squat: bool = False
     getup: bool = False
     stop: bool = False
     reset: bool = False
@@ -246,6 +248,7 @@ class GaitDashboard:
                 turn=self._control_axes["turn"] if self._control_armed else 0.0,
                 side=self._control_axes["side"] if self._control_armed else 0.0,
                 dance="dance" in actions,
+                squat="squat" in actions,
                 getup="getup_front" in actions,
                 stop="stop" in actions,
                 reset="reset" in actions,
