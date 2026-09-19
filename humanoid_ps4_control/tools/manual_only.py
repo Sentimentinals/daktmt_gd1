@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import time
 
-from src.backends import MockBackend
+from src.backends import MockBackend, SerialRTBackend
 from src.config import Config, STANDING
 from src.fall_safety import PriorityBackend
 from src.gait_dashboard import GaitDashboard, stationary_gait
@@ -26,6 +26,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Manual dashboard without hardware, sensors, or camera.")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--servo-port")
+    parser.add_argument("--servo-baudrate", type=int, default=115200)
     options = parser.parse_args()
 
     config = Config()
@@ -35,17 +37,29 @@ def main() -> None:
         stream_hz=config.gait_dashboard_stream_hz,
         command_timeout_s=config.gait_dashboard_command_timeout_s,
     )
-    raw_backend = MockBackend(verbose=False)
+    raw_backend = (
+        SerialRTBackend(options.servo_port, options.servo_baudrate)
+        if options.servo_port
+        else MockBackend(verbose=False)
+    )
     backend = PriorityBackend(raw_backend, config.fall_arm_forward_pwm)
     safety = ManualOnlySafety()
+    status = (
+        f"MANUAL READY - SERVO {options.servo_port}"
+        if options.servo_port
+        else "MANUAL TEST READY - NO HARDWARE"
+    )
     dashboard.start()
     try:
         with raw_backend:
+            if options.servo_port:
+                backend.send(STANDING, duration_ms=1200, force=True)
+                time.sleep(1.2)
             dashboard.publish(
                 pose=STANDING,
                 gait=stationary_gait(),
                 sensor_snapshot=None,
-                status="MANUAL TEST READY - NO HARDWARE",
+                status=status,
                 active=False,
                 camera_ready=False,
                 balance_status=safety.status,
@@ -61,12 +75,12 @@ def main() -> None:
                     pose=backend.current_pose,
                     gait=stationary_gait(),
                     sensor_snapshot=None,
-                    status="MANUAL TEST READY - NO HARDWARE",
+                    status=status,
                     active=False,
                     camera_ready=False,
                     balance_status=safety.status,
                 )
-                dashboard.set_runtime("manual", "MANUAL TEST READY - NO HARDWARE")
+                dashboard.set_runtime("manual", status)
                 time.sleep(0.08)
     except KeyboardInterrupt:
         pass

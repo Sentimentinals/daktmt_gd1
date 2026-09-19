@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import socket
+import sys
 import threading
 import time
 from collections import deque
@@ -360,6 +361,12 @@ class _DashboardServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
     dashboard: GaitDashboard
+
+    def handle_error(self, request: object, client_address: object) -> None:
+        _type, error, _traceback = sys.exc_info()
+        if isinstance(error, (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)):
+            return
+        super().handle_error(request, client_address)
 
 
 class _DashboardHandler(BaseHTTPRequestHandler):
