@@ -52,8 +52,6 @@ def compute_pose(
     foot_R: np.ndarray,
     com_z: float | None = None,
     support_leg: str = "double",
-    phase_mode: str = "full",
-    zmp_support_ratio: float | None = None,
     ankle_roll_gain: float | None = None,
 ) -> dict[int, int]:
     """Convert CoM/foot targets into a full servo pulse pose."""
@@ -72,22 +70,16 @@ def compute_pose(
     ankle_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
     right_hip_abduct = STAND_ANG["R_hip_abduct"]
     left_hip_abduct = STAND_ANG["L_hip_abduct"]
-    if phase_mode == "shift" and support_leg in ("left", "right"):
-        support_y = hw * (GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio)
-        shift_ankle_roll = math.degrees(math.atan2(support_y, roll_height)) * ankle_gain
-        right_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "right" else 0.0)
-        left_ankle_roll = STAND_ANG["hip_roll"] + (shift_ankle_roll if support_leg == "left" else 0.0)
+    ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
+    if support_leg == "right":
+        right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll
+        left_ankle_roll = STAND_ANG["hip_roll"]
+    elif support_leg == "left":
+        right_ankle_roll = STAND_ANG["hip_roll"]
+        left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll
     else:
-        ankle_roll = math.degrees(math.atan2(com_y, roll_height)) * ankle_gain
-        if support_leg == "right":
-            right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll
-            left_ankle_roll = STAND_ANG["hip_roll"]
-        elif support_leg == "left":
-            right_ankle_roll = STAND_ANG["hip_roll"]
-            left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll
-        else:
-            right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
-            left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
+        right_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
+        left_ankle_roll = STAND_ANG["hip_roll"] + ankle_roll * 0.5
 
     pose = dict(STANDING)
     pose[17] = angle_to_pwm(17, STAND_ANG["hip_roll"], right_ankle_roll, STANDING[17])
@@ -183,6 +175,7 @@ class DynamicWalkingEngine:
         self.foot_R_queue: Deque[np.ndarray] = deque()
         self.arm_queue: Deque[tuple[int, int]] = deque()
         self.swing_leg_queue: Deque[str] = deque()
+        self.support_load_queue: Deque[float] = deque()
         self.lift_factor_queue: Deque[float] = deque()
         self.landing_progress_queue: Deque[float] = deque()
         self.phase_mode_queue: Deque[str] = deque()
@@ -229,6 +222,7 @@ class DynamicWalkingEngine:
             self.foot_R_queue.append(base_R.copy())
             self.arm_queue.append((0, 0))
             self.swing_leg_queue.append("none")
+            self.support_load_queue.append(0.0)
             self.lift_factor_queue.append(0.0)
             self.landing_progress_queue.append(0.0)
             self.phase_mode_queue.append("idle")
@@ -288,6 +282,7 @@ class DynamicWalkingEngine:
                 self.foot_R_queue.append(base_R.copy())
                 self.arm_queue.append((0, 0))
                 self.swing_leg_queue.append("none")
+                self.support_load_queue.append(0.0)
                 self.lift_factor_queue.append(0.0)
                 self.landing_progress_queue.append(0.0)
                 self.phase_mode_queue.append("idle")
@@ -295,6 +290,7 @@ class DynamicWalkingEngine:
             return
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
+        transfer_from_double_support = self.last_swing_leg == "none"
         drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
         lean_start = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
         drop_target = self.crouch_depth_mm if abs(step_len) > 0.1 and not side_dominant else 0.0
@@ -355,6 +351,10 @@ class DynamicWalkingEngine:
             self.zmp_x_queue.append(stance_x)
 
             lift_factor = self._lift_profile(alpha)
+            support_load = (
+                self._phase_curve(self._phase_progress(alpha, 0.0, self.lift_start_phase))
+                if transfer_from_double_support else 1.0
+            )
             landing_t = self._phase_progress(alpha, self.swing_advance_end_phase, self.lift_end_phase)
             phase_mode = "land" if landing_t > 0.0 else "swing"
             if phase_mode == "land":
@@ -393,6 +393,7 @@ class DynamicWalkingEngine:
                 self.foot_R_queue.append(np.array([base_R[0] + swing_x_travel, base_R[1] + swing_y_travel, z]))
             self.arm_queue.append(current_arm_delta)
             self.swing_leg_queue.append(planned_swing_leg)
+            self.support_load_queue.append(support_load)
             self.lift_factor_queue.append(lift_factor)
             self.landing_progress_queue.append(landing_t if phase_mode == "land" else 0.0)
             self.phase_mode_queue.append(phase_mode)
@@ -520,6 +521,7 @@ class DynamicWalkingEngine:
         foot_R_now = self.foot_R_queue.popleft()
         arm_delta_now = self.arm_queue.popleft()
         swing_leg_now = self.swing_leg_queue.popleft()
+        support_load_now = self.support_load_queue.popleft()
         lift_factor_now = self.lift_factor_queue.popleft()
         landing_t_now = self.landing_progress_queue.popleft()
         phase_mode_now = self.phase_mode_queue.popleft()
@@ -643,10 +645,23 @@ class DynamicWalkingEngine:
                 pose_foot_R,
                 com_z=self.zc - body_drop_now,
                 support_leg=support_leg_for_pose,
-                phase_mode="shift",
-                zmp_support_ratio=self.zmp_support_ratio,
                 ankle_roll_gain=ankle_gain,
             )
+            if swing_leg_now in ("left", "right"):
+                if landing_t_now > 0.0:
+                    release = self._phase_progress(
+                        landing_t_now,
+                        self.landing_roll_release_start,
+                        1.0,
+                    )
+                    left_load = release if swing_leg_now == "left" else 1.0 - release
+                    right_load = 1.0 - left_load
+                else:
+                    left_load = support_load_now if swing_leg_now == "right" else 0.0
+                    right_load = support_load_now if swing_leg_now == "left" else 0.0
+                roll = math.degrees(math.atan2(self.hw * self.zmp_support_ratio, self.zc)) * ankle_gain
+                pose[16] = STANDING[16] + round(DIR[16] * PWM_PER_DEG * roll * left_load)
+                pose[17] = STANDING[17] + round(DIR[17] * PWM_PER_DEG * roll * right_load)
         else:
             pose = dict(STANDING)
         if body_lean_now > 0.0:
