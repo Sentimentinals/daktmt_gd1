@@ -77,6 +77,7 @@ def run_manual(
                     forward = state.forward * args.walk_speed
                     turn = state.turn * args.turn_speed
                     side = state.side * args.side_speed
+                    locomotion_requested = bool(forward or turn or side)
                     reset_requested = state.stop or state.reset
                     if reset_requested and not fall_safety.active:
                         engine.reset()
@@ -122,11 +123,13 @@ def run_manual(
                     elif reset_requested:
                         pose = dict(STANDING)
                         status = "Stop / standing" if state.stop else "Reset / standing"
-                    elif arm_dance.running:
+                    elif arm_dance.running and not locomotion_requested:
                         pose = arm_dance.update()
                         status = "ARM DANCE"
                         gait = stationary_gait("dance")
                     else:
+                        if arm_dance.running:
+                            arm_dance.reset()
                         pose = engine.update(forward, turn_cmd=turn, side_cmd=side)
                         pose[25] = round(STANDING[25] + args.head_pan_direction * args.head_pan_pwm * (
                             1 if turn > 0.0 else -1 if turn < 0.0 else 0
