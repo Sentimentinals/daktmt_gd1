@@ -58,7 +58,6 @@ class PersonFrame:
 
 @dataclass
 class _PersonTrack:
-    track_id: int
     box: tuple[int, int, int, int]
     appearance: object
     velocity_x: float = 0.0
@@ -172,7 +171,6 @@ class PersonDetector:
                 track_id = self._next_track_id
                 self._next_track_id += 1
                 self._tracks[track_id] = _PersonTrack(
-                    track_id=track_id,
                     box=detection.box,
                     appearance=appearances[index],
                 )
@@ -286,9 +284,6 @@ class PersonFollowController:
         self._filtered_distance_mm = None
         self._last_distance_sample_id = None
 
-    def target_person(self, frame: PersonFrame) -> Optional[PersonDetection]:
-        return frame.person_by_id(self.target_id)
-
     def command(
         self,
         frame: PersonFrame,
@@ -299,7 +294,7 @@ class PersonFollowController:
         if not self.enabled:
             return 0.0, 0.0, "OFF"
         now = time.monotonic() if now_s is None else now_s
-        person = self.target_person(frame)
+        person = frame.person_by_id(self.target_id)
         if person is not None and now - frame.captured_at <= self.lost_timeout_s:
             self._last_seen_s = now
         elif self._last_seen_s is None or now - self._last_seen_s > self.lost_timeout_s:
@@ -364,8 +359,9 @@ class PersonObstaclePlanner:
         turn_speed: float,
     ) -> None:
         self.stop_distance_mm = max(80, stop_distance_mm)
-        self.clear_distance_mm = self.stop_distance_mm + max(200, clear_margin_mm * 2)
-        self.plan_distance_mm = self.clear_distance_mm + 100
+        self.plan_distance_mm = (
+            self.stop_distance_mm + max(200, clear_margin_mm * 2) + 100
+        )
         self.stable_frames = max(1, stable_frames)
         self.turn_speed = max(0.05, min(1.0, turn_speed))
         self.reset()
