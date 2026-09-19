@@ -4,8 +4,12 @@ import time
 from pathlib import Path
 
 from .config import Config, STANDING
-from .person_follow import PersonDetector, PersonFollowController, PersonFrame
-from .sensors import DepthObstacleGuard
+from .person_follow import (
+    PersonDetector,
+    PersonFollowController,
+    PersonFrame,
+    PersonObstaclePlanner,
+)
 from .walking_engine import DynamicWalkingEngine
 
 
@@ -51,10 +55,11 @@ def run_follow(
         landing_gap_mm=0.0,
         arm_swing_pwm=0,
     )
-    obstacle_guard = DepthObstacleGuard(
+    obstacle_planner = PersonObstaclePlanner(
         stop_distance_mm=args.tof_obstacle_stop_mm,
         clear_margin_mm=args.tof_obstacle_clear_margin_mm,
         stable_frames=args.tof_obstacle_stable_frames,
+        turn_speed=args.person_follow_turn_speed,
     )
     previous_follow = False
     previous_ignore = False
@@ -75,10 +80,13 @@ def run_follow(
 
                     follow_pressed = control.follow
                     if follow_pressed and not previous_follow:
-                        if camera.person_ready():
-                            follow.enable()
+                        frame = camera.person_frame() or PersonFrame()
+                        person = frame.single_person
+                        if camera.person_ready() and person is not None:
+                            follow.enable(person.track_id)
                             engine.reset()
-                            print("[follow] Person follow enabled.")
+                            obstacle_planner.reset()
+                            print(f"[follow] Target #{person.track_id} locked.")
                         else:
                             print("[follow] Follow rejected: one stable person is required.")
                     previous_follow = follow_pressed
@@ -88,6 +96,7 @@ def run_follow(
                         if follow.enabled:
                             follow.disable()
                             engine.reset()
+                            obstacle_planner.reset()
                             print("[follow] Person follow stopped.")
                         else:
                             camera.ignore_person()
@@ -98,6 +107,7 @@ def run_follow(
                     if stop_pressed and not previous_stop:
                         follow.disable()
                         engine.reset()
+                        obstacle_planner.reset()
                         if not fall_safety.active:
                             backend.send(STANDING, duration_ms=args.stop_ms, force=True)
                             last_pose = dict(STANDING)
@@ -106,7 +116,6 @@ def run_follow(
 
                     snapshot = sensor_hub.read() if sensor_hub is not None else None
                     depth = snapshot.depth if snapshot is not None else None
-                    obstacle_blocked, obstacle_mm = obstacle_guard.update(depth)
 
                     forward = 0.0
                     turn = 0.0
@@ -120,15 +129,21 @@ def run_follow(
                             distance_mm=distance_mm,
                             distance_sample_id=distance_sample_id,
                         )
-                        if status in ("TARGET LOST", "MULTIPLE PEOPLE"):
+                        if status == "TARGET LOST":
                             follow.disable()
                             engine.reset()
+                            obstacle_planner.reset()
                             forward = 0.0
                             turn = 0.0
                             print(f"[follow] Stopped: {status.lower()}.")
-                        elif forward > 0.0 and obstacle_blocked:
-                            forward = 0.0
-                            status = f"OBJECT {obstacle_mm} MM" if obstacle_mm is not None else "OBJECT"
+                        else:
+                            forward, turn, avoid_status = obstacle_planner.update(
+                                depth,
+                                forward,
+                                turn,
+                            )
+                            if avoid_status is not None:
+                                status = f"TARGET #{follow.target_id} | {avoid_status}"
 
                     if follow.enabled or not engine.is_idle_ready():
                         pose = engine.update(forward, turn_cmd=turn)
@@ -140,6 +155,7 @@ def run_follow(
                         if not previous_fall_active:
                             follow.disable()
                             engine.reset()
+                            obstacle_planner.reset()
                         pose = backend.current_pose
                         status = f"FALL: {fall_safety.reason}"
                     elif previous_fall_active:
