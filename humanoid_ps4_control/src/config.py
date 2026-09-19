@@ -154,7 +154,7 @@ class Config:
     stair_tread_depth_mm: float = 160.0
     stair_width_mm: float = 320.0
     stair_step_depth_mm: float = 120.0  # Maximum stride, not tread depth.
-    stair_foot_clearance_mm: float = 12.0
+    stair_foot_clearance_mm: float = 18.0
     stair_crouch_depth_mm: float = 35.0
     stair_phase_shift_s: float = 1.20
     stair_phase_swing_s: float = 2.80
