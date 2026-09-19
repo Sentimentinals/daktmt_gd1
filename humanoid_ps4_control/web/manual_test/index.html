@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121612">
+  <title>H17 Manual Test</title>
+  <link rel="stylesheet" href="/style.css?v=1">
+</head>
+<body>
+  <header>
+    <div>
+      <span class="eyebrow">H17 / LAPTOP TEST</span>
+      <h1>Manual Servo Control</h1>
+    </div>
+    <button id="enableButton" class="enable" type="button">Enable output</button>
+  </header>
+
+  <main>
+    <section class="telemetry" aria-label="Controller status">
+      <div><span>Serial</span><strong id="portValue">--</strong></div>
+      <div><span>Output</span><strong id="outputValue">DISABLED</strong></div>
+      <div><span>Command</span><strong id="commandValue">IDLE</strong></div>
+      <div><span>Phase</span><strong id="phaseValue">IDLE</strong></div>
+      <div><span>Frames</span><strong id="frameValue">0</strong></div>
+    </section>
+
+    <section class="controls" aria-label="Manual controls">
+      <div class="drive">
+        <div class="dpad">
+          <button class="up" type="button" data-axis="forward" data-value="1" aria-label="Forward">
+            <span>&uarr;</span><kbd>&uarr;</kbd>
+          </button>
+          <button class="left" type="button" data-axis="turn" data-value="1" aria-label="Turn left">
+            <span>&larr;</span><kbd>&larr;</kbd>
+          </button>
+          <button id="stopButton" class="stop" type="button" aria-label="Stop">
+            <span>&#9632;</span><kbd>Space</kbd>
+          </button>
+          <button class="right" type="button" data-axis="turn" data-value="-1" aria-label="Turn right">
+            <span>&rarr;</span><kbd>&rarr;</kbd>
+          </button>
+          <button class="down" type="button" data-axis="forward" data-value="-1" aria-label="Backward">
+            <span>&darr;</span><kbd>&darr;</kbd>
+          </button>
+        </div>
+
+        <div class="sidewalk">
+          <span class="section-label">SIDE WALK</span>
+          <div>
+            <button type="button" data-axis="side" data-value="1"><span>&larr;</span><kbd>J</kbd></button>
+            <button type="button" data-axis="side" data-value="-1"><span>&rarr;</span><kbd>K</kbd></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="resetButton" type="button"><span>Return to standing</span><kbd>C</kbd></button>
+        <p id="errorValue" role="alert"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js?v=1"></script>
+</body>
+</html>
