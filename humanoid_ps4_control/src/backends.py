@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import os
 import time
 from pathlib import Path
 from typing import Dict, Optional
@@ -9,6 +10,25 @@ from typing import Dict, Optional
 Pose = Dict[int, int]
 PWM_MIN = 500
 PWM_MAX = 2500
+
+
+class _WindowsRawSerial:
+    """Fallback for USB servo drivers that reject pyserial SetCommState."""
+
+    def __init__(self, port: str) -> None:
+        self._file = open(port, "r+b", buffering=0)
+        self.is_open = True
+
+    def write(self, data: bytes) -> int:
+        return self._file.write(data)
+
+    def flush(self) -> None:
+        self._file.flush()
+
+    def close(self) -> None:
+        if self.is_open:
+            self._file.close()
+            self.is_open = False
 
 
 def validate_pose(pose: Pose) -> None:
@@ -101,10 +121,20 @@ class SerialRTBackend:
                 timeout=self.timeout,
             )
         except SerialException as exc:
+            if os.name == "nt":
+                try:
+                    self._serial = _WindowsRawSerial(self.port)
+                    print(
+                        f"[SerialRTBackend] Opened {self.port} with Windows raw fallback "
+                        f"({self.baudrate} baud configured by the USB driver)"
+                    )
+                    return
+                except OSError:
+                    pass
             raise RuntimeError(
                 f"Cannot open servo controller port {self.port}. "
-                "On Raspberry Pi, keep ESP32 sensor on /dev/ttyUSB0 and set the servo "
-                "controller port to the other USB device, usually /dev/ttyUSB1."
+                "Close other serial tools and reconnect the USB controller. On Raspberry Pi, "
+                "keep ESP32 sensor on /dev/ttyUSB0 and use the other USB device for servos."
             ) from exc
         print(f"[SerialRTBackend] Opened {self.port} @ {self.baudrate} baud")
 
