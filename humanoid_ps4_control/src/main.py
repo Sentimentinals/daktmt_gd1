@@ -34,7 +34,7 @@ def run_manual(
         forward_lean_deg=args.walk_forward_lean_deg,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
-        landing_gap_mm=args.walk_step_length_mm,
+        landing_gap_mm=0.0,
         lift_start_phase=args.walk_lift_start_phase,
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,

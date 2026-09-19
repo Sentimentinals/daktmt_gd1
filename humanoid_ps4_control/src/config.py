@@ -21,11 +21,11 @@ GAIT = {
     "zmp_support_ratio": 0.65,
     "ankle_roll_gain": -1.00,
     "command_deadzone": 0.02,
-    "arm_swing_pwm": 240,
+    "arm_swing_pwm": 100,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
-    "max_side_step_len": 38.0,
-    "max_turn_step_len": 7.0,
+    "max_side_step_len": 20.0,
+    "max_turn_step_len": 4.0,
 }
 
 # --- Calibrated standing pulse widths ---
@@ -87,22 +87,22 @@ class Config:
     stop_ms: int = 250
 
     # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.45
-    turn_speed: float = 0.50
-    side_speed: float = 0.50
+    walk_speed: float = 0.40
+    turn_speed: float = 0.35
+    side_speed: float = 0.35
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
-    walk_step_length_mm: float = 42.0
-    walk_step_height_mm: float = 20.0
-    walk_crouch_depth_mm: float = 12.0
-    walk_forward_lean_deg: float = 10.0
+    walk_step_length_mm: float = 34.0
+    walk_step_height_mm: float = 12.0
+    walk_crouch_depth_mm: float = 6.0
+    walk_forward_lean_deg: float = 0.0
     walk_lift_start_phase: float = 0.24
     walk_swing_advance_end_phase: float = 0.60
     walk_lift_end_phase: float = 1.0
     walk_landing_roll_release_start: float = 0.42
     walk_crouch_transition_s: float = 0.45
-    t_step: float = 1.3
-    t_dbl: float = 0.12
+    t_step: float = 1.6
+    t_dbl: float = 0.16
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
     arm_swing_pwm: int = GAIT["arm_swing_pwm"]
