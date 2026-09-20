@@ -173,6 +173,7 @@ class Config:
     stair_tof_vertical_fov_deg: float = 45.0
     stair_tof_flip_vertical: bool = True
     stair_tof_edge_min_delta_mm: float = 120.0
+    stair_tinyml_min_confidence: float = 0.60
 
     # --- Terrain IMU Balance ---
     terrain_balance_limit_deg: float = 8.0

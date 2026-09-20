@@ -64,6 +64,13 @@ class DepthReading:
         return max(valid) - min(valid) if len(valid) >= 4 else None
 
 
+@dataclass(frozen=True)
+class TerrainReading:
+    label: str
+    confidence: float
+    sensor_time_ms: int = 0
+
+
 class DepthObstacleGuard:
     def __init__(self, stop_distance_mm: int, clear_margin_mm: int, stable_frames: int) -> None:
         self.stop_distance_mm = max(80, stop_distance_mm)
@@ -100,6 +107,7 @@ class SensorSnapshot:
     imu: Optional[IMUReading]
     feet: Optional[FootForceReading]
     depth: Optional[DepthReading]
+    terrain: Optional[TerrainReading] = None
 
 
 class LowPass:
@@ -156,6 +164,23 @@ def parse_serial_depth_line(line: str) -> Optional[DepthReading]:
     return DepthReading(distances, sensor_time_ms)
 
 
+def parse_serial_terrain_line(line: str) -> Optional[TerrainReading]:
+    fields = [field.strip() for field in line.strip().split(",")]
+    if len(fields) != 4 or fields[0] != "T":
+        return None
+    try:
+        sensor_time_ms = int(fields[1])
+        confidence = float(fields[3])
+    except ValueError:
+        return None
+    label = fields[2].lower()
+    if label not in {"clear", "obstacle", "stair_up", "stair_down", "unknown"}:
+        return None
+    if not 0.0 <= confidence <= 1.0:
+        return None
+    return TerrainReading(label, confidence, sensor_time_ms)
+
+
 class RobotSensorHub:
     """Single ESP32 USB stream for IMU, FSR, and VL53L5CX depth."""
 
@@ -209,6 +234,8 @@ class RobotSensorHub:
         self._feet_at = 0.0
         self._depth: Optional[DepthReading] = None
         self._depth_at = 0.0
+        self._terrain: Optional[TerrainReading] = None
+        self._terrain_at = 0.0
         self._gravity_basis: Optional[
             tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
         ] = None
@@ -258,6 +285,7 @@ class RobotSensorHub:
                     self._imu = None
                     self._feet = None
                     self._depth = None
+                    self._terrain = None
                     self.left_foot_filter.reset()
                     self.right_foot_filter.reset()
                 if not self._stop.is_set():
@@ -314,6 +342,13 @@ class RobotSensorHub:
                 with self._lock:
                     self._depth = depth
                     self._depth_at = now
+                continue
+
+            terrain = parse_serial_terrain_line(line) if self.use_depth else None
+            if terrain is not None:
+                with self._lock:
+                    self._terrain = terrain
+                    self._terrain_at = now
 
     @property
     def active_port(self) -> Optional[str]:
@@ -394,7 +429,12 @@ class RobotSensorHub:
                 if self._depth is not None and now - self._depth_at <= self.depth_timeout_s
                 else None
             )
-        return SensorSnapshot(imu=imu, feet=feet, depth=depth)
+            terrain = (
+                self._terrain
+                if self._terrain is not None and now - self._terrain_at <= self.depth_timeout_s
+                else None
+            )
+        return SensorSnapshot(imu=imu, feet=feet, depth=depth, terrain=terrain)
 
     def capture_imu_reference(
         self,

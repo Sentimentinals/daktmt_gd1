@@ -68,6 +68,7 @@ def main() -> int:
             imu = snapshot.imu
             feet = snapshot.feet
             depth = snapshot.depth
+            terrain = snapshot.terrain
             imu_text = (
                 "IMU: disabled"
                 if not use_imu
@@ -100,7 +101,15 @@ def main() -> int:
                     f"object={depth.obstacle_distance_mm}mm span={depth.vertical_span_mm}mm"
                 )
             )
-            print(f"{imu_text} | {feet_text} | {depth_text}")
+            terrain_text = (
+                "TinyML: disabled"
+                if not use_depth
+                else
+                "TinyML: waiting/model not trained"
+                if terrain is None
+                else f"TinyML {terrain.label} confidence={terrain.confidence:.2f}"
+            )
+            print(f"{imu_text} | {feet_text} | {depth_text} | {terrain_text}")
             next_print = time.monotonic() + 0.10
     finally:
         hub.close()
