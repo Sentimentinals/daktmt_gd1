@@ -18,6 +18,8 @@ class HeadlessCamera:
         self.fps = max(1, fps)
         self.camera = None
         self._frame = None
+        self._frame_at = 0.0
+        self.error = None
         self._frame_sequence = 0
         self._jpeg_frame = None
         self._jpeg_sequence = -1
@@ -42,7 +44,9 @@ class HeadlessCamera:
             from libcamera import Transform
             from picamera2 import Picamera2
         except ImportError as exc:
-            print(f"[camera] Headless camera unavailable: missing {exc.name}.")
+            self.error = f"Missing camera dependency: {exc.name}"
+            print(f"[camera] {self.error}. Install python3-picamera2/python3-opencv via apt "
+                  "and enable system-site-packages in the venv.")
             return False
 
         self._cv2 = cv2
@@ -58,6 +62,7 @@ class HeadlessCamera:
             )
             camera.start()
         except Exception as exc:
+            self.error = str(exc)
             if camera is not None:
                 try:
                     camera.close()
@@ -67,6 +72,7 @@ class HeadlessCamera:
             return False
 
         self.camera = camera
+        self.error = None
         self._stop.clear()
         self._capture_thread = threading.Thread(
             target=self._capture_loop,
@@ -101,10 +107,13 @@ class HeadlessCamera:
                 frame = self.camera.capture_array("main")
             except Exception as exc:
                 if not self._stop.is_set():
+                    self.error = str(exc)
                     print(f"[camera] Capture stopped: {exc}")
+                self._stop.set()
                 break
             with self._lock:
                 self._frame = frame.copy()
+                self._frame_at = time.monotonic()
                 self._frame_sequence += 1
                 self._detection_frame = self._frame
                 self._detection_sequence += 1
@@ -144,16 +153,29 @@ class HeadlessCamera:
                     self._stair_frame = detection
                 self._jpeg_sequence = -1
 
+    @property
+    def ready(self) -> bool:
+        with self._lock:
+            return (
+                not self._stop.is_set()
+                and self._frame is not None
+                and time.monotonic() - self._frame_at < 2.0
+            )
+
     def person_frame(self):
+        if not self.ready:
+            return None
         with self._lock:
             return self._person_frame
 
     def stair_frame(self):
+        if not self.ready:
+            return None
         with self._lock:
             return self._stair_frame
 
     def jpeg_frame(self, quality: int = 68) -> bytes | None:
-        if self._cv2 is None:
+        if self._cv2 is None or not self.ready:
             return None
         with self._lock:
             if self._jpeg_sequence == self._frame_sequence:
@@ -208,6 +230,8 @@ class HeadlessCamera:
         return jpeg
 
     def person_ready(self) -> bool:
+        if not self.ready:
+            return False
         with self._lock:
             return (
                 self._person_frame is not None
@@ -223,15 +247,16 @@ class HeadlessCamera:
     def close(self) -> None:
         was_running = self.camera is not None
         self._stop.set()
-        if self._capture_thread is not None:
-            self._capture_thread.join(timeout=1.0)
-        if self._detector_thread is not None:
-            self._detector_thread.join(timeout=1.0)
         if self.camera is not None:
             try:
                 self.camera.stop()
             except Exception:
                 pass
+        if self._capture_thread is not None:
+            self._capture_thread.join(timeout=1.0)
+        if self._detector_thread is not None:
+            self._detector_thread.join(timeout=1.0)
+        if self.camera is not None:
             try:
                 self.camera.close()
             except Exception:
@@ -241,8 +266,9 @@ class HeadlessCamera:
         self._detector_thread = None
         with self._lock:
             self._frame = None
+            self._frame_at = 0.0
+            self._detection_frame = None
             self._person_frame = None
-            self._object_frame = None
             self._stair_frame = None
             self._jpeg_frame = None
             self._jpeg_sequence = -1

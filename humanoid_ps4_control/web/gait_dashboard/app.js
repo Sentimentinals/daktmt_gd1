@@ -7,6 +7,26 @@ const MODE_LABELS = {
 };
 
 let lastEventAt = 0;
+let cameraAvailable = false;
+let cameraRetry = null;
+
+function updateCamera(available, error) {
+  cameraAvailable = available;
+  const feed = $("cameraFeed");
+  if (!available) {
+    clearTimeout(cameraRetry);
+    cameraRetry = null;
+    feed.removeAttribute("src");
+  } else if (!feed.hasAttribute("src") && cameraRetry === null) {
+    feed.src = `/camera.mjpg?t=${Date.now()}`;
+  }
+  const connected = available && cameraRetry === null;
+  $("cameraBadge").textContent = connected ? "LIVE" : available ? "RECONNECTING" : "OFF";
+  $("cameraBadge").classList.toggle("muted", !connected);
+  feed.style.display = connected ? "block" : "none";
+  $("cameraOffline").classList.toggle("hidden", connected);
+  $("cameraOffline").textContent = error || (available ? "RECONNECTING CAMERA" : "CAMERA OFFLINE");
+}
 
 const control = {
   clientId: globalThis.crypto?.randomUUID?.() || `browser-${Date.now()}-${Math.random()}`,
@@ -168,11 +188,7 @@ function updateReadouts(frame) {
     $("stepCount").textContent = gait.step_count ?? 0;
     $("swingLeg").textContent = String(gait.swing_leg || "none").toUpperCase();
   }
-  const cameraOn = Boolean(frame.camera_ready);
-  $("cameraBadge").textContent = cameraOn ? "LIVE" : "OFF";
-  $("cameraBadge").classList.toggle("muted", !cameraOn);
-  $("cameraFeed").style.display = cameraOn ? "block" : "none";
-  $("cameraOffline").classList.toggle("hidden", cameraOn);
+  updateCamera(Boolean(frame.camera_ready), frame.camera_error);
 }
 
 function connectStream() {
@@ -189,6 +205,7 @@ function connectStream() {
     }
   };
   source.onerror = () => {
+    updateCamera(false);
     $("streamState").classList.add("offline");
     $("streamLabel").textContent = "Reconnecting";
   };
@@ -313,8 +330,14 @@ function bindWebControl() {
     navigator.sendBeacon("/api/control", payload);
   });
   $("cameraFeed").addEventListener("error", () => {
-    $("cameraFeed").style.display = "none";
-    $("cameraOffline").classList.remove("hidden");
+    $("cameraFeed").removeAttribute("src");
+    if (cameraAvailable && cameraRetry === null) {
+      cameraRetry = setTimeout(() => {
+        cameraRetry = null;
+        updateCamera(cameraAvailable);
+      }, 1000);
+    }
+    updateCamera(cameraAvailable);
   });
   updateControlUI();
   setInterval(() => sendControl(), 100);
@@ -326,6 +349,7 @@ function start() {
   setInterval(() => {
     $("clock").textContent = new Date().toLocaleTimeString("vi-VN", { hour12: false });
     if (lastEventAt && performance.now() - lastEventAt > 3000) {
+      updateCamera(false);
       $("streamState").classList.add("offline");
       $("streamLabel").textContent = "Telemetry stale";
     }

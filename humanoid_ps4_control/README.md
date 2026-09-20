@@ -73,7 +73,8 @@ Trên Raspberry Pi:
 
 ```bash
 cd ~/daktmt_gd1/humanoid_ps4_control
-python -m venv .venv
+sudo apt install python3-venv python3-picamera2 python3-opencv
+python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```

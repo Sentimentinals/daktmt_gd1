@@ -546,15 +546,15 @@ button.active kbd {
 .camera-offline {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: grid;
   place-items: center;
+  padding: 24px;
+  text-align: center;
+  overflow-wrap: anywhere;
   background: var(--surface-deep);
   color: var(--faint);
   font: 700 12px var(--mono);
-}
-
-.camera-offline {
-  z-index: 1;
 }
 
 .hidden {
