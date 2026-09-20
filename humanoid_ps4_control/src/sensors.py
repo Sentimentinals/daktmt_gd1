@@ -376,7 +376,7 @@ class RobotSensorHub:
                         serial_port.close()
                     except Exception:
                         pass
-        detail = "; ".join(errors) if errors else "no USB serial port found"
+        detail = "; ".join(errors) if errors else "no CP210x ESP32 port found"
         raise RuntimeError(detail)
 
     def _probe_sensor_stream(self, serial_port, timeout_s: float = 15.0) -> bool:
@@ -411,19 +411,10 @@ class RobotSensorHub:
                 str(getattr(info, field, "") or "")
                 for field in ("description", "manufacturer", "hwid")
             ).lower()
-            known_bridge = (
-                (vid, pid) == (0x10C4, 0xEA60)
-                or vid in {0x1A86, 0x303A}
-                or any(name in description for name in ("cp210", "ch340", "ch341", "ch910"))
-            )
-            usb_serial = (
-                device.startswith(("/dev/ttyUSB", "/dev/ttyACM"))
-                or device.upper().startswith("COM")
-            )
-            if known_bridge or usb_serial:
-                detected.append((0 if known_bridge else 1, device))
+            if (vid, pid) == (0x10C4, 0xEA60) or "cp210" in description:
+                detected.append(device)
 
-        for _, device in sorted(detected):
+        for device in sorted(detected):
             if device not in candidates:
                 candidates.append(device)
         return candidates
