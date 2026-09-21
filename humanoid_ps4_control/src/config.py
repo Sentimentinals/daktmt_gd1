@@ -21,7 +21,7 @@ GAIT = {
     "zmp_support_ratio": 0.80,
     "ankle_roll_gain": -1.00,
     "command_deadzone": 0.02,
-    "arm_swing_pwm": 100,
+    "arm_swing_pwm": 50,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
     "max_side_step_len": 22.0,
