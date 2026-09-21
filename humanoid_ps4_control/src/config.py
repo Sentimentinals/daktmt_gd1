@@ -87,13 +87,13 @@ class Config:
     stop_ms: int = 250
 
     # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.40
+    walk_speed: float = 0.45
     turn_speed: float = 0.35
     side_speed: float = 0.35
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
-    walk_step_length_mm: float = 34.0
-    walk_step_height_mm: float = 12.0
+    walk_step_length_mm: float = 38.0
+    walk_step_height_mm: float = 18.0
     walk_crouch_depth_mm: float = 6.0
     walk_forward_lean_deg: float = 0.0
     walk_lift_start_phase: float = 0.24
@@ -101,7 +101,7 @@ class Config:
     walk_lift_end_phase: float = 1.0
     walk_landing_roll_release_start: float = 0.42
     walk_crouch_transition_s: float = 0.45
-    t_step: float = 1.6
+    t_step: float = 1.45
     t_dbl: float = 0.16
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
