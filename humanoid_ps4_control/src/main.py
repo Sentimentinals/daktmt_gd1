@@ -41,7 +41,6 @@ def run_manual(
         arm_swing_pwm=args.arm_swing_pwm,
         arm_right_dir=args.arm_right_dir,
         arm_left_dir=args.arm_left_dir,
-        crouch_transition_s=args.walk_crouch_transition_s,
     )
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,

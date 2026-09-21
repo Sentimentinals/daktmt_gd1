@@ -100,7 +100,6 @@ class Config:
     walk_swing_advance_end_phase: float = 0.68
     walk_lift_end_phase: float = 1.0
     walk_landing_roll_release_start: float = 0.42
-    walk_crouch_transition_s: float = 0.45
     t_step: float = 1.45
     t_dbl: float = 0.20
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]

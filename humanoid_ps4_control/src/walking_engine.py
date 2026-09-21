@@ -156,7 +156,6 @@ class DynamicWalkingEngine:
         arm_swing_pwm: int | None = None,
         arm_right_dir: int | None = None,
         arm_left_dir: int | None = None,
-        crouch_transition_s: float = 0.0,
     ) -> None:
         self.dt = dt
         self.t_step = t_step
@@ -193,7 +192,6 @@ class DynamicWalkingEngine:
         self.max_step_len = max_step_len
         self.max_turn_step_len = GAIT["max_turn_step_len"] if max_turn_step_len is None else max_turn_step_len
         self.max_side_step_len = GAIT["max_side_step_len"] if max_side_step_len is None else max_side_step_len
-        self.crouch_transition_s = max(0.0, crouch_transition_s)
         self.reset()
 
     def reset(self) -> None:
@@ -229,37 +227,8 @@ class DynamicWalkingEngine:
         self._com_x = 0.0
         self._zmp_y = 0.0
         self._zmp_x = 0.0
-        self._crouch_pending = self.crouch_transition_s > 0.0 and (
-            self.crouch_depth_mm > 0.0 or self.forward_lean_deg > 0.0
-        )
 
         self.prev_pose = dict(self.ready_pose)
-
-    def _enqueue_body_transition(self, target_depth: float, target_lean: float = 0.0) -> None:
-        base_L = self.foot_L_queue[-1].copy() if self.foot_L_queue else self.last_foot_L.copy()
-        base_R = self.foot_R_queue[-1].copy() if self.foot_R_queue else self.last_foot_R.copy()
-        start_depth = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
-        start_lean = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
-        target_depth = max(0.0, min(self.crouch_depth_mm, target_depth))
-        transition_frames = max(1, round(self.crouch_transition_s / self.dt))
-        center_x = 0.5 * (base_L[0] + base_R[0])
-        center_y = 0.5 * (base_L[1] + base_R[1])
-
-        for frame in range(transition_frames):
-            blend = self._phase_curve((frame + 1) / transition_frames)
-            self.zmp_x_queue.append(center_x)
-            self.zmp_y_queue.append(center_y)
-            self.body_drop_queue.append(start_depth + (target_depth - start_depth) * blend)
-            self.body_lean_queue.append(start_lean + (target_lean - start_lean) * blend)
-            self.foot_L_queue.append(base_L.copy())
-            self.foot_R_queue.append(base_R.copy())
-            self.arm_queue.append((0, 0))
-            self.swing_leg_queue.append("none")
-            self.support_load_queue.append(0.0)
-            self.lift_factor_queue.append(0.0)
-            self.landing_progress_queue.append(0.0)
-            self.phase_mode_queue.append("idle")
-            self.side_len_queue.append(0.0)
 
     def is_idle_ready(self, tolerance: float = 0.05) -> bool:
         if (
@@ -525,27 +494,11 @@ class DynamicWalkingEngine:
         self.commanded_side_len = requested_side_len if input_active else 0.0
 
         if not self.zmp_y_queue:
-            side_dominant_request = (
-                abs(requested_side_len) > 0.1
-                and abs(requested_side_len) >= abs(requested_step_len) + abs(requested_turn_len)
+            self._enqueue_next_step(
+                self.commanded_step_len,
+                self.commanded_turn_len,
+                self.commanded_side_len,
             )
-            crouch_requested = abs(requested_step_len) > 0.1 and not side_dominant_request
-            if self._crouch_pending and crouch_requested:
-                self._crouch_pending = False
-                lean_target = self.forward_lean_deg if requested_step_len > 0.1 else 0.0
-                self._enqueue_body_transition(self.crouch_depth_mm, lean_target)
-            elif input_active and not crouch_requested and (
-                self.last_body_drop > 0.05 or abs(self.last_body_lean) > 0.05
-            ):
-                self._crouch_pending = True
-                self._enqueue_body_transition(0.0, 0.0)
-            # Commit the requested step together with its preparation.
-            if input_active or not self.zmp_y_queue:
-                self._enqueue_next_step(
-                    self.commanded_step_len,
-                    self.commanded_turn_len,
-                    self.commanded_side_len,
-                )
 
         zmp_now = self.zmp_y_queue.popleft()
         zmp_x_now = self.zmp_x_queue.popleft()
