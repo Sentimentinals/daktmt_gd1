@@ -54,6 +54,7 @@ def run_manual(
     squat = SquatEngine(
         dt=args.update_ms / 1000.0,
         depth_mm=args.manual_squat_depth_mm,
+        forward_mm=args.manual_squat_forward_mm,
         transition_s=args.manual_squat_transition_s,
     )
     getup = GetupEngine(dt=args.update_ms / 1000.0, speed=args.getup_speed)

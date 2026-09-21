@@ -77,9 +77,10 @@ def compute_pose(
 
 
 class SquatEngine:
-    def __init__(self, dt: float, depth_mm: float, transition_s: float) -> None:
+    def __init__(self, dt: float, depth_mm: float, forward_mm: float, transition_s: float) -> None:
         self.dt = max(0.001, dt)
         self.max_depth_mm = max(0.0, depth_mm)
+        self.forward_mm = max(0.0, forward_mm)
         self.transition_s = max(self.dt, transition_s)
         self.reset()
 
@@ -124,8 +125,9 @@ class SquatEngine:
         if self.depth_mm <= 0.1:
             return dict(STANDING)
         half_hip = ROBOT["half_hip"]
+        com_x = self.forward_mm * self.depth_mm / self.max_depth_mm
         return compute_pose(
-            0.0,
+            com_x,
             0.0,
             np.array([0.0, -half_hip, 0.0]),
             np.array([0.0, half_hip, 0.0]),
