@@ -77,10 +77,22 @@ def compute_pose(
 
 
 class SquatEngine:
-    def __init__(self, dt: float, depth_mm: float, forward_mm: float, transition_s: float) -> None:
+    def __init__(
+        self,
+        dt: float,
+        depth_mm: float,
+        forward_mm: float,
+        arm_forward_pwm: int,
+        arm_raise_s: float,
+        hip_forward_pwm: int,
+        transition_s: float,
+    ) -> None:
         self.dt = max(0.001, dt)
         self.max_depth_mm = max(0.0, depth_mm)
         self.forward_mm = max(0.0, forward_mm)
+        self.arm_forward_pwm = abs(arm_forward_pwm)
+        self.arm_raise_s = max(self.dt, arm_raise_s)
+        self.hip_forward_pwm = abs(hip_forward_pwm)
         self.transition_s = max(self.dt, transition_s)
         self.reset()
 
@@ -90,6 +102,8 @@ class SquatEngine:
 
     @property
     def phase(self) -> str:
+        if self.target_depth_mm > self._start_depth_mm and self._elapsed_s < self.arm_raise_s:
+            return "squat-arms"
         if abs(self.depth_mm - self.target_depth_mm) <= 0.1:
             return "squat-hold" if self.target_depth_mm > 0.1 else "idle"
         return "squat-down" if self.target_depth_mm > self.depth_mm else "squat-up"
@@ -115,25 +129,38 @@ class SquatEngine:
         self._set_target(0.0)
 
     def update(self) -> dict[int, int]:
-        if self._elapsed_s < self.transition_s:
-            self._elapsed_s = min(self.transition_s, self._elapsed_s + self.dt)
-            progress = self._elapsed_s / self.transition_s
+        lowering = self.target_depth_mm > self._start_depth_mm
+        arm_delay = self.arm_raise_s if lowering else 0.0
+        total_time = self.transition_s + arm_delay
+        if self._elapsed_s < total_time:
+            self._elapsed_s = min(total_time, self._elapsed_s + self.dt)
+            progress = max(0.0, self._elapsed_s - arm_delay) / self.transition_s
+            progress = min(1.0, progress)
             blend = progress * progress * (3.0 - 2.0 * progress)
             self.depth_mm = self._start_depth_mm + (
                 self.target_depth_mm - self._start_depth_mm
             ) * blend
-        if self.depth_mm <= 0.1:
+        if self.depth_mm <= 0.1 and self.target_depth_mm <= 0.1:
             return dict(STANDING)
+        depth_ratio = self.depth_mm / self.max_depth_mm
+        if lowering:
+            arm_progress = min(1.0, self._elapsed_s / self.arm_raise_s)
+            arm_blend = arm_progress * arm_progress * (3.0 - 2.0 * arm_progress)
+        else:
+            arm_blend = depth_ratio
         half_hip = ROBOT["half_hip"]
-        pose = compute_pose(
-            self.forward_mm * self.depth_mm / self.max_depth_mm,
-            0.0,
-            np.array([0.0, -half_hip, 0.0]),
-            np.array([0.0, half_hip, 0.0]),
-            com_z=ROBOT["com_height"] - self.depth_mm,
-            support_leg="double",
+        pose = dict(STANDING) if self.depth_mm <= 0.1 else compute_pose(
+            self.forward_mm * depth_ratio, 0.0,
+            np.array([0.0, -half_hip, 0.0]), np.array([0.0, half_hip, 0.0]),
+            com_z=ROBOT["com_height"] - self.depth_mm, support_leg="double",
         )
-        pose[13] = pose[20] = 1500
+        pose[11] = round(STANDING[11] - self.arm_forward_pwm * arm_blend)
+        pose[22] = round(STANDING[22] + self.arm_forward_pwm * arm_blend)
+        hip_delta = round(self.hip_forward_pwm * depth_ratio)
+        left_hip, right_hip = STANDING[13] + hip_delta, STANDING[20] - hip_delta
+        pose[15] -= left_hip - pose[13]
+        pose[18] -= right_hip - pose[20]
+        pose[13], pose[20] = left_hip, right_hip
         return pose
 
 
