@@ -34,7 +34,6 @@ def run_manual(
         forward_lean_deg=args.walk_forward_lean_deg,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
-        landing_gap_mm=0.0,
         lift_start_phase=args.walk_lift_start_phase,
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,
@@ -164,6 +163,7 @@ def run_manual(
                             1 if turn > 0.0 else -1 if turn < 0.0 else 0
                         ))
                         gait = engine.telemetry_snapshot()
+                        idle_ready = engine.is_idle_ready()
                         directions = []
                         if forward:
                             directions.append("FORWARD" if forward > 0 else "BACKWARD")
@@ -172,7 +172,7 @@ def run_manual(
                         if side:
                             directions.append("SIDE LEFT" if side > 0 else "SIDE RIGHT")
                         status = " + ".join(directions) if directions else (
-                            "SETTLING" if not engine.is_idle_ready() else "WALK READY"
+                            "SETTLING" if not idle_ready else "WALK READY"
                         )
 
                     fall_active = fall_safety.active
@@ -200,8 +200,11 @@ def run_manual(
                     blocked, distance = obstacle_guard.update(depth)
                     if depth is not None and blocked and not fall_active:
                         status += f" | TOF NEAR {distance} MM (MANUAL)"
-                    duration = args.stop_ms if reset_requested and not fall_active else args.update_ms
-                    backend.send(pose, duration_ms=duration, force=reset_requested)
+                    hold_standing = not fall_active and (
+                        reset_requested or pose == STANDING and backend.current_pose != STANDING
+                    )
+                    duration = args.stop_ms if hold_standing else args.update_ms
+                    backend.send(pose, duration_ms=duration, force=hold_standing)
                     dashboard.publish(
                         pose=backend.current_pose,
                         gait=gait,

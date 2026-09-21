@@ -25,22 +25,20 @@ def angle_to_pwm(sid: int, base_ang: float, new_ang: float, base_pwm: int) -> in
     return round(base_pwm + delta)
 
 
-def lift_pitch_deltas(lift_height: float, forward_x: float = 0.0) -> tuple[int, int, int]:
+def lift_pitch_deltas(lift_height: float) -> tuple[int, int, int]:
     if lift_height <= 0.0:
         return 0, 0, 0
 
     hip = (0.0, 0.0, ROBOT["com_height"])
     foot_ground = (0.0, 0.0, 0.0)
-    foot_lifted = (forward_x, 0.0, lift_height)
+    foot_lifted = (0.0, 0.0, lift_height)
     neutral = leg_ik(hip, foot_ground, ROBOT["upper_leg"], ROBOT["lower_leg"])
     lifted = leg_ik(hip, foot_lifted, ROBOT["upper_leg"], ROBOT["lower_leg"])
 
-    raw_thigh_delta = round((lifted["hip_pitch"] - neutral["hip_pitch"]) * PWM_PER_DEG)
-    raw_knee_delta = round((lifted["knee"] - neutral["knee"]) * PWM_PER_DEG)
     thigh_scale = 0.68
     lift_scale = 0.60
-    thigh_delta = round(raw_thigh_delta * thigh_scale)
-    knee_delta = round(raw_knee_delta * lift_scale)
+    thigh_delta = round((lifted["hip_pitch"] - neutral["hip_pitch"]) * PWM_PER_DEG * thigh_scale)
+    knee_delta = round((lifted["knee"] - neutral["knee"]) * PWM_PER_DEG * lift_scale)
     ankle_delta = knee_delta - thigh_delta
     return thigh_delta, knee_delta, ankle_delta
 
@@ -168,8 +166,6 @@ class DynamicWalkingEngine:
         forward_lean_deg: float = 0.0,
         zmp_support_ratio: float | None = None,
         ankle_roll_gain: float | None = None,
-        step_x_ratio: float = 1.0,
-        landing_gap_mm: float | None = None,
         lift_start_phase: float = 0.24,
         swing_advance_end_phase: float = 0.60,
         lift_end_phase: float = 1.0,
@@ -196,10 +192,8 @@ class DynamicWalkingEngine:
         self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
-        self.step_x_ratio = step_x_ratio
-        self.landing_gap_mm = abs(max_step_len if landing_gap_mm is None else landing_gap_mm)
         self.side_lift_scale = 0.55
-        self.lift_start_phase = max(0.0, min(0.30, lift_start_phase))
+        self.lift_start_phase = max(0.0, min(0.40, lift_start_phase))
         self.lift_end_phase = max(self.lift_start_phase + 0.20, min(1.0, lift_end_phase))
         self.swing_advance_end_phase = max(
             self.lift_start_phase + 0.10,
@@ -314,7 +308,7 @@ class DynamicWalkingEngine:
             return False
         if any(abs(self.prev_pose.get(sid, self.ready_pose[sid]) - self.ready_pose[sid]) > 3 for sid in DIR):
             return False
-        return self.zmp_ctrl.is_settled()
+        return self.zmp_ctrl.is_settled() and self.zmp_ctrl_x.is_settled()
 
     def _enqueue_next_step(
         self,
@@ -327,17 +321,18 @@ class DynamicWalkingEngine:
 
         if abs(step_len) < 0.1 and abs(turn_len) < 0.1 and abs(side_len) < 0.1:
             settle_frames = self.n_s + self.n_d
-            stance_center_x = (base_L[0] + base_R[0]) / 2.0
+            neutral_L = np.array([0.0, -self.hw, 0.0])
+            neutral_R = np.array([0.0, self.hw, 0.0])
             drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
             lean_start = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
             for frame in range(settle_frames):
                 stand_t = self._phase_curve((frame + 1) / settle_frames)
-                self.zmp_x_queue.append(stance_center_x)
+                self.zmp_x_queue.append(0.0)
                 self.zmp_y_queue.append(0.0)
                 self.body_drop_queue.append(drop_start * (1.0 - stand_t))
                 self.body_lean_queue.append(lean_start * (1.0 - stand_t))
-                self.foot_L_queue.append(base_L.copy())
-                self.foot_R_queue.append(base_R.copy())
+                self.foot_L_queue.append(neutral_L.copy())
+                self.foot_R_queue.append(neutral_R.copy())
                 self.arm_queue.append((0, 0))
                 self.swing_leg_queue.append("none")
                 self.support_load_queue.append(0.0)
@@ -393,10 +388,10 @@ class DynamicWalkingEngine:
             swing_distance = 0.0
         else:
             if abs(step_len) > 0.1:
-                base_reach = self._landing_reach(step_len * self.step_x_ratio, step_len)
+                base_reach = step_len
             else:
-                base_reach = abs(turn_len) * self.step_x_ratio
-            turn_reach = (-turn_len if swing_is_left else turn_len) * self.step_x_ratio
+                base_reach = abs(turn_len)
+            turn_reach = -turn_len if swing_is_left else turn_len
             overstep = base_reach + turn_reach
             target_x = stance_x + overstep
             swing_start_x = base_L[0] if swing_is_left else base_R[0]
@@ -456,13 +451,6 @@ class DynamicWalkingEngine:
             self.landing_progress_queue.append(landing_t if phase_mode == "land" else 0.0)
             self.phase_mode_queue.append(phase_mode)
             self.side_len_queue.append(side_len)
-
-    def _landing_reach(self, planned_reach: float, sagittal_cmd: float) -> float:
-        if abs(sagittal_cmd) < 0.1:
-            return planned_reach
-
-        direction = 1.0 if sagittal_cmd > 0.0 else -1.0
-        return direction * max(abs(planned_reach), self.landing_gap_mm)
 
     def _side_swing_pitch_deltas(self, lift_factor: float) -> tuple[int, int, int]:
         thigh, knee, ankle = lift_pitch_deltas(self.step_height * lift_factor)

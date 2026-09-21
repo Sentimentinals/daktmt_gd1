@@ -52,7 +52,6 @@ def run_follow(
         crouch_depth_mm=args.walk_crouch_depth_mm,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
-        landing_gap_mm=0.0,
         arm_swing_pwm=0,
     )
     obstacle_planner = PersonObstaclePlanner(

@@ -18,7 +18,7 @@ ROBOT = {
 
 # --- Default Gait Parameters ---
 GAIT = {
-    "zmp_support_ratio": 0.65,
+    "zmp_support_ratio": 0.80,
     "ankle_roll_gain": -1.00,
     "command_deadzone": 0.02,
     "arm_swing_pwm": 100,
@@ -87,17 +87,17 @@ class Config:
     stop_ms: int = 250
 
     # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.7
+    walk_speed: float = 0.50
     turn_speed: float = 0.45
     side_speed: float = 0.45
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     walk_step_length_mm: float = 38.0
-    walk_step_height_mm: float = 18.0
-    walk_crouch_depth_mm: float = 6.0
-    walk_forward_lean_deg: float = 0.0
-    walk_lift_start_phase: float = 0.24
-    walk_swing_advance_end_phase: float = 0.60
+    walk_step_height_mm: float = 20.0
+    walk_crouch_depth_mm: float = 8.0
+    walk_forward_lean_deg: float = 1.0
+    walk_lift_start_phase: float = 0.30
+    walk_swing_advance_end_phase: float = 0.68
     walk_lift_end_phase: float = 1.0
     walk_landing_roll_release_start: float = 0.42
     walk_crouch_transition_s: float = 0.45
