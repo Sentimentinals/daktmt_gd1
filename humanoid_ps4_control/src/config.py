@@ -33,16 +33,16 @@ STANDING = {
     9: 1500,    # Left elbow
     10: 2450,   # Left upper arm down
     11: 1500,   # Left shoulder swing
-    12: round(1500 + STANCE_HIP_OUT_DEG * PWM_PER_DEG),  # Left hip roll/abduction
-    13: 1500,   # Left hip pitch
+    12: 1500,  # Left hip roll/abduction
+    13: 1522,   # Left hip pitch
     14: 1500,   # Left knee
     15: 1500,   # Left ankle pitch
-    16: round(1500 + STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Left ankle roll / foot
-    17: round(1500 - STANCE_ANKLE_COMP_DEG * PWM_PER_DEG),  # Right ankle roll / foot
+    16: 1500 ,  # Left ankle roll / foot
+    17: 1500,  # Right ankle roll / foot
     18: 1500,   # Right ankle pitch
     19: 1500,   # Right knee
-    20: 1500,   # Right hip pitch
-    21: round(1500 - STANCE_HIP_OUT_DEG * PWM_PER_DEG),  # Right hip roll/abduction
+    20: 1478,   # Right hip pitch
+    21: 1500,  # Right hip roll/abduction
     22: 1470,   # Right shoulder swing
     23: 500,    # Right upper arm down
     24: 1500,   # Right elbow
@@ -87,9 +87,9 @@ class Config:
     stop_ms: int = 250
 
     # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.45
-    turn_speed: float = 0.35
-    side_speed: float = 0.35
+    walk_speed: float = 0.7
+    turn_speed: float = 0.45
+    side_speed: float = 0.45
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     walk_step_length_mm: float = 38.0
@@ -102,7 +102,7 @@ class Config:
     walk_landing_roll_release_start: float = 0.42
     walk_crouch_transition_s: float = 0.45
     t_step: float = 1.45
-    t_dbl: float = 0.16
+    t_dbl: float = 0.20
     zmp_support_ratio: float = GAIT["zmp_support_ratio"]
     ankle_roll_gain: float = GAIT["ankle_roll_gain"]
     arm_swing_pwm: int = GAIT["arm_swing_pwm"]
