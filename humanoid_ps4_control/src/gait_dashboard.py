@@ -440,6 +440,13 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             return
 
     def _serve_camera(self) -> None:
+        camera = self.server.dashboard.camera
+        if camera is None or not camera.ready:
+            self._send_json(
+                {"error": (camera.error if camera is not None else None) or "Waiting for camera frames"},
+                status=503,
+            )
+            return
         self.send_response(200)
         self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
         self.send_header("Cache-Control", "no-store")

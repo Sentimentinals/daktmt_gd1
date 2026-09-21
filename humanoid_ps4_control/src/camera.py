@@ -51,8 +51,13 @@ class HeadlessCamera:
 
         self._cv2 = cv2
         camera = None
+        stage = "enumeration"
         try:
+            if not Picamera2.global_camera_info():
+                raise RuntimeError("No camera detected by libcamera. Run rpicam-hello --list-cameras.")
+            stage = "open"
             camera = Picamera2()
+            stage = "configuration"
             camera.configure(
                 camera.create_preview_configuration(
                     main={"format": "RGB888", "size": (self.width, self.height)},
@@ -60,15 +65,16 @@ class HeadlessCamera:
                     transform=Transform(hflip=True, vflip=True),
                 )
             )
+            stage = "start"
             camera.start()
         except Exception as exc:
-            self.error = str(exc)
+            self.error = f"Camera {stage}: {exc}"
             if camera is not None:
                 try:
                     camera.close()
                 except Exception:
                     pass
-            print(f"[camera] Headless camera unavailable: {exc}")
+            print(f"[camera] {self.error}")
             return False
 
         self.camera = camera
