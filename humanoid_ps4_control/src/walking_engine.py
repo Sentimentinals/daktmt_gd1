@@ -125,15 +125,18 @@ class SquatEngine:
         if self.depth_mm <= 0.1:
             return dict(STANDING)
         half_hip = ROBOT["half_hip"]
-        com_x = self.forward_mm * self.depth_mm / self.max_depth_mm
-        return compute_pose(
-            com_x,
+        depth_ratio = self.depth_mm / self.max_depth_mm
+        pose = compute_pose(
+            self.forward_mm * depth_ratio,
             0.0,
             np.array([0.0, -half_hip, 0.0]),
             np.array([0.0, half_hip, 0.0]),
             com_z=ROBOT["com_height"] - self.depth_mm,
             support_leg="double",
         )
+        pose[13] = round(STANDING[13] + (1500 - STANDING[13]) * depth_ratio)
+        pose[20] = round(STANDING[20] + (1500 - STANDING[20]) * depth_ratio)
+        return pose
 
 
 class DynamicWalkingEngine:
