@@ -179,6 +179,8 @@ function setAxis(name, value, button) {
 
 function updateReadouts(frame) {
   const gait = frame.gait || {};
+  const health = frame.gait_health || {};
+  const maintenance = health.maintenance || {};
   if (!frame.runtime_mode || frame.runtime_mode === control.mode) {
     $("modeBadge").textContent = frame.active ? "ACTIVE" : "IDLE";
     $("motionStatus").textContent = frame.status || "Waiting";
@@ -187,6 +189,32 @@ function updateReadouts(frame) {
     $("balanceStatus").title = $("balanceStatus").textContent;
     $("stepCount").textContent = gait.step_count ?? 0;
     $("swingLeg").textContent = String(gait.swing_leg || "none").toUpperCase();
+  }
+  const gaitHealth = $("gaitHealth");
+  const maintenanceStatus = $("maintenanceStatus");
+  gaitHealth.textContent = health.status || "OFF";
+  maintenanceStatus.textContent = maintenance.state || "OFF";
+  const score = Number(health.score);
+  const threshold = Number(health.threshold);
+  const hasScore = health.score !== null && health.score !== undefined
+    && health.threshold !== null && health.threshold !== undefined
+    && Number.isFinite(score) && Number.isFinite(threshold);
+  gaitHealth.title = hasScore
+    ? `${health.profile || "global"}: ${score.toFixed(2)} / ${threshold.toFixed(2)}`
+    : health.model_error || "No trained gait baseline";
+  const anomalyRate = Number(maintenance.anomaly_rate);
+  const trend = Number(maintenance.trend_percent);
+  maintenanceStatus.title = [
+    maintenance.anomaly_rate !== null && maintenance.anomaly_rate !== undefined && Number.isFinite(anomalyRate)
+      ? `Anomaly ${(anomalyRate * 100).toFixed(0)}%` : null,
+    maintenance.trend_percent !== null && maintenance.trend_percent !== undefined && Number.isFinite(trend)
+      ? `Trend ${trend >= 0 ? "+" : ""}${trend.toFixed(0)}%` : null,
+  ].filter(Boolean).join(" | ") || "Session history not available";
+  for (const element of [gaitHealth, maintenanceStatus]) {
+    const label = element.textContent;
+    element.classList.toggle("state-good", label === "NORMAL" || label === "GOOD");
+    element.classList.toggle("state-watch", label === "SUSPECT" || label === "WATCH");
+    element.classList.toggle("state-alert", label === "WARNING" || label === "CHECK ROBOT" || label === "MODEL ERROR");
   }
   updateCamera(Boolean(frame.camera_ready), frame.camera_error);
 }

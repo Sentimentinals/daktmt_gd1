@@ -563,7 +563,7 @@ button.active kbd {
 
 .mini-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--line);
 }
 
@@ -573,8 +573,12 @@ button.active kbd {
   border-right: 1px solid var(--line);
 }
 
-.mini-grid div:last-child {
+.mini-grid div:nth-child(3n) {
   border-right: 0;
+}
+
+.mini-grid div:nth-child(-n + 3) {
+  border-bottom: 1px solid var(--line);
 }
 
 .mini-grid span {
@@ -592,6 +596,18 @@ button.active kbd {
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mini-grid strong.state-good {
+  color: var(--accent-bright);
+}
+
+.mini-grid strong.state-watch {
+  color: var(--amber);
+}
+
+.mini-grid strong.state-alert {
+  color: var(--red);
 }
 
 @media (max-width: 1180px) {
@@ -645,12 +661,20 @@ button.active kbd {
     grid-template-columns: 1fr 1fr;
   }
 
-  .mini-grid div:nth-child(2) {
+  .mini-grid div:nth-child(3n) {
+    border-right: 1px solid var(--line);
+  }
+
+  .mini-grid div:nth-child(2n) {
     border-right: 0;
   }
 
-  .mini-grid div:nth-child(-n + 2) {
+  .mini-grid div:nth-child(-n + 4) {
     border-bottom: 1px solid var(--line);
+  }
+
+  .mini-grid div:nth-last-child(-n + 2) {
+    border-bottom: 0;
   }
 }
 

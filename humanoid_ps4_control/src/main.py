@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+from pathlib import Path
 import time
 
 from .backends import make_backend
@@ -241,15 +242,25 @@ def run_manual(
 def main() -> None:
     from .camera import HeadlessCamera
     from .fall_safety import FallSafety, PriorityBackend
+    from .gait_anomaly import GaitHealthMonitor
     from .gait_dashboard import GaitDashboard, stationary_gait
     from .sensors import RobotSensorHub
     from .walking_engine import STANDING
 
     args = Config()
+    project_root = Path(__file__).resolve().parent.parent
     camera = HeadlessCamera(
         width=args.vision_camera_width,
         height=args.vision_camera_height,
         fps=args.vision_fps,
+    )
+    health_monitor = GaitHealthMonitor(
+        enabled=args.gait_anomaly_enabled,
+        model_path=project_root / args.gait_anomaly_model,
+        history_path=project_root / args.gait_anomaly_history,
+        window_s=args.gait_anomaly_window_s,
+        min_samples=args.gait_anomaly_min_samples,
+        warning_windows=args.gait_anomaly_warning_windows,
     )
     dashboard = GaitDashboard(
         host=args.gait_dashboard_host,
@@ -257,6 +268,7 @@ def main() -> None:
         stream_hz=args.gait_dashboard_stream_hz,
         command_timeout_s=args.gait_dashboard_command_timeout_s,
         camera=camera,
+        health_monitor=health_monitor,
     )
     dashboard.start()
     camera_ready = camera.start()

@@ -121,6 +121,14 @@ class Config:
     gait_dashboard_stream_hz: int = 12
     gait_dashboard_command_timeout_s: float = 0.6
 
+    # --- IMU Gait Health ---
+    gait_anomaly_enabled: bool = True
+    gait_anomaly_model: str = "deploy/models/gait_anomaly.json"
+    gait_anomaly_history: str = "out/gait_health_history.jsonl"
+    gait_anomaly_window_s: float = 2.5
+    gait_anomaly_min_samples: int = 30
+    gait_anomaly_warning_windows: int = 2
+
     # --- Person Detection & Follow ---
     person_detect_prototxt: str = "../person_detect/MobileNetSSD_deploy.prototxt"
     person_detect_model: str = "../person_detect/MobileNetSSD_deploy.caffemodel"

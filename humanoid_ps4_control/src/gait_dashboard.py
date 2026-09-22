@@ -83,11 +83,13 @@ class GaitDashboard:
         stream_hz: int = 12,
         command_timeout_s: float = 0.6,
         camera=None,
+        health_monitor=None,
     ) -> None:
         self.host = host
         self.port = port
         self.stream_period_s = 1.0 / max(2, stream_hz)
         self.camera = camera
+        self.health_monitor = health_monitor
         self.command_timeout_s = max(0.25, float(command_timeout_s))
         self._started_at = time.monotonic()
         self._stop = threading.Event()
@@ -143,6 +145,8 @@ class GaitDashboard:
             self._server_thread.join(timeout=1.5)
         self._server = None
         self._server_thread = None
+        if self.health_monitor is not None:
+            self.health_monitor.close()
 
     @staticmethod
     def _axis(value: object) -> float:
@@ -291,6 +295,7 @@ class GaitDashboard:
         imu = None
         feet = None
         depth = None
+        reading = None
         if sensor_snapshot is not None:
             reading = sensor_snapshot.imu
             if reading is not None:
@@ -320,6 +325,11 @@ class GaitDashboard:
                     "obstacle_mm": distance.obstacle_distance_mm,
                     "grid_mm": distance.distances_mm,
                 }
+        gait_health = (
+            self.health_monitor.update(reading, gait, runtime_mode)
+            if self.health_monitor is not None
+            else None
+        )
         frame = _json_ready(
             {
                 "time_s": round(now - self._started_at, 4),
@@ -335,6 +345,7 @@ class GaitDashboard:
                 "imu": imu,
                 "fsr": feet,
                 "depth": depth,
+                "gait_health": gait_health,
             }
         )
         payload = json.dumps(frame, separators=(",", ":"), allow_nan=False).encode("utf-8")
