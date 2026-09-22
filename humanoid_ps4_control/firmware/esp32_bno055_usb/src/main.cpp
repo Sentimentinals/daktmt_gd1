@@ -2,8 +2,6 @@
 #include <SparkFun_VL53L5CX_Library.h>
 #include <Wire.h>
 
-#include "terrain_classifier.h"
-
 namespace {
 constexpr uint8_t BNO_SDA_PIN = 21;
 constexpr uint8_t BNO_SCL_PIN = 22;
@@ -111,13 +109,6 @@ void printDepthFrame(uint32_t now) {
   Serial.println();
 }
 
-void printTerrainPrediction(uint32_t now) {
-  if (!terrain_model::kReady) return;
-  const terrain_tinyml::Prediction prediction =
-      terrain_tinyml::predict(tof_data.distance_mm);
-  Serial.printf("T,%lu,%s,%.3f\n", now,
-                terrain_tinyml::labelName(prediction.label), prediction.confidence);
-}
 }  // namespace
 
 void setup() {
@@ -152,9 +143,6 @@ void setup() {
   Serial.println("# READY format=F,ms,left_norm,left_voltage,left_raw,right_norm,right_voltage,right_raw");
   Serial.println(tof_ready ? "# READY format=D,ms,64_distance_mm"
                            : "# VL53L5CX not detected at 0x29");
-  if (terrain_model::kReady) {
-    Serial.println("# READY format=T,ms,label,confidence");
-  }
 }
 
 void loop() {
@@ -215,7 +203,6 @@ void loop() {
     const bool depth_ready = tof.isDataReady() && tof.getRangingData(&tof_data);
     if (depth_ready) {
       printDepthFrame(now);
-      printTerrainPrediction(now);
     }
   }
 }

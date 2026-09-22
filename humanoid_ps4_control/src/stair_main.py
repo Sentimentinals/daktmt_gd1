@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import replace
 from pathlib import Path
 
 from .balance import (
@@ -13,7 +12,7 @@ from .balance import (
 from .config import Config, ROBOT, STANDING
 from .gait_dashboard import stationary_gait
 from .stair_motion import StairStepEngine
-from .stair_perception import StairDetection, StairDetector, estimate_stair_geometry
+from .stair_perception import StairDetector, estimate_stair_geometry
 from .walking_engine import DynamicWalkingEngine
 
 
@@ -40,7 +39,7 @@ def run_terrain_auto(
         mode = "ONNX+geometry" if detector.model_ready else "geometry fallback"
         print(f"[terrain] Stair detector ON ({mode}).")
     else:
-        print("[terrain] Camera unavailable. Waiting for ToF TinyML stair detection.")
+        print("[terrain] Camera unavailable. Stair detection requires camera and ToF.")
 
     approach = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
@@ -156,7 +155,6 @@ def run_terrain_auto(
                 now = time.monotonic()
                 imu = snapshot.imu if snapshot is not None else None
                 depth = snapshot.depth if snapshot is not None else None
-                terrain = snapshot.terrain if snapshot is not None else None
                 pitch_delta = angle_error_deg(imu.pitch_deg, reference[1]) if imu is not None and reference is not None else 0.0
                 roll_delta = angle_error_deg(imu.roll_deg, reference[0]) if imu is not None and reference is not None else 0.0
                 stair_frame = camera.stair_frame() if camera_ready else None
@@ -165,25 +163,6 @@ def run_terrain_auto(
                 if stair_frame is not None and now - stair_frame.captured_at > 0.8:
                     detection = None
                     detection_timestamp = None
-
-                tinyml_direction = None
-                tinyml_ready = (
-                    terrain is not None
-                    and terrain.confidence >= args.stair_tinyml_min_confidence
-                )
-                if tinyml_ready and terrain.label in {"stair_up", "stair_down"}:
-                    tinyml_direction = "up" if terrain.label == "stair_up" else "down"
-                    if detection is None:
-                        detection = StairDetection(
-                            box=(0, 0, 0, 0),
-                            confidence=terrain.confidence,
-                            center_error=0.0,
-                            source="tinyml",
-                        )
-                    detection_timestamp = terrain.sensor_time_ms
-                elif tinyml_ready and terrain.label in {"clear", "obstacle"}:
-                    detection = None
-                    detection_timestamp = terrain.sensor_time_ms
 
                 geometry = None
                 if detection is not None:
@@ -200,19 +179,6 @@ def run_terrain_auto(
                         forward_offset_mm=args.stair_tof_forward_offset_mm,
                         range_edge_min_delta_mm=args.stair_tof_edge_min_delta_mm,
                     )
-                    if tinyml_direction is not None:
-                        if geometry.direction != tinyml_direction:
-                            geometry = None
-                            stable_frames = 0
-                        elif detection.source != "tinyml":
-                            geometry = replace(
-                                geometry,
-                                confidence=min(
-                                    0.99,
-                                    (geometry.confidence + terrain.confidence) * 0.5 + 0.05,
-                                ),
-                                source=f"{geometry.source}+tinyml",
-                            )
 
                 if geometry is not None:
                     depth_timestamp = depth.sensor_time_ms if depth is not None else None
@@ -348,12 +314,6 @@ def run_terrain_auto(
                         "tread_depth_mm": args.stair_tread_depth_mm,
                         "calibrated": args.stair_geometry_calibrated,
                     }
-                if terrain is not None:
-                    gait.setdefault("perception", {})["tinyml"] = {
-                        "label": terrain.label,
-                        "confidence": terrain.confidence,
-                    }
-
                 dt = max(0.001, now - last_balance_at)
                 last_balance_at = now
                 fall_active = fall_safety.active

@@ -320,15 +320,6 @@ class GaitDashboard:
                     "obstacle_mm": distance.obstacle_distance_mm,
                     "grid_mm": distance.distances_mm,
                 }
-            terrain = sensor_snapshot.terrain
-            if terrain is not None:
-                if depth is None:
-                    depth = {}
-                depth["terrain"] = {
-                    "label": terrain.label,
-                    "confidence": terrain.confidence,
-                }
-
         frame = _json_ready(
             {
                 "time_s": round(now - self._started_at, 4),
