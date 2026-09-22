@@ -25,7 +25,7 @@ GAIT = {
     "arm_right_dir": 1,
     "arm_left_dir": -1,
     "max_side_step_len": 22.0,
-    "max_turn_step_len": 4.0,
+    "max_turn_step_len": 12.0,
 }
 
 # --- Calibrated standing pulse widths ---
@@ -190,7 +190,6 @@ class Config:
     tof_obstacle_stable_frames: int = 3
 
     # --- Dance ---
-    dance_period: float = 2.4
     dance_transition: float = 0.45
     dance_shoulder_pwm: int = 420
     dance_elbow_pwm: int = 260

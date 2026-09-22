@@ -323,6 +323,7 @@ class DynamicWalkingEngine:
             return
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
+        turn_dominant = abs(turn_len) > 0.1 and abs(step_len) < 0.1 and abs(side_len) < 0.1
         transfer_from_double_support = self.last_swing_leg == "none"
         drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
         lean_start = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
@@ -332,6 +333,10 @@ class DynamicWalkingEngine:
         next_step_count = self.step_count + 1
         if side_dominant and side_len > 0.0:
             swing_is_left = next_step_count % 2 == 0
+        elif turn_dominant and self.last_swing_leg == "none":
+            swing_is_left = turn_len < 0.0
+        elif turn_dominant:
+            swing_is_left = self.last_swing_leg == "right"
         else:
             swing_is_left = next_step_count % 2 == 1
         planned_swing_leg = "left" if swing_is_left else "right"
@@ -404,7 +409,8 @@ class DynamicWalkingEngine:
             self.body_lean_queue.append(lean_start + (lean_target - lean_start) * drop_t)
 
             swing_base_z = swing_start_z + (swing_target_z - swing_start_z) * swing_t
-            z = swing_base_z if side_dominant else swing_base_z + self.step_height * lift_factor
+            lift_height = self.step_height * 0.55 if turn_dominant else self.step_height
+            z = swing_base_z if side_dominant else swing_base_z + lift_height * lift_factor
 
             advance_start = min(self.swing_advance_end_phase - 0.10, self.lift_start_phase + 0.18)
             swing_x_t = self._phase_progress(alpha, advance_start, self.swing_advance_end_phase)

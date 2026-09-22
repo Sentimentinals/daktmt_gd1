@@ -45,7 +45,6 @@ def run_manual(
     )
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,
-        period_s=args.dance_period,
         transition_s=args.dance_transition,
         shoulder_pwm=args.dance_shoulder_pwm,
         elbow_pwm=args.dance_elbow_pwm,
@@ -157,8 +156,8 @@ def run_manual(
                         gait["crouch_mm"] = squat.depth_mm
                     elif arm_dance.running and not locomotion_requested:
                         pose = arm_dance.update()
-                        status = "ARM DANCE"
-                        gait = stationary_gait("dance")
+                        status = f"ARM DANCE: {arm_dance.section.upper()}"
+                        gait = stationary_gait(f"dance-{arm_dance.section}")
                     else:
                         if arm_dance.running:
                             arm_dance.reset()
