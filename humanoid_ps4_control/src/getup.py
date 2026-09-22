@@ -18,9 +18,9 @@ def build_getup_sequence(initial: dict[int, int], speed: float = 1.0) -> list[Ge
     # Hip, knee, ankle pitch in degrees; all other joints keep their starting pose.
     stages = (
         ("plant-feet", 0.9, 30, 55, 90),
-        ("tuck-knees", 1.6, 108, 110, 62),
-        ("shift-over-feet", 1.4, 100, 126, 61),
-        ("upright-crouch", 1.6, 70, 120, 50),
+        ("tuck-knees", 1.6, 106, 110, 62),
+        ("shift-over-feet", 1.4, 106, 126, 61),
+        ("upright-crouch", 1.6, 82, 120, 50),
         ("extend-legs", 1.6, None, None, None),
         ("hold-standing", 0.6, None, None, None),
         ("release-arms", 1.0, None, None, None),
