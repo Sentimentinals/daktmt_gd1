@@ -7,7 +7,32 @@ import xml.etree.ElementTree as ET
 import mujoco
 import numpy as np
 
-from src.config import DIR, PWM_PER_DEG, ROBOT, STANDING, STAND_ANG
+from src.config import DIR, PWM_PER_DEG, STANDING, STAND_ANG
+
+
+# Joint centers and envelopes measured from the public CAD/URDF for the common
+# black aluminium 17-DOF frame: github.com/Thushar143/17DOF_Humanoid_robot_kit.
+# Walking geometry remains independently calibrated.
+FRAME = {
+    'height_mm': 427.526,
+    'hip_spacing_mm': 88.283,
+    'shoulder_spacing_mm': 139.100,
+    'torso_mm': (139.101, 117.600, 48.988),
+    'torso_center_mm': (0.0, 45.987, 24.306),
+    'hip_roll_to_pitch_mm': (24.0, -83.0, 24.0),
+    'hip_pitch_to_knee_mm': 76.783,
+    'knee_to_ankle_pitch_mm': (59.681, 22.174),
+    'ankle_pitch_to_roll_mm': (14.0, -44.187, -33.391),
+    'foot_mm': (58.0, 29.0, 100.0),
+    'foot_center_mm': (9.391, -1.688, 27.799),
+    'shoulder_center_mm': (69.550, 84.229, 13.389),
+    'shoulder_to_upperarm_mm': (31.682, 22.174, -24.0),
+    'upper_arm_mm': 94.392,
+    'forearm_mm': 88.984,
+    'head_center_mm': (0.0, 124.437, 14.0),
+    'head_mm': (20.0, 46.5, 54.2),
+    'servo_case_mm': (20.0, 40.5, 40.7),
+}
 
 
 def joint_targets(pose: dict[int, int]) -> dict[int, float]:
@@ -24,10 +49,12 @@ def joint_targets(pose: dict[int, int]) -> dict[int, float]:
     return {sid: math.radians(v) for sid, v in result.items()}
 
 
-def build_model(torque_nm: float = 2.0, friction: float = 0.8, hip_spacing_mm: float = 90.0,
-                upper_arm_mm: float = 61.0, forearm_mm: float = 66.0):
+def build_model(torque_nm: float = 2.0, friction: float = 0.8,
+                hip_spacing_mm: float = FRAME['hip_spacing_mm'],
+                upper_arm_mm: float = FRAME['upper_arm_mm'],
+                forearm_mm: float = FRAME['forearm_mm']):
     """SI units; axes match the viewer: x lateral, y up, z forward."""
-    xml = ET.Element('mujoco', model='H17 uncalibrated standup')
+    xml = ET.Element('mujoco', model='H17 CAD-based standup')
     ET.SubElement(xml, 'compiler', angle='radian')
     ET.SubElement(xml, 'option', timestep='0.002', gravity='0 -9.81 0', integrator='implicitfast', iterations='100')
     default = ET.SubElement(xml, 'default')
@@ -56,33 +83,41 @@ def build_model(torque_nm: float = 2.0, friction: float = 0.8, hip_spacing_mm: f
         bounds = sorted([joint_targets({**STANDING, sid: pwm})[sid] for pwm in (500, 2500)])
         ET.SubElement(body, 'joint', name=f'j{sid}', type='hinge', axis=axis,
                       range=f'{bounds[0]} {bounds[1]}')
-        box(body, f'case_{sid}', (21, 18, 23), (0, 0, 0), 0.045, 'servo')
+        box(body, f'case_{sid}', FRAME['servo_case_mm'], (0, 0, 0), 0.070, 'servo')
         ET.SubElement(actuator, 'position', name=f'a{sid}', joint=f'j{sid}', kp='12', kv='0.3',
                       forcerange=f'{-torque_nm} {torque_nm}', ctrlrange=f'{bounds[0]} {bounds[1]}')
         return body
 
-    box(root, 'torso', (95, 82, 40), (0, 56, 0), 0.65)
-    box(root, 'pelvis_plate', (hip_spacing_mm + 24, 16, 35), (0, 8, 0), 0.10)
+    box(root, 'torso', FRAME['torso_mm'], FRAME['torso_center_mm'], 0.65)
     for side, s, ids in [('L', -1, (12, 13, 14, 15, 16)), ('R', 1, (21, 20, 19, 18, 17))]:
         hr, hp, k, a, ar = ids
         hiproll = joint(root, hr, (s * hip_spacing_mm / 2, 0, 0), f'0 0 {s}')
-        hip = joint(hiproll, hp, (0, 0, 0), '-1 0 0')
-        box(hip, f'{side}_thigh', (19, ROBOT['upper_leg'] - 18, 18), (0, -ROBOT['upper_leg'] / 2, 0), 0.06)
-        knee = joint(hip, k, (0, -ROBOT['upper_leg'], 0), '1 0 0')
-        box(knee, f'{side}_shin', (18, ROBOT['lower_leg'] - 18, 16), (0, -ROBOT['lower_leg'] / 2, 0), 0.05)
-        ankle = joint(knee, a, (0, -ROBOT['lower_leg'], 0), '-1 0 0')
-        foot = joint(ankle, ar, (0, 0, 0), f'0 0 {-s}')
-        box(foot, f'{side}_foot', (43, 7, 77), (0, -16, 15), 0.03, side)
-        box(foot, f'{side}_sole', (43, 3, 77), (0, -21, 15), 0.02, 'sole')
+        hip_offset = FRAME['hip_roll_to_pitch_mm']
+        hip = joint(hiproll, hp, (-s * hip_offset[0], hip_offset[1], hip_offset[2]), '-1 0 0')
+        upper_leg = FRAME['hip_pitch_to_knee_mm']
+        box(hip, f'{side}_thigh', (48.8, upper_leg - 18, 29), (0, -upper_leg / 2, 0), 0.05)
+        knee = joint(hip, k, (0, -upper_leg, 0), '1 0 0')
+        lower_y, lower_z = FRAME['knee_to_ankle_pitch_mm']
+        box(knee, f'{side}_shin', (56, lower_y - 16, 45.989), (0, -lower_y / 2, lower_z / 2), 0.045)
+        ankle = joint(knee, a, (0, -lower_y, lower_z), '-1 0 0')
+        ankle_lateral, ankle_y, ankle_z = FRAME['ankle_pitch_to_roll_mm']
+        foot = joint(ankle, ar, (s * ankle_lateral, ankle_y, ankle_z), f'0 0 {-s}')
+        foot_lateral, foot_y, foot_z = FRAME['foot_center_mm']
+        foot_center = (s * foot_lateral, foot_y, foot_z)
+        box(foot, f'{side}_foot', FRAME['foot_mm'], foot_center, 0.04, side)
+        sole_center = (foot_center[0], foot_center[1] - FRAME['foot_mm'][1] / 2 - 1.5, foot_center[2])
+        box(foot, f'{side}_sole', (FRAME['foot_mm'][0], 3, FRAME['foot_mm'][2]), sole_center, 0.02, 'sole')
     for side, s, ids in [('L', -1, (11, 10, 9)), ('R', 1, (22, 23, 24))]:
-        shoulder = joint(root, ids[0], (s * (hip_spacing_mm / 2 + 35), 86, 0), f'{-s} 0 0')
-        upper = joint(shoulder, ids[1], (0, 0, 0), f'0 0 {s}')
-        box(upper, f'{side}_upper_arm', (15, upper_arm_mm-17, 16), (0, -upper_arm_mm/2, 0), 0.025)
-        elbow = joint(upper, ids[2], (0, -upper_arm_mm, 0), f'{-s} 0 0')
-        box(elbow, f'{side}_forearm', (13, forearm_mm-19, 14), (0, -forearm_mm/2, 0), 0.02)
-        box(elbow, f'{side}_palm', (24, 6, 28), (0, -forearm_mm, 7), 0.02, side)
-    head = joint(root, 25, (0, 116, 0), '0 1 0')
-    box(head, 'head', (35, 37, 32), (0, 23, 0), 0.10)
+        shoulder_lateral, shoulder_y, shoulder_z = FRAME['shoulder_center_mm']
+        shoulder = joint(root, ids[0], (s * shoulder_lateral, shoulder_y, shoulder_z), f'{-s} 0 0')
+        arm_lateral, arm_y, arm_z = FRAME['shoulder_to_upperarm_mm']
+        upper = joint(shoulder, ids[1], (s * arm_lateral, arm_y, arm_z), f'0 0 {s}')
+        box(upper, f'{side}_upper_arm', (29, upper_arm_mm - 18, 48.8), (0, -upper_arm_mm / 2, 0), 0.025)
+        elbow = joint(upper, ids[2], (s * 0.187, -upper_arm_mm, 0.5), f'{-s} 0 0')
+        box(elbow, f'{side}_forearm', (29, forearm_mm - 16, 48.8), (0, -forearm_mm / 2, 0), 0.02)
+        box(elbow, f'{side}_palm', (29, 6, 48.8), (0, -forearm_mm, 0), 0.02, side)
+    head = joint(root, 25, FRAME['head_center_mm'], '0 1 0')
+    box(head, 'head', FRAME['head_mm'], (0, 0, 0), 0.10)
     # Display-only face marking has no collision response or meaningful mass.
     face = box(head, 'camera', (25, 10, 2), (0, 25, 17), 0.00001, 'L')
     face.set('contype', '0')
@@ -96,8 +131,9 @@ def build_model(torque_nm: float = 2.0, friction: float = 0.8, hip_spacing_mm: f
     return mujoco.MjModel.from_xml_string(ET.tostring(xml, encoding='unicode'))
 
 
-def simulate(engine, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, initial_pitch_deg=90.0,
-             settle_s=0.5, hold_s=3.0, upper_arm_mm=75.0, forearm_mm=75.0):
+def simulate(engine, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=FRAME['hip_spacing_mm'],
+             initial_pitch_deg=90.0, settle_s=0.5, hold_s=3.0,
+             upper_arm_mm=FRAME['upper_arm_mm'], forearm_mm=FRAME['forearm_mm']):
     model = build_model(torque_nm, friction, hip_spacing_mm, upper_arm_mm, forearm_mm)
     state = mujoco.MjData(model)
     root = model.body('pelvis').id
@@ -185,10 +221,13 @@ def simulate(engine, *, torque_nm=2.0, friction=0.8, hip_spacing_mm=90.0, initia
                 assumptions=dict(engine=f'MuJoCo {mujoco.__version__}', calibrated=False,
                                  mass_kg=round(float(model.body_mass.sum()), 3), torque_nm=torque_nm,
                                  friction=friction, hip_spacing_mm=hip_spacing_mm,
-                                 source_hip_spacing_mm=2 * ROBOT['half_hip'], servo_speed_rad_s=4.0,
-                                 upper_leg_mm=ROBOT['upper_leg'], lower_leg_mm=ROBOT['lower_leg'],
+                                 source_hip_spacing_mm=FRAME['hip_spacing_mm'], servo_speed_rad_s=4.0,
+                                 frame_height_mm=FRAME['height_mm'], shoulder_spacing_mm=FRAME['shoulder_spacing_mm'],
+                                 foot_mm=FRAME['foot_mm'], upper_leg_mm=FRAME['hip_pitch_to_knee_mm'],
+                                 lower_leg_mm=round(math.hypot(*FRAME['knee_to_ankle_pitch_mm']), 3),
                                  upper_arm_mm=upper_arm_mm, forearm_mm=forearm_mm,
-                                 approximate_parts='torso, arms, feet, mass, joint zeros, actuator response',
+                                 geometry_source='Thushar143/17DOF_Humanoid_robot_kit CAD/URDF',
+                                 approximate_parts='mass, center of mass, friction, joint zeros, actuator response',
                                  excluded_housing_contacts=[['pelvis',13],['pelvis',20],[14,16],[19,17]],
                                  kp=12.0, kv=0.3, dt_s=model.opt.timestep, contact_time_constant_s=0.005,
                                  max_torque_nm=round(max_torque, 3)))

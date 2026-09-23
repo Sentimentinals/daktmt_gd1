@@ -13,7 +13,7 @@ from urllib.request import urlopen
 from src.balance import extend_arms_forward
 from src.config import Config, STANDING
 from src.getup import GetupEngine
-from .standup_physics import simulate
+from .standup_physics import FRAME, simulate
 
 
 HTML = r'''<!doctype html>
@@ -55,7 +55,7 @@ for(const id of Object.keys(frames[0].pose)){
 }
 function showAssumptions(){
 $('assumptions').replaceChildren();
-for(const [label,value] of [['Vai - khuỷu',data.assumptions.upper_arm_mm+' mm'],['Khuỷu - tay chống',data.assumptions.forearm_mm+' mm'],['Khối lượng',data.assumptions.mass_kg+' kg'],['Mô-men giới hạn',data.assumptions.torque_nm+' Nm'],['Ma sát',data.assumptions.friction],['Khoảng cách hông',data.assumptions.hip_spacing_mm+' mm'],['Khoảng hông source',data.assumptions.source_hip_spacing_mm+' mm'],['Tốc độ đặt góc',data.assumptions.servo_speed_rad_s+' rad/s']]){
+for(const [label,value] of [['Nguồn hình học',data.assumptions.geometry_source],['Chiều cao khung',data.assumptions.frame_height_mm+' mm'],['Khoảng cách hông',data.assumptions.hip_spacing_mm+' mm'],['Khoảng cách vai',data.assumptions.shoulder_spacing_mm+' mm'],['Bàn chân',data.assumptions.foot_mm.join(' × ')+' mm'],['Hip pitch - gối',data.assumptions.upper_leg_mm+' mm'],['Gối - ankle pitch',data.assumptions.lower_leg_mm+' mm'],['Vai - khuỷu',data.assumptions.upper_arm_mm+' mm'],['Khuỷu - tay chống',data.assumptions.forearm_mm+' mm'],['Khối lượng mô hình',data.assumptions.mass_kg+' kg'],['Mô-men giới hạn',data.assumptions.torque_nm+' Nm'],['Ma sát',data.assumptions.friction],['Tốc độ đặt góc',data.assumptions.servo_speed_rad_s+' rad/s']]){
  const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;$('assumptions').append(dt,dd);
 }}
 showAssumptions();
@@ -113,9 +113,9 @@ def main() -> None:
     parser.add_argument('--three-js', type=Path, help='Local three.min.js (r160), instead of downloading')
     parser.add_argument('--torque-nm', type=float, default=2.0, help='Assumed actuator torque limit, not measured')
     parser.add_argument('--friction', type=float, default=0.8, help='Assumed contact friction, not measured')
-    parser.add_argument('--hip-spacing-mm', type=float, default=90.0, help='Assumed hip spacing; source is 56 mm')
-    parser.add_argument('--upper-arm-mm', type=float, default=75.0, help='Reference model shoulder-to-elbow length, NOT measured')
-    parser.add_argument('--forearm-mm', type=float, default=75.0, help='Reference model elbow-to-palm length, NOT measured')
+    parser.add_argument('--hip-spacing-mm', type=float, default=FRAME['hip_spacing_mm'], help='CAD hip-roll spacing')
+    parser.add_argument('--upper-arm-mm', type=float, default=FRAME['upper_arm_mm'], help='CAD upper-arm joint spacing')
+    parser.add_argument('--forearm-mm', type=float, default=FRAME['forearm_mm'], help='CAD forearm envelope')
     parser.add_argument('--report', type=Path, help='Optional physics result JSON')
     args = parser.parse_args()
     if (not 0 < args.torque_nm <= 10 or not 0 < args.friction <= 3 or not 50 <= args.hip_spacing_mm <= 160
@@ -145,7 +145,7 @@ def main() -> None:
         args.report.write_text(json.dumps(data, allow_nan=False), encoding='utf-8')
     print(f'Offline physics replay: {args.output.resolve()}')
     print(data['result'], 'release_blocked=', data['release_blocked'])
-    print('Uncalibrated geometry, mass, friction and actuators. Not a hardware validation.')
+    print('CAD geometry loaded; mass, center of mass, friction and actuators remain uncalibrated.')
 
 
 if __name__ == '__main__':
