@@ -198,10 +198,11 @@ class Config:
 
     # --- Manual Squat ---
     manual_squat_depth_mm: float = 50.0
-    manual_squat_forward_mm: float = 8.0
     manual_squat_arm_forward_pwm: int = 650
     manual_squat_arm_raise_s: float = 0.35
     manual_squat_hip_forward_pwm: int = 978
+    manual_squat_knee_bend_pwm: int = 1000
+    manual_squat_ankle_pitch_pwm: int = 478
     manual_squat_transition_s: float = 1.0
 
     # --- Getup ---

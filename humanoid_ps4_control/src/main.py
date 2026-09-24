@@ -54,10 +54,11 @@ def run_manual(
     squat = SquatEngine(
         dt=args.update_ms / 1000.0,
         depth_mm=args.manual_squat_depth_mm,
-        forward_mm=args.manual_squat_forward_mm,
         arm_forward_pwm=args.manual_squat_arm_forward_pwm,
         arm_raise_s=args.manual_squat_arm_raise_s,
         hip_forward_pwm=args.manual_squat_hip_forward_pwm,
+        knee_bend_pwm=args.manual_squat_knee_bend_pwm,
+        ankle_pitch_pwm=args.manual_squat_ankle_pitch_pwm,
         transition_s=args.manual_squat_transition_s,
     )
     getup = GetupEngine(dt=args.update_ms / 1000.0, speed=args.getup_speed)
