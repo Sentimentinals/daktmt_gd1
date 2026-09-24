@@ -13,6 +13,7 @@ cảm biến.
 - `J` / `K`: đi ngang trái/phải.
 - `Space`: dừng và giữ tư thế đứng.
 - `L`: bật/tắt arm dance.
+- `R`: squat; nhấn lại để đứng lên.
 - `G`: đứng dậy từ tư thế ngã sấp.
 - `C`: reset về tư thế đứng.
 - `Esc`: dừng khẩn cấp và ngắt quyền điều khiển.
@@ -20,8 +21,8 @@ cảm biến.
 Manual vẫn điều khiển được khi ESP32 hoặc cảm biến mất kết nối. ToF chỉ hiển
 thị cảnh báo vật cản trong mode này, không ghi đè lệnh của người điều khiển.
 
-Walking mặt phẳng dùng lại gait trước bản bước lết, với độ nâng mục tiêu giảm
-từ 60 xuống 20 mm (`walk_step_height_mm`). Giữ sải bước và chuyển trọng tâm cũ;
+Walking mặt phẳng dùng độ nâng mục tiêu 26 mm (`walk_step_height_mm`),
+sải bước cấu hình 38 mm và hệ số lệnh tiến/lùi 0.50 (`walk_speed`);
 chân trụ ở mặt sàn, chân bước vẫn có nâng/hạ, không khóa cả hai chân tại Z = 0.
 Thả phím sẽ hoàn tất bước rồi về standing. Manual không có IMU/push recovery
 ghi đè; fall detection vẫn được ưu tiên. Các giá trị là quỹ đạo tính toán, cần
@@ -34,11 +35,11 @@ thử có người giữ robot để xác nhận tiếp xúc sàn và tải serv
 - Camera dùng model ONNX và đường biên ngang để tìm cầu thang.
 - VL53L5CX xác nhận hướng lên/xuống và khoảng cách đến mép bậc.
 - Độ nhấc chân bằng chiều cao bậc cộng khoảng hở. Bậc 20 mm hiện dùng mục tiêu
-  nhấc 32 mm.
+  nhấc 38 mm (20 mm + khoảng hở 18 mm).
 
 Auto-step đang khóa ở chế độ preview cho đến khi nhập kích thước bàn chân và
 vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
-`PREVIEW UP <distance> MM | LIFT 32 MM`.
+`PREVIEW UP <distance> MM | LIFT 38 MM`.
 
 ### Person Follow
 
@@ -46,6 +47,10 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
 - `N`: dừng theo hoặc bỏ qua người hiện tại.
 - Camera điều khiển hướng; ToF giữ khoảng cách và chặn tiến khi có vật cản.
 - Đầu giữ cố định trong khi follow.
+- Chỉ khóa target khi có đúng một người ổn định. Sau khi khóa, dùng track ID để
+  tiếp tục theo người đó; mất target thì dừng, không tự chọn người khác.
+- Không có ToF hợp lệ thì không tiến theo người. Đây là tránh vật cản cục bộ,
+  không phải bản đồ đường đi hay bảo đảm giữ ID khi người che khuất nhau.
 
 ### Balance và an toàn
 
@@ -55,7 +60,9 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
 - Balance/push recovery chỉ dùng bộ IMU balance sẵn có trong Terrain Auto khi
   standing, Auto stair đã tắt và không còn động tác đang chạy hoặc đang dừng.
   Không áp dụng trong Manual/Person Follow; không tạo bộ bù hay bước dậm riêng.
-- FSR hiện chỉ trả lực hai chân lên dashboard, không khóa walking hoặc balance.
+- FSR hiện chỉ trả lực hai chân qua telemetry, không khóa walking hoặc balance.
+- Trong chuỗi đứng dậy chủ động, fall detection tạm nhường quyền. Chỉ trả tay
+  về standing khi IMU xác nhận thẳng và ổn định; mất IMU sẽ giữ tay chống đỡ.
 
 ## Phần cứng
 
@@ -80,7 +87,8 @@ python -m pip install -r requirements.txt
 ```
 
 OpenCV/Picamera2 nên cài từ repository của Raspberry Pi OS để dùng đúng camera
-stack của hệ điều hành.
+stack của hệ điều hành. Model Person Follow hiện dùng Caffe, cần OpenCV 4.x;
+OpenCV 5 đã bỏ Caffe importer. Kiểm tra bằng `python -c "import cv2; print(cv2.__version__)"`.
 
 ## Chạy
 
@@ -111,9 +119,29 @@ giữ cổng serial ESP32.
 - Person Follow đã có state machine nhưng cần kiểm tra thực tế với
   camera/ToF đúng vị trí.
 - Terrain balance cần IMU hợp lệ và mốc đứng yên.
-- Camera-ToF đã nhận diện hình học cầu thang; chuyển động auto-step chỉ được mở
-  sau calibration hình học bàn chân và ToF.
-- One-foot balance, camera mimic và get-up-back không thuộc runtime hiện tại.
+- Camera-ToF có thuật toán nhận diện hình học cầu thang; mặc định chỉ DETECT/PREVIEW.
+  Auto-step vẫn khóa đến khi hiệu chuẩn bàn chân/ToF và kiểm chứng trên robot thật.
+- TinyML Gait Anomaly Monitor có luồng thu dữ liệu/train, nhưng chưa có baseline
+  `deploy/models/gait_anomaly.json` trong Git. Chưa được xem là mô hình đã huấn luyện
+  hoặc dự đoán tuổi thọ servo; monitor không điều khiển servo.
+- One-foot balance, camera mimic, pickup và get-up-back không thuộc runtime hiện tại.
+
+## Kiểm tra trước demo
+
+- Rà soát phần mềm ngày 24/09/2026: dry-run các hướng đi và về standing, squat,
+  ba đoạn arm dance lặp lại, get-up có/không có IMU, balance chỉ bù ankle/hip,
+  fall override, parser Q/F/D, khóa target, ToF dừng tiến, chuyển card và timeout 0.6 s.
+- Đã nạp model người/cầu thang và thử ảnh trống bằng OpenCV 4. Đây không phải
+  phép đo độ chính xác nhận diện hoặc kiểm chứng robot leo cầu thang.
+- Dashboard đã kiểm tra bằng Chrome ở chiều rộng 1366/390 px với backend giả:
+  giữ/thả phím, squat, dance, reset, chuyển card và Esc; không gửi lệnh phần cứng.
+- Giữ robot thẳng và đứng yên lúc khởi động; phải thấy `FALL READY` trước khi
+  thử chống ngã. `FALL IMU WAIT/STALE` nghĩa là chưa có bảo vệ IMU sẵn sàng.
+- Thử trên robot có người giữ: đi ngắn rồi thả phím, quay/ngang, squat, dance,
+  sau đó balance. Đứng dậy cần xác nhận cơ khí và khả năng chịu tải riêng.
+- Kiểm tra live camera và ToF trước Person Follow; quay một người trước, nhiều
+  người/vật cản sau. Manual chỉ cảnh báo ToF, không tự dừng trước vật cản.
+- Không dùng kết quả dry-run làm bằng chứng đứng dậy/leo thang thành công.
 
 ## An toàn
 

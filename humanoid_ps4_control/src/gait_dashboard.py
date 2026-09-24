@@ -237,13 +237,15 @@ class GaitDashboard:
             self._runtime_mode = mode
             self._runtime_status = status
 
-    def control_state(self) -> WebControlState:
+    def control_state(self, mode: str | None = None) -> WebControlState:
         now = time.monotonic()
         with self._control_lock:
             self._expire_control_locked(now)
             connected = bool(self._control_client) and now - self._control_last_at <= self.command_timeout_s
-            actions = set(self._control_actions)
-            self._control_actions.clear()
+            actions = set()
+            if mode is None or mode == self._control_mode:
+                actions = set(self._control_actions)
+                self._control_actions.clear()
             return WebControlState(
                 mode=self._control_mode,
                 armed=self._control_armed,

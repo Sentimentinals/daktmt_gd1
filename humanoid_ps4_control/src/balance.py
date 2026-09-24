@@ -196,8 +196,7 @@ class IMUBalanceController:
       +roll_deg  = robot leans left
       +pitch_deg = robot leans forward
 
-    The sign of each axis depends on how the BNO055 is mounted. main.py exposes
-    CLI signs so this module can stay deterministic and hardware-independent.
+    Axis signs follow the BNO055 mounting and are configured in Config.
     """
 
     DIR = {

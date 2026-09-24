@@ -98,7 +98,7 @@ def run_terrain_auto(
 
             while True:
                 loop_started = time.monotonic()
-                control = dashboard.control_state()
+                control = dashboard.control_state("terrain")
                 if not control.armed or control.mode != "terrain":
                     break
 

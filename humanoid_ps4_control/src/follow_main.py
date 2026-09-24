@@ -73,7 +73,7 @@ def run_follow(
                 dashboard.set_runtime("follow", "Follow ready")
                 while True:
                     loop_started = time.monotonic()
-                    control = dashboard.control_state()
+                    control = dashboard.control_state("follow")
                     if not control.armed or control.mode != "follow":
                         break
 

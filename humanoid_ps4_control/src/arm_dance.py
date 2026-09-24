@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .walking_engine import STANDING
+from .config import STANDING
 
 
 def _blend_pose(a: dict[int, int], b: dict[int, int], t: float) -> dict[int, int]:
@@ -16,7 +16,7 @@ class ArmDanceEngine:
     """
     Standing arm show: legacy dance, Tarzan chest beats, then victory poses.
 
-    It only drives arm/head channels and keeps the legs at STANDING. L/M toggles
+    It only drives arm/head channels and keeps the legs at STANDING. L toggles
     between running the loop and returning to STANDING.
     """
 

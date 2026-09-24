@@ -77,7 +77,7 @@ def run_manual(
             try:
                 while True:
                     started = time.monotonic()
-                    state = dashboard.control_state()
+                    state = dashboard.control_state("manual")
                     if not state.armed or state.mode != "manual":
                         break
                     snapshot = sensor_hub.read() if sensor_hub is not None else None
@@ -327,8 +327,8 @@ def main() -> None:
 
             last_idle_publish = 0.0
             while True:
-                state = dashboard.control_state()
-                if not state.armed:
+                state = dashboard.control_payload()
+                if not state["armed"]:
                     now = time.monotonic()
                     if now - last_idle_publish >= 0.10:
                         status = "FALL DETECTED - ARMS FORWARD" if fall_safety.active else "WEB CONTROL READY"
@@ -341,23 +341,23 @@ def main() -> None:
                             camera_ready=camera_ready,
                             balance_status=fall_safety.status,
                         )
-                        dashboard.set_runtime(state.mode, status)
+                        dashboard.set_runtime(state["mode"], status)
                         last_idle_publish = now
                     time.sleep(0.05)
                     continue
                 try:
-                    if state.mode == "manual":
+                    if state["mode"] == "manual":
                         run_manual(
                             args, dashboard, camera_ready, backend, sensor_hub, fall_safety,
                         )
-                    elif state.mode == "terrain":
+                    elif state["mode"] == "terrain":
                         from .stair_main import run_terrain_auto
 
                         run_terrain_auto(
                             args, dashboard, camera, camera_ready,
                             backend, sensor_hub, fall_safety,
                         )
-                    elif state.mode == "follow":
+                    elif state["mode"] == "follow":
                         from .follow_main import run_follow
 
                         run_follow(
@@ -365,8 +365,8 @@ def main() -> None:
                             backend, sensor_hub, fall_safety,
                         )
                 except Exception as exc:
-                    dashboard.disarm(f"{state.mode} unavailable: {exc}")
-                    print(f"[main] {state.mode} unavailable: {exc}")
+                    dashboard.disarm(f"{state['mode']} unavailable: {exc}")
+                    print(f"[main] {state['mode']} unavailable: {exc}")
     except KeyboardInterrupt:
         print("\n[main] Ctrl+C received. Stopping web control.")
     finally:

@@ -300,11 +300,11 @@ class DynamicWalkingEngine:
         base_R = self.foot_R_queue[-1].copy() if self.foot_R_queue else self.last_foot_R.copy()
 
         if abs(step_len) < 0.1 and abs(turn_len) < 0.1 and abs(side_len) < 0.1:
-            settle_frames = self.n_s + self.n_d
             neutral_L = np.array([0.0, -self.hw, 0.0])
             neutral_R = np.array([0.0, self.hw, 0.0])
             drop_start = self.body_drop_queue[-1] if self.body_drop_queue else self.last_body_drop
             lean_start = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
+            settle_frames = self.n_s + self.n_d if drop_start > 0.0 or lean_start > 0.0 else 1
             for frame in range(settle_frames):
                 stand_t = self._phase_curve((frame + 1) / settle_frames)
                 self.zmp_x_queue.append(0.0)
