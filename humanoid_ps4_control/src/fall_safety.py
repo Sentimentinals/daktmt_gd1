@@ -133,7 +133,7 @@ class FallSafety:
     def close(self) -> None:
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=self.args.imu_reference_timeout_s + 1.0)
+            self._thread.join(timeout=1.0)
         self._thread = None
 
     def _run(self) -> None:

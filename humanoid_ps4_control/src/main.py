@@ -371,11 +371,11 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\n[main] Ctrl+C received. Stopping web control.")
     finally:
+        dashboard.disarm("Server stopped")
+        dashboard.close()
+        camera.close()
         if sensor_hub is not None:
             sensor_hub.close()
-        dashboard.disarm("Server stopped")
-        camera.close()
-        dashboard.close()
 
 if __name__ == "__main__":
     main()

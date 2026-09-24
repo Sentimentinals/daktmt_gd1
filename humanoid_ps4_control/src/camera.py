@@ -108,15 +108,21 @@ class HeadlessCamera:
             self._jpeg_sequence = -1
 
     def _capture_loop(self) -> None:
+        failures = 0
         while not self._stop.is_set():
             try:
                 frame = self.camera.capture_array("main")
             except Exception as exc:
-                if not self._stop.is_set():
-                    self.error = str(exc)
-                    print(f"[camera] Capture stopped: {exc}")
-                self._stop.set()
-                break
+                if self._stop.is_set():
+                    break
+                failures += 1
+                self.error = str(exc)
+                if failures == 1 or failures % 20 == 0:
+                    print(f"[camera] Capture retry {failures}: {exc}")
+                self._stop.wait(min(1.0, 0.1 * failures))
+                continue
+            failures = 0
+            self.error = None
             with self._lock:
                 self._frame = frame.copy()
                 self._frame_at = time.monotonic()
