@@ -111,11 +111,13 @@ class ArmDanceEngine:
             ("legacy", 0.85, self._arm_pose(lift * 0.90, lift * 0.90, shoulder * 0.75, shoulder * 0.75, elbow * 0.25, elbow * 0.90, head)),
         ] * 2 + [("legacy", 1.0, dict(STANDING))]
 
-        chest = self._arm_pose(lift * 0.35, lift * 0.35, shoulder, shoulder, elbow * 0.10, elbow * 0.10)
+        reach = shoulder * 2.0
+        curl = elbow * 1.7
+        chest = self._arm_pose(lift * 0.15, lift * 0.15, reach, reach)
         tarzan = [("tarzan", 1.0, chest)] + [
-            ("tarzan", 0.65, self._arm_pose(lift * 0.35, lift * 0.35, shoulder, shoulder, elbow, elbow * 0.10, -head * 0.25)),
+            ("tarzan", 0.65, self._arm_pose(lift * 0.15, lift * 0.15, reach, reach, curl, 0.0, -head * 0.25)),
             ("tarzan", 0.55, chest),
-            ("tarzan", 0.65, self._arm_pose(lift * 0.35, lift * 0.35, shoulder, shoulder, elbow * 0.10, elbow, head * 0.25)),
+            ("tarzan", 0.65, self._arm_pose(lift * 0.15, lift * 0.15, reach, reach, 0.0, curl, head * 0.25)),
             ("tarzan", 0.55, chest),
         ] * 3 + [("tarzan", 1.0, dict(STANDING))]
 
