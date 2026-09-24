@@ -119,18 +119,6 @@ class HeadlessCamera:
                 self.error = str(exc)
                 if failures == 1 or failures % 20 == 0:
                     print(f"[camera] Capture retry {failures}: {exc}")
-                if failures % 3 == 0:
-                    try:
-                        self.camera.stop()
-                    except Exception:
-                        pass
-                    if self._stop.is_set():
-                        break
-                    try:
-                        self.camera.start()
-                        print("[camera] Capture pipeline restarted.")
-                    except Exception as restart_exc:
-                        self.error = f"{exc}; restart failed: {restart_exc}"
                 self._stop.wait(min(1.0, 0.1 * failures))
                 continue
             failures = 0
@@ -268,23 +256,34 @@ class HeadlessCamera:
         with self._lock:
             self._person_ignored = True
 
+    @staticmethod
+    def _call_with_timeout(callback, timeout_s: float) -> bool:
+        done = threading.Event()
+
+        def run() -> None:
+            try:
+                callback()
+            except Exception:
+                pass
+            finally:
+                done.set()
+
+        threading.Thread(target=run, name="camera-shutdown", daemon=True).start()
+        return done.wait(timeout_s)
+
     def close(self) -> None:
         was_running = self.camera is not None
         self._stop.set()
-        if self.camera is not None:
-            try:
-                self.camera.stop()
-            except Exception:
-                pass
+        camera = self.camera
+        stopped = camera is None or self._call_with_timeout(camera.stop, 1.0)
+        if camera is not None and not stopped:
+            print("[camera] Stop timed out; leaving the stalled pipeline for process exit.")
         if self._capture_thread is not None:
             self._capture_thread.join(timeout=1.0)
         if self._detector_thread is not None:
             self._detector_thread.join(timeout=1.0)
-        if self.camera is not None:
-            try:
-                self.camera.close()
-            except Exception:
-                pass
+        if camera is not None and stopped and not self._call_with_timeout(camera.close, 1.0):
+            print("[camera] Close timed out; continuing shutdown.")
         self.camera = None
         self._capture_thread = None
         self._detector_thread = None
