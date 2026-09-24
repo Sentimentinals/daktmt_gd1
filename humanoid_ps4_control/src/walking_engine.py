@@ -81,21 +81,25 @@ class SquatEngine:
         self,
         dt: float,
         depth_mm: float,
+        forward_mm: float,
         arm_forward_pwm: int,
         arm_raise_s: float,
-        hip_forward_pwm: int,
-        knee_bend_pwm: int,
-        ankle_pitch_pwm: int,
         transition_s: float,
     ) -> None:
         self.dt = max(0.001, dt)
         self.max_depth_mm = max(0.0, depth_mm)
+        self.forward_mm = max(0.0, forward_mm)
         self.arm_forward_pwm = abs(arm_forward_pwm)
         self.arm_raise_s = max(self.dt, arm_raise_s)
-        self.hip_forward_pwm = abs(hip_forward_pwm)
-        self.knee_bend_pwm = abs(knee_bend_pwm)
-        self.ankle_pitch_pwm = abs(ankle_pitch_pwm)
         self.transition_s = max(self.dt, transition_s)
+        half_hip = ROBOT["half_hip"]
+        self._squat_pose = compute_pose(
+            self.forward_mm,
+            0.0,
+            np.array([0.0, -half_hip, 0.0]),
+            np.array([0.0, half_hip, 0.0]),
+            com_z=ROBOT["com_height"] - self.max_depth_mm,
+        )
         self.reset()
 
     @property
@@ -151,14 +155,10 @@ class SquatEngine:
         else:
             arm_blend = depth_ratio
         pose = dict(STANDING)
+        for sid in (13, 14, 15, 18, 19, 20):
+            pose[sid] = round(STANDING[sid] + (self._squat_pose[sid] - STANDING[sid]) * depth_ratio)
         pose[11] = round(STANDING[11] - self.arm_forward_pwm * arm_blend)
         pose[22] = round(STANDING[22] + self.arm_forward_pwm * arm_blend)
-        pose[13] += round(self.hip_forward_pwm * depth_ratio)
-        pose[20] -= round(self.hip_forward_pwm * depth_ratio)
-        pose[14] += round(self.knee_bend_pwm * depth_ratio)
-        pose[19] -= round(self.knee_bend_pwm * depth_ratio)
-        pose[15] += round(self.ankle_pitch_pwm * depth_ratio)
-        pose[18] -= round(self.ankle_pitch_pwm * depth_ratio)
         return pose
 
 
