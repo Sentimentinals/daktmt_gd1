@@ -192,7 +192,7 @@ class Config:
     # --- Dance ---
     dance_transition: float = 0.45
     dance_shoulder_pwm: int = 420
-    dance_elbow_pwm: int = 260
+    dance_elbow_pwm: int = 420
     dance_lift_pwm: int = 820
     dance_head_pwm: int = 180
 
