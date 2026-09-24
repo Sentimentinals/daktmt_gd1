@@ -149,6 +149,8 @@ class StairStepEngine:
         body_x = 0.0
         body_y = 0.0
         body_z = ROBOT["com_height"] - self.crouch_depth_mm
+        # A descending foot needs earlier torso advance to stay within leg reach.
+        lead_body_x = depth * (0.45 if signed_height < 0.0 else 0.05)
         lead_load = 0.0
         if phase == "shift":
             body_y = trail_support_y * s
@@ -159,6 +161,7 @@ class StairStepEngine:
             self.landing_progress = 0.0
         elif phase == "lead_swing":
             body_y = trail_support_y
+            body_x = lead_body_x * s
             lead_foot[0], lead_foot[2] = self._swing_position(progress)
             self.support_leg = "right" if lead_left else "left"
             self.lift_factor = self._bump(progress)
@@ -166,7 +169,7 @@ class StairStepEngine:
         elif phase == "transfer":
             lead_foot[0] = depth
             lead_foot[2] = signed_height
-            body_x = depth * 0.70 * s
+            body_x = lead_body_x + (depth * 0.70 - lead_body_x) * s
             body_y = trail_support_y + (lead_support_y - trail_support_y) * s
             lead_load = s
             self.support_leg = "double"
