@@ -20,7 +20,6 @@ def run_terrain_auto(
     args: Config,
     dashboard,
     camera,
-    camera_ready: bool,
     backend,
     sensor_hub,
     fall_safety,
@@ -34,12 +33,9 @@ def run_terrain_auto(
         input_size=args.stair_model_input_size,
         detect_every_frames=args.stair_detect_every_frames,
     )
-    if camera_ready:
-        camera.set_detector(detector, stable_frames=args.stair_detect_stable_frames)
-        mode = "ONNX+geometry" if detector.model_ready else "geometry fallback"
-        print(f"[terrain] Stair detector ON ({mode}).")
-    else:
-        print("[terrain] Camera unavailable. Stair detection requires camera and ToF.")
+    camera.set_detector(detector, stable_frames=args.stair_detect_stable_frames)
+    mode = "ONNX+geometry" if detector.model_ready else "geometry fallback"
+    print(f"[terrain] Stair detector configured ({mode}).")
 
     approach = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
@@ -157,7 +153,7 @@ def run_terrain_auto(
                 depth = snapshot.depth if snapshot is not None else None
                 pitch_delta = angle_error_deg(imu.pitch_deg, reference[1]) if imu is not None and reference is not None else 0.0
                 roll_delta = angle_error_deg(imu.roll_deg, reference[0]) if imu is not None and reference is not None else 0.0
-                stair_frame = camera.stair_frame() if camera_ready else None
+                stair_frame = camera.stair_frame()
                 detection = stair_frame.primary_stair if stair_frame is not None else None
                 detection_timestamp = stair_frame.captured_at if detection is not None else None
                 if stair_frame is not None and now - stair_frame.captured_at > 0.8:
@@ -354,7 +350,6 @@ def run_terrain_auto(
                     sensor_snapshot=snapshot,
                     status=status,
                     active=enabled or stepper.active or balance_enabled or fall_active,
-                    camera_ready=camera_ready,
                     balance_status=(
                         fall_safety.status
                         if fall_active or balance is None

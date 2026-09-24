@@ -119,6 +119,18 @@ class HeadlessCamera:
                 self.error = str(exc)
                 if failures == 1 or failures % 20 == 0:
                     print(f"[camera] Capture retry {failures}: {exc}")
+                if failures % 3 == 0:
+                    try:
+                        self.camera.stop()
+                    except Exception:
+                        pass
+                    if self._stop.is_set():
+                        break
+                    try:
+                        self.camera.start()
+                        print("[camera] Capture pipeline restarted.")
+                    except Exception as restart_exc:
+                        self.error = f"{exc}; restart failed: {restart_exc}"
                 self._stop.wait(min(1.0, 0.1 * failures))
                 continue
             failures = 0

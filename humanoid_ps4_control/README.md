@@ -74,8 +74,6 @@ Raspberry Pi USB -> ESP32 -> BNO055 + 2 FSR + VL53L5CX
 Nguồn servo riêng -> RTrobot V+ / servo rail
 ```
 
-Xem [POWER_SENSOR_SETUP.md](POWER_SENSOR_SETUP.md) trước khi cấp nguồn.
-
 ## Cài đặt
 
 Trên Raspberry Pi:

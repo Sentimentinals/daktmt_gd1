@@ -11,7 +11,6 @@ from .config import Config
 def run_manual(
     args: Config,
     dashboard,
-    camera_ready: bool,
     backend,
     sensor_hub,
     fall_safety,
@@ -221,7 +220,6 @@ def run_manual(
                             or arm_dance.running
                             or not engine.is_idle_ready()
                         ),
-                        camera_ready=camera_ready,
                         balance_status=fall_safety.status,
                     )
                     dashboard.set_runtime("manual", status)
@@ -271,7 +269,7 @@ def main() -> None:
         health_monitor=health_monitor,
     )
     dashboard.start()
-    camera_ready = camera.start()
+    camera.start()
     sensor_hub = None
     if args.sensor_feedback or args.fall_detection_enabled:
         sensor_hub = RobotSensorHub(
@@ -321,7 +319,6 @@ def main() -> None:
                 sensor_snapshot=sensor_hub.read() if sensor_hub is not None else None,
                 status="WEB CONTROL READY",
                 active=False,
-                camera_ready=camera_ready,
                 balance_status=fall_safety.status,
             )
             print("[main] Open the dashboard from a laptop on the same LAN, then enable control.")
@@ -339,7 +336,6 @@ def main() -> None:
                             sensor_snapshot=sensor_hub.read() if sensor_hub is not None else None,
                             status=status,
                             active=fall_safety.active,
-                            camera_ready=camera_ready,
                             balance_status=fall_safety.status,
                         )
                         dashboard.set_runtime(state["mode"], status)
@@ -349,21 +345,19 @@ def main() -> None:
                 try:
                     if state["mode"] == "manual":
                         run_manual(
-                            args, dashboard, camera_ready, backend, sensor_hub, fall_safety,
+                            args, dashboard, backend, sensor_hub, fall_safety,
                         )
                     elif state["mode"] == "terrain":
                         from .stair_main import run_terrain_auto
 
                         run_terrain_auto(
-                            args, dashboard, camera, camera_ready,
-                            backend, sensor_hub, fall_safety,
+                            args, dashboard, camera, backend, sensor_hub, fall_safety,
                         )
                     elif state["mode"] == "follow":
                         from .follow_main import run_follow
 
                         run_follow(
-                            args, dashboard, camera, camera_ready,
-                            backend, sensor_hub, fall_safety,
+                            args, dashboard, camera, backend, sensor_hub, fall_safety,
                         )
                 except Exception as exc:
                     dashboard.disarm(f"{state['mode']} unavailable: {exc}")

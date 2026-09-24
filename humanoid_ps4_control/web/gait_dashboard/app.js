@@ -233,7 +233,6 @@ function connectStream() {
     }
   };
   source.onerror = () => {
-    updateCamera(false);
     $("streamState").classList.add("offline");
     $("streamLabel").textContent = "Reconnecting";
   };

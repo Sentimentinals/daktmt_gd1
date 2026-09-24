@@ -17,7 +17,6 @@ def run_follow(
     args: Config,
     dashboard,
     camera,
-    camera_ready: bool,
     backend,
     sensor_hub,
     fall_safety,
@@ -170,7 +169,6 @@ def run_follow(
                         sensor_snapshot=snapshot,
                         status=status,
                         active=fall_active or follow.enabled or not engine.is_idle_ready(),
-                        camera_ready=camera_ready,
                         balance_status=fall_safety.status,
                     )
                     dashboard.set_runtime("follow", status)

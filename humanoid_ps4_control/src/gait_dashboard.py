@@ -288,7 +288,6 @@ class GaitDashboard:
         sensor_snapshot,
         status: str,
         active: bool,
-        camera_ready: bool,
         balance_status: str,
     ) -> None:
         now = time.monotonic()
