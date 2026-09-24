@@ -12,7 +12,9 @@ cảm biến.
 - `←` / `→`: quay trái/phải; đầu quay dẫn hướng.
 - `J` / `K`: đi ngang trái/phải.
 - `Space`: dừng và giữ tư thế đứng.
-- `L`: bật/tắt arm dance.
+- `L`: bật/tắt chuỗi arm dance 28,6 giây, tự lặp: dance cũ (6 tư thế × 2 vòng,
+  11,2 giây), Tarzan (6 nhịp khuỷu tay luân phiên, 9,2 giây), Victory (giơ chữ V
+  và nhún hai tay đồng bộ, 8,2 giây). Mỗi bài hạ tay về standing trước bài tiếp theo.
 - `R`: squat; nhấn lại để đứng lên.
 - `G`: đứng dậy từ tư thế ngã sấp.
 - `C`: reset về tư thế đứng.

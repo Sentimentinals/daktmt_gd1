@@ -25,7 +25,7 @@ class ArmDanceEngine:
         dt: float = 0.04,
         transition_s: float = 0.45,
         shoulder_pwm: int = 420,
-        elbow_pwm: int = 260,
+        elbow_pwm: int = 420,
         lift_pwm: int = 820,
         head_pwm: int = 180,
     ) -> None:
@@ -89,7 +89,7 @@ class ArmDanceEngine:
         pose[23] = round(STANDING[23] + right_lift)
         pose[10] = round(STANDING[10] - left_lift)
         pose[22] = round(STANDING[22] + right_shoulder)
-        pose[11] = round(STANDING[11] + left_shoulder)
+        pose[11] = round(STANDING[11] - left_shoulder)
         pose[24] = round(STANDING[24] + right_elbow)
         pose[9] = round(STANDING[9] - left_elbow)
         pose[25] = round(STANDING[25] + head)
@@ -101,33 +101,34 @@ class ArmDanceEngine:
         elbow = self.elbow_pwm
         head = self.head_pwm
 
-        return [
-            # Legacy dance: alternate one high arm and one low arm.
-            ("legacy", 0.70, self._arm_pose(lift * 0.65, lift * 0.65, shoulder * 0.35, shoulder * 0.35, elbow * 0.30, elbow * 0.30)),
-            ("legacy", 0.85, self._arm_pose(lift, lift * 0.18, shoulder * 0.85, -shoulder * 0.45, elbow * 0.10, elbow * 0.80, -head)),
-            ("legacy", 0.55, self._arm_pose(lift * 0.55, lift * 0.55, 0.0, 0.0, elbow * 0.35, elbow * 0.35)),
-            ("legacy", 0.85, self._arm_pose(lift * 0.18, lift, -shoulder * 0.45, shoulder * 0.85, elbow * 0.80, elbow * 0.10, head)),
-            ("legacy", 0.55, self._arm_pose(lift * 0.55, lift * 0.55, 0.0, 0.0, elbow * 0.35, elbow * 0.35)),
-            ("legacy", 0.85, self._arm_pose(lift, lift * 0.18, shoulder * 0.85, -shoulder * 0.45, elbow * 0.10, elbow * 0.80, -head)),
-            ("legacy", 0.85, self._arm_pose(lift * 0.18, lift, -shoulder * 0.45, shoulder * 0.85, elbow * 0.80, elbow * 0.10, head)),
+        # Repeat the original six-pose dance before returning both arms to rest.
+        legacy = [
+            ("legacy", 0.85, self._arm_pose(lift * 0.72, lift * 0.72, shoulder * 0.65, shoulder * 0.65, elbow * 0.55, elbow * 0.55)),
+            ("legacy", 0.85, self._arm_pose(lift * 0.82, lift * 0.55, shoulder, shoulder * 0.30, elbow * 0.15, elbow * 0.85, -head)),
+            ("legacy", 0.85, self._arm_pose(lift * 0.55, lift * 0.82, shoulder * 0.30, shoulder, elbow * 0.85, elbow * 0.15, head)),
+            ("legacy", 0.85, self._arm_pose(lift * 0.96, lift * 0.96, shoulder * 0.45, shoulder * 0.45, elbow * 0.20, elbow * 0.20)),
+            ("legacy", 0.85, self._arm_pose(lift * 0.90, lift * 0.90, -shoulder * 0.75, -shoulder * 0.75, elbow * 0.90, elbow * 0.25, -head)),
+            ("legacy", 0.85, self._arm_pose(lift * 0.90, lift * 0.90, shoulder * 0.75, shoulder * 0.75, elbow * 0.25, elbow * 0.90, head)),
+        ] * 2 + [("legacy", 1.0, dict(STANDING))]
 
-            # Tarzan: keep both upper arms at chest height and beat the chest.
-            ("tarzan", 0.75, self._arm_pose(lift * 0.58, lift * 0.58, shoulder * 0.10, shoulder * 0.10, elbow * 0.08, elbow * 0.08)),
-            ("tarzan", 0.42, self._arm_pose(lift * 0.58, lift * 0.58, -shoulder * 0.15, shoulder * 0.10, elbow, elbow * 0.10, -head * 0.35)),
-            ("tarzan", 0.28, self._arm_pose(lift * 0.58, lift * 0.58, shoulder * 0.10, shoulder * 0.10, elbow * 0.08, elbow * 0.08)),
-            ("tarzan", 0.42, self._arm_pose(lift * 0.58, lift * 0.58, shoulder * 0.10, -shoulder * 0.15, elbow * 0.10, elbow, head * 0.35)),
-            ("tarzan", 0.28, self._arm_pose(lift * 0.58, lift * 0.58, shoulder * 0.10, shoulder * 0.10, elbow * 0.08, elbow * 0.08)),
-            ("tarzan", 0.42, self._arm_pose(lift * 0.58, lift * 0.58, -shoulder * 0.15, shoulder * 0.10, elbow, elbow * 0.10, -head * 0.35)),
-            ("tarzan", 0.28, self._arm_pose(lift * 0.58, lift * 0.58, shoulder * 0.10, shoulder * 0.10, elbow * 0.08, elbow * 0.08)),
-            ("tarzan", 0.42, self._arm_pose(lift * 0.58, lift * 0.58, shoulder * 0.10, -shoulder * 0.15, elbow * 0.10, elbow, head * 0.35)),
-            ("tarzan", 0.60, self._arm_pose(lift * 0.58, lift * 0.58, -shoulder * 0.10, -shoulder * 0.10, elbow, elbow)),
+        chest = self._arm_pose(lift * 0.35, lift * 0.35, shoulder, shoulder, elbow * 0.10, elbow * 0.10)
+        tarzan = [("tarzan", 1.0, chest)] + [
+            ("tarzan", 0.65, self._arm_pose(lift * 0.35, lift * 0.35, shoulder, shoulder, elbow, elbow * 0.10, -head * 0.25)),
+            ("tarzan", 0.55, chest),
+            ("tarzan", 0.65, self._arm_pose(lift * 0.35, lift * 0.35, shoulder, shoulder, elbow * 0.10, elbow, head * 0.25)),
+            ("tarzan", 0.55, chest),
+        ] * 3 + [("tarzan", 1.0, dict(STANDING))]
 
-            # Victory: extend both arms into a high V and hold it clearly.
-            ("victory", 0.65, self._arm_pose(lift * 0.78, lift * 0.78, shoulder * 0.55, shoulder * 0.55, elbow * 0.12, elbow * 0.12)),
-            ("victory", 1.35, self._arm_pose(lift, lift, shoulder, shoulder, 0.0, 0.0)),
-            ("victory", 0.45, self._arm_pose(lift * 0.86, lift * 0.86, shoulder * 0.72, shoulder * 0.72, elbow * 0.15, elbow * 0.15)),
-            ("victory", 1.35, self._arm_pose(lift, lift, shoulder, shoulder, 0.0, 0.0)),
-        ]
+        # A high V needs more than 90 degrees of upper-arm travel from arms down.
+        high_v = self._arm_pose(lift * 1.55, lift * 1.55, 0.0, 0.0)
+        victory = [
+            ("victory", 1.0, self._arm_pose(lift * 0.70, lift * 0.70, 0.0, 0.0)),
+            ("victory", 1.6, high_v),
+        ] + [
+            ("victory", 0.8, self._arm_pose(lift * 1.10, lift * 1.10, 0.0, 0.0, elbow * 0.20, elbow * 0.20)),
+            ("victory", 1.2, high_v),
+        ] * 2 + [("victory", 1.6, dict(STANDING))]
+        return legacy + tarzan + victory
 
     def _loop_pose(self) -> dict[int, int]:
         elapsed = 0.0
@@ -135,12 +136,11 @@ class ArmDanceEngine:
             if self.phase_t < elapsed + duration:
                 self.section = section
                 local_t = (self.phase_t - elapsed) / duration
-                if local_t <= 0.55:
-                    return pose
-                blend_t = (local_t - 0.55) / 0.45
+                # Arrive, then hold; each section ends at rest before the next.
+                blend_t = min(1.0, local_t / 0.60)
                 blend_t = blend_t * blend_t * (3.0 - 2.0 * blend_t)
-                next_pose = self.sequence[(index + 1) % len(self.sequence)][2]
-                return _blend_pose(pose, next_pose, blend_t)
+                previous_pose = self.sequence[index - 1][2]
+                return _blend_pose(previous_pose, pose, blend_t)
             elapsed += duration
         return self.sequence[-1][2]
 
