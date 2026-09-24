@@ -327,7 +327,7 @@ class DynamicWalkingEngine:
         lean_start = self.body_lean_queue[-1] if self.body_lean_queue else self.last_body_lean
         drop_target = self.crouch_depth_mm if abs(step_len) > 0.1 and not side_dominant else 0.0
         lean_target = self.forward_lean_deg if step_len > 0.1 and not side_dominant else 0.0
-        side_step_len = side_len * 1.80 if side_dominant else side_len
+        side_step_len = side_len * 0.90 if side_dominant else side_len
         next_step_count = self.step_count + 1
         if side_dominant and side_len > 0.0:
             swing_is_left = next_step_count % 2 == 0
@@ -415,8 +415,7 @@ class DynamicWalkingEngine:
             swing_x_travel = 0.0 if side_dominant else swing_distance * swing_x_t
 
             if side_dominant:
-                side_ready = self._phase_curve(min(1.0, swing_t * 2.45))
-                swing_y_travel = side_step_len * side_ready
+                swing_y_travel = side_step_len * swing_t
             else:
                 side_ready = self._phase_curve(min(1.0, lift_factor / 0.45))
                 swing_y_travel = side_len * swing_t * side_ready

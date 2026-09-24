@@ -189,25 +189,44 @@ class GaitDashboard:
                 self._control_client = client
                 self._control_sequence = -1
 
+            actions = request.get("actions", [])
+            actions = (
+                [str(name) for name in actions if str(name) in CONTROL_ACTIONS]
+                if isinstance(actions, list)
+                else []
+            )
             if sequence <= self._control_sequence:
+                priority = next((name for name in ("reset", "stop") if name in actions), None)
+                if priority and self._control_armed:
+                    self._control_mode = "manual" if priority == "reset" else self._control_mode
+                    self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
+                    self._control_actions.clear()
+                    self._control_actions.append(priority)
                 self._control_last_at = now
                 return 200, self._control_payload_locked(now)
 
             self._control_sequence = sequence
             self._control_last_at = now
+            priority = next((name for name in ("reset", "stop") if name in actions or name in self._control_actions), None)
             requested_mode = str(request.get("mode", self._control_mode))
             if requested_mode not in CONTROL_MODES:
                 self._control_armed = False
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
                 self._control_actions.clear()
                 return 400, {"error": "Unsupported control mode"}
+            if priority == "reset":
+                requested_mode = "manual"
             if requested_mode != self._control_mode:
                 self._control_mode = requested_mode
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
                 self._control_actions.clear()
 
             self._control_armed = bool(request.get("armed", self._control_armed))
-            if self._control_armed:
+            if self._control_armed and priority:
+                self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
+                self._control_actions.clear()
+                self._control_actions.append(priority)
+            elif self._control_armed:
                 axes = request.get("axes", {})
                 if not isinstance(axes, dict):
                     axes = {}
@@ -215,11 +234,7 @@ class GaitDashboard:
                     name: self._axis(axes.get(name, 0.0))
                     for name in ("forward", "turn", "side")
                 }
-                actions = request.get("actions", [])
-                if isinstance(actions, list):
-                    self._control_actions.extend(
-                        str(name) for name in actions if str(name) in CONTROL_ACTIONS
-                    )
+                self._control_actions.extend(actions)
             else:
                 self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
                 self._control_actions.clear()

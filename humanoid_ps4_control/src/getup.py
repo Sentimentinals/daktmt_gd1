@@ -20,8 +20,8 @@ def build_getup_sequence(initial: dict[int, int], speed: float = 1.0) -> list[Ge
         ("plant-feet", 0.9, 30, 55, 90),
         ("tuck-knees", 1.6, 106, 110, 62),
         ("shift-over-feet", 1.4, 106, 126, 61),
-        ("upright-crouch", 1.6, 82, 120, 50),
-        ("extend-legs", 1.6, None, None, None),
+        ("upright-crouch", 1.0, 82, 120, 50),
+        ("extend-legs", 0.9, None, None, None),
         ("hold-standing", 0.6, None, None, None),
         ("release-arms", 1.0, None, None, None),
     )
@@ -109,10 +109,26 @@ class GetupEngine:
         ticks = max(1, round(step.duration_s / self.dt))
         progress = min(1.0, self._tick / ticks)
         alpha = progress * progress * (3.0 - 2.0 * progress)
-        self.current_pose = {
-            sid: round(start + alpha * (step.pose[sid] - start))
-            for sid, start in self.step_start_pose.items()
-        }
+        # Join the two push phases without stopping, with monotone Hermite tangents.
+        join = self.step_index if step.label == "upright-crouch" else self.step_index - 1
+        pushing = step.label in ("upright-crouch", "extend-legs")
+        if pushing:
+            before, middle, after = self.steps[join - 1:join + 2]
+            t1 = max(1, round(middle.duration_s / self.dt)) * self.dt
+            t2 = max(1, round(after.duration_s / self.dt)) * self.dt
+        for sid, start in self.step_start_pose.items():
+            value = start + alpha * (step.pose[sid] - start)
+            if pushing:
+                v1 = (middle.pose[sid] - before.pose[sid]) / t1
+                v2 = (after.pose[sid] - middle.pose[sid]) / t2
+                velocity = 2 * v1 * v2 / (v1 + v2) if v1 * v2 > 0 else 0.0
+                tangent = (
+                    progress ** 2 * (progress - 1)
+                    if step.label == "upright-crouch"
+                    else progress * (1 - progress) ** 2
+                )
+                value += tangent * ticks * self.dt * velocity
+            self.current_pose[sid] = round(value)
         if self._tick >= ticks:
             self.step_index += 1
             self._tick = 0

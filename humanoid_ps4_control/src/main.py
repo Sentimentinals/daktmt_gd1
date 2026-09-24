@@ -68,6 +68,7 @@ def run_manual(
     previous_dance = False
     previous_fall = fall_safety.active
     recovery_active = False
+    reset_until = 0.0
     dashboard.set_runtime("manual", "Manual control ready")
 
     try:
@@ -84,7 +85,7 @@ def run_manual(
                     side = state.side * args.side_speed
                     locomotion_requested = bool(forward or turn or side)
                     reset_requested = state.stop or state.reset
-                    if reset_requested and not fall_safety.active:
+                    if reset_requested:
                         engine.reset()
                         arm_dance.reset()
                         squat.reset()
@@ -92,6 +93,11 @@ def run_manual(
                         if recovery_active:
                             fall_safety.end_recovery()
                             recovery_active = False
+                        reset_until = started + args.stop_ms / 1000.0
+                    resetting = started < reset_until
+                    if resetting:
+                        forward = turn = side = 0.0
+                        locomotion_requested = False
                     elif state.getup and not previous_getup:
                         protected_pose = backend.current_pose
                         fall_safety.begin_recovery()
@@ -144,9 +150,9 @@ def run_manual(
                             recovery_active = False
                         status = f"GET-UP: {getup.label.upper()}" if getup.running else "STANDING"
                         gait = stationary_gait(getup.label)
-                    elif reset_requested:
+                    elif resetting:
                         pose = dict(STANDING)
-                        status = "Stop / standing" if state.stop else "Reset / standing"
+                        status = "Reset / standing"
                     elif squat.active:
                         pose = squat.update()
                         status = squat.phase.upper()
@@ -188,6 +194,8 @@ def run_manual(
                                 recovery_active = False
                         pose = backend.current_pose
                         status = "FALL DETECTED - ARMS FORWARD"
+                        if resetting:
+                            status += " | RESET BLOCKED BY FALL"
                         gait = stationary_gait("fall")
                     elif previous_fall:
                         engine.reset()
@@ -205,7 +213,8 @@ def run_manual(
                         reset_requested or pose == STANDING and backend.current_pose != STANDING
                     )
                     duration = args.stop_ms if hold_standing else args.update_ms
-                    backend.send(pose, duration_ms=duration, force=hold_standing)
+                    if not resetting or reset_requested or fall_active:
+                        backend.send(pose, duration_ms=duration, force=hold_standing)
                     dashboard.publish(
                         pose=backend.current_pose,
                         gait=gait,

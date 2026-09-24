@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101411">
   <title>Humanoid Control</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='6' fill='%23151e12'/%3E%3Cpath d='M1 1h62v62H1z' fill='none' stroke='%23afe06f' stroke-width='2'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%23afe06f'%3EH17%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css?v=20260922">
+  <link rel="stylesheet" href="/style.css?v=20260925">
 </head>
 <body>
   <a class="skip-link" href="#controlSection">Skip to controls</a>
@@ -34,6 +34,7 @@
         </div>
         <div class="safety-actions">
           <button id="armButton" type="button" class="arm-button">Enable control</button>
+          <button type="button" data-action="reset"><span>Reset</span><kbd>C</kbd></button>
           <button id="emergencyButton" type="button" class="emergency-button"><span>STOP</span><kbd>Esc</kbd></button>
         </div>
       </div>
@@ -74,7 +75,6 @@
             <button type="button" data-action="dance"><span>Arm dance</span><kbd>L</kbd></button>
             <button type="button" data-action="squat"><span>Squat</span><kbd>R</kbd></button>
             <button type="button" data-action="getup_front"><span>Stand up</span><kbd>G</kbd></button>
-            <button type="button" data-action="reset"><span>Reset</span><kbd>C</kbd></button>
           </div>
           <div class="mode-actions">
             <div data-mode-actions="terrain">
@@ -111,6 +111,6 @@
 
   </main>
 
-  <script type="module" src="/app.js?v=20260922"></script>
+  <script type="module" src="/app.js?v=20260925"></script>
 </body>
 </html>

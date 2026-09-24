@@ -290,6 +290,18 @@ h2 {
   color: var(--accent-ink);
 }
 
+.control-safety [data-action="reset"] {
+  border-color: #977242;
+  color: #f2c777;
+}
+
+.control-safety [data-action="reset"]:hover,
+.control-safety [data-action="reset"].active {
+  border-color: var(--amber);
+  background: #342817;
+  color: #ffdfa0;
+}
+
 .emergency-button {
   min-width: 102px;
   border-color: #9c4744;

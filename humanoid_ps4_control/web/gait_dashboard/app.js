@@ -105,7 +105,8 @@ function updateControlUI(state = {}) {
 }
 
 async function sendControl(emergencyStop = false, immediate = false) {
-  if (control.sending && !emergencyStop && (!immediate || control.actions.size > 0)) {
+  const priority = emergencyStop || control.actions.has("reset") || control.actions.has("stop");
+  if (control.sending && !priority && (!immediate || control.actions.size > 0)) {
     control.pending = true;
     return;
   }
@@ -166,6 +167,12 @@ function queueAction(action) {
   const available = [...document.querySelectorAll(`[data-action="${action}"]`)]
     .some((button) => !button.disabled);
   if (!control.armed || !available) return;
+  if (action === "reset" || action === "stop") {
+    releaseMotion();
+    control.actions.clear();
+    if (action === "reset") control.mode = "manual";
+    updateControlUI();
+  }
   control.actions.add(action);
   sendControl();
 }
