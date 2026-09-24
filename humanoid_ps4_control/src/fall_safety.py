@@ -130,6 +130,14 @@ class FallSafety:
             self._detector.reset()
             self._suspended = False
 
+    def reset_to_standing(self) -> None:
+        with self._lock:
+            self._detector.reset()
+            self._active = False
+            self._reason = ""
+            self._suspended = False
+            self.backend.release_fall(self.args.stop_ms, return_to_standing=True)
+
     def close(self) -> None:
         self._stop.set()
         if self._thread is not None:

@@ -87,13 +87,16 @@ def run_manual(
                     side = state.side * args.side_speed
                     locomotion_requested = bool(forward or turn or side)
                     reset_requested = state.stop or state.reset
-                    if reset_requested and not fall_safety.active:
+                    if state.reset or (state.stop and not fall_safety.active):
+                        if state.reset:
+                            fall_safety.reset_to_standing()
                         engine.reset()
                         arm_dance.reset()
                         squat.reset()
                         getup.reset()
                         if recovery_active:
-                            fall_safety.end_recovery()
+                            if not state.reset:
+                                fall_safety.end_recovery()
                             recovery_active = False
                     elif state.getup and not previous_getup:
                         protected_pose = backend.current_pose
