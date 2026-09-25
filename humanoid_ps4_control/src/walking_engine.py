@@ -90,7 +90,7 @@ class SquatEngine:
         self.max_depth_mm = max(0.0, depth_mm)
         self.forward_mm = max(0.0, forward_mm)
         self.arm_forward_pwm = abs(arm_forward_pwm)
-        self.arm_raise_s = max(self.dt, arm_raise_s)
+        self.arm_raise_s = max(self.dt, arm_raise_s) if self.arm_forward_pwm else 0.0
         self.transition_s = max(self.dt, transition_s)
         half_hip = ROBOT["half_hip"]
         self._squat_pose = compute_pose(
@@ -149,7 +149,7 @@ class SquatEngine:
         if self.depth_mm <= 0.1 and self.target_depth_mm <= 0.1:
             return dict(STANDING)
         depth_ratio = self.depth_mm / self.max_depth_mm
-        if lowering:
+        if lowering and self.arm_raise_s > 0.0:
             arm_progress = min(1.0, self._elapsed_s / self.arm_raise_s)
             arm_blend = arm_progress * arm_progress * (3.0 - 2.0 * arm_progress)
         else:
