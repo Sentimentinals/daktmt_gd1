@@ -342,8 +342,9 @@ class DynamicWalkingEngine:
         lean_target = self.forward_lean_deg if step_len > 0.1 and not side_dominant else 0.0
         side_step_len = side_len * 0.90 if side_dominant else side_len
         next_step_count = self.step_count + 1
-        if side_dominant and side_len > 0.0:
-            swing_is_left = next_step_count % 2 == 0
+        if side_dominant:
+            feet_apart = base_R[1] - base_L[1] > 2.0 * self.hw + 0.1
+            swing_is_left = (side_len < 0.0) != feet_apart
         elif turn_dominant and self.last_swing_leg == "none":
             swing_is_left = turn_len < 0.0
         elif turn_dominant:
@@ -457,10 +458,16 @@ class DynamicWalkingEngine:
         side_direction: float,
         left_foot: np.ndarray,
         right_foot: np.ndarray,
+        swing_leg: str,
+        landing_progress: float,
     ) -> dict[int, int]:
         pose = dict(STANDING)
-        # Anchor the body to the trailing foot: open first, then pull together.
-        com_y = float(left_foot[1]) + self.hw if side_direction > 0.0 else float(right_foot[1]) - self.hw
+        swing_left = swing_leg == "left"
+        support_hip, support_ankle = (21, 17) if swing_left else (12, 16)
+        support_sign = 1.0 if swing_left else -1.0
+        support_foot = right_foot if swing_left else left_foot
+        support_roll = (self.step_start_pose[support_hip] - STANDING[support_hip]) / (DIR[support_hip] * PWM_PER_DEG)
+        com_y = float(support_foot[1]) - support_sign * self.hw - self.zc * math.tan(math.radians(support_roll / support_sign))
         for foot, hip_y, hip_id, ankle_id, sign in (
             (left_foot, com_y - self.hw, 12, 16, -1.0),
             (right_foot, com_y + self.hw, 21, 17, 1.0),
@@ -468,6 +475,12 @@ class DynamicWalkingEngine:
             roll = sign * math.degrees(math.atan2(float(foot[1]) - hip_y, self.zc))
             pose[hip_id] = angle_to_pwm(hip_id, 0.0, roll, STANDING[hip_id])
             pose[ankle_id] = angle_to_pwm(ankle_id, 0.0, roll, STANDING[ankle_id])
+        for sid in (support_hip, support_ankle):
+            pose[sid] = self.step_start_pose[sid]
+        # Recenter only after the trailing foot has finished closing the gap.
+        if swing_left != (side_direction < 0.0):
+            for sid in (12, 16, 17, 21):
+                pose[sid] = round(pose[sid] + (STANDING[sid] - pose[sid]) * landing_progress)
         return pose
 
     def _phase_progress(self, phase: float, start: float, end: float) -> float:
@@ -645,6 +658,8 @@ class DynamicWalkingEngine:
                 side_len_now,
                 pose_foot_L,
                 pose_foot_R,
+                swing_leg_now,
+                landing_t_now,
             )
             if body_drop_now > 0.0 and self.crouch_depth_mm > 0.0:
                 remaining = body_drop_now / self.crouch_depth_mm
