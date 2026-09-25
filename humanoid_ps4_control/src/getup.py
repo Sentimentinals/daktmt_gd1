@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .config import STANDING, STAND_ANG
+from .config import PWM_PER_DEG, STANDING, STAND_ANG
 from .walking_engine import angle_to_pwm
 
 
@@ -15,23 +15,29 @@ class GetupStep:
 
 
 def build_getup_sequence(initial: dict[int, int], speed: float = 1.0) -> list[GetupStep]:
-    # Hip, knee, ankle pitch in degrees; all other joints keep their starting pose.
+    # Hip/knee/ankle, arm forward, elbow bend and arm spread, in degrees.
     stages = (
-        ("plant-feet", 0.9, 30, 55, 90),
-        ("tuck-knees", 1.6, 106, 110, 62),
-        ("shift-over-feet", 1.4, 106, 126, 61),
-        ("upright-crouch", 1.0, 82, 120, 50),
-        ("extend-legs", 0.9, None, None, None),
-        ("hold-standing", 0.6, None, None, None),
-        ("release-arms", 1.0, None, None, None),
+        ("brace-hands", 0.7, 30, 55, 90, 65, 30, 10),
+        ("push-chest", 0.8, 30, 55, 90, 75, 0, 10),
+        ("tuck-knees", 1.2, 106, 110, 62, 75, 0, 10),
+        ("shift-over-feet", 1.0, 106, 126, 61, 50, 10, 10),
+        ("upright-crouch", 0.8, 82, 120, 50, 20, 0, 25),
+        ("extend-legs", 0.9, None, None, None, 0, 0, 70),
+        ("hold-standing", 0.6, None, None, None, 0, 0, 70),
+        ("release-arms", 1.0, None, None, None, 0, 0, 0),
     )
     steps = []
-    for label, duration, hip, knee, ankle in stages:
+    for label, duration, hip, knee, ankle, forward, bend, spread in stages:
         pose = dict(initial)
+        for sid in (12, 16, 17, 21):
+            pose[sid] = STANDING[sid]
         for side, ids in (("L", (13, 14, 15)), ("R", (20, 19, 18))):
             for sid, name, value in zip(ids, ("hip_pitch", "knee", "ankle"), (hip, knee, ankle)):
                 base = STAND_ANG[f"{side}_{name}"]
                 pose[sid] = angle_to_pwm(sid, base, base if value is None else value, STANDING[sid])
+        for left, right, degrees in ((11, 22, forward), (10, 23, spread), (9, 24, -bend)):
+            pose[left] = round(STANDING[left] - degrees * PWM_PER_DEG)
+            pose[right] = round(STANDING[right] + degrees * PWM_PER_DEG)
         if label == "release-arms":
             pose = dict(STANDING)
         steps.append(GetupStep(label, pose, duration / speed))
