@@ -167,6 +167,7 @@ function queueAction(action) {
   const available = [...document.querySelectorAll(`[data-action="${action}"]`)]
     .some((button) => !button.disabled);
   if (!control.armed || !available) return;
+  if (action === "squat") releaseMotion();
   if (action === "reset" || action === "stop") {
     releaseMotion();
     control.actions.clear();

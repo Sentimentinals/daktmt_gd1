@@ -111,13 +111,14 @@ def run_manual(
                         print("[main] G: starting stand-up.")
                     elif (
                         state.squat
-                        and not locomotion_requested
                         and not getup.running
                         and not fall_safety.active
                     ):
                         engine.reset()
                         arm_dance.reset()
                         squat.toggle()
+                        forward = turn = side = 0.0
+                        locomotion_requested = False
                     elif (
                         state.dance
                         and not previous_dance
@@ -129,9 +130,6 @@ def run_manual(
                         engine.reset()
                     previous_getup = state.getup
                     previous_dance = state.dance
-                    if locomotion_requested and squat.active:
-                        squat.stop()
-
                     gait = stationary_gait()
                     if getup.running:
                         reading = snapshot.imu if snapshot is not None else None

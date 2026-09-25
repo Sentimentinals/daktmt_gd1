@@ -132,13 +132,10 @@ class SquatEngine:
     def toggle(self) -> None:
         self._set_target(0.0 if self.target_depth_mm > 0.1 else self.max_depth_mm)
 
-    def stop(self) -> None:
-        self._set_target(0.0)
-
     def update(self) -> dict[int, int]:
         lowering = self.target_depth_mm > self._start_depth_mm
         arm_delay = self.arm_raise_s if lowering else 0.0
-        total_time = self.transition_s + arm_delay
+        total_time = self.transition_s + self.arm_raise_s
         if self._elapsed_s < total_time:
             self._elapsed_s = min(total_time, self._elapsed_s + self.dt)
             progress = max(0.0, self._elapsed_s - arm_delay) / self.transition_s
@@ -153,7 +150,7 @@ class SquatEngine:
             arm_blend = arm_progress * arm_progress * (3.0 - 2.0 * arm_progress)
             self._arm_blend = self._start_arm_blend + (1.0 - self._start_arm_blend) * arm_blend
         else:
-            progress = min(1.0, self._elapsed_s / self.transition_s)
+            progress = min(1.0, max(0.0, self._elapsed_s - self.transition_s) / max(self.dt, self.arm_raise_s))
             self._arm_blend = self._start_arm_blend * (1.0 - progress * progress * (3.0 - 2.0 * progress))
         if not self.active:
             return dict(STANDING)
