@@ -101,13 +101,15 @@ class SquatEngine:
 
     @property
     def active(self) -> bool:
-        return self.depth_mm > 0.1 or self.target_depth_mm > 0.1
+        return self.depth_mm > 0.1 or self.target_depth_mm > 0.1 or self._arm_blend > 0.001
 
     @property
     def phase(self) -> str:
         if self.target_depth_mm > self._start_depth_mm and self._elapsed_s < self.arm_raise_s:
             return "squat-arms"
         if abs(self.depth_mm - self.target_depth_mm) <= 0.1:
+            if self.target_depth_mm <= 0.1 and self._arm_blend > 0.001:
+                return "squat-arms"
             return "squat-hold" if self.target_depth_mm > 0.1 else "idle"
         return "squat-down" if self.target_depth_mm > self.depth_mm else "squat-up"
 
@@ -115,6 +117,7 @@ class SquatEngine:
         self.depth_mm = 0.0
         self.target_depth_mm = 0.0
         self._start_depth_mm = 0.0
+        self._arm_blend = self._start_arm_blend = 0.0
         self._elapsed_s = self.transition_s
 
     def _set_target(self, depth_mm: float) -> None:
@@ -122,6 +125,7 @@ class SquatEngine:
         if abs(target - self.target_depth_mm) <= 0.1:
             return
         self._start_depth_mm = self.depth_mm
+        self._start_arm_blend = self._arm_blend
         self.target_depth_mm = target
         self._elapsed_s = 0.0
 
@@ -143,22 +147,24 @@ class SquatEngine:
             self.depth_mm = self._start_depth_mm + (
                 self.target_depth_mm - self._start_depth_mm
             ) * blend
-        if self.depth_mm <= 0.1 and self.target_depth_mm <= 0.1:
-            return dict(STANDING)
-        depth_ratio = self.depth_mm / self.max_depth_mm
+        depth_ratio = self.depth_mm / self.max_depth_mm if self.max_depth_mm else 0.0
         if lowering and self.arm_raise_s > 0.0:
             arm_progress = min(1.0, self._elapsed_s / self.arm_raise_s)
             arm_blend = arm_progress * arm_progress * (3.0 - 2.0 * arm_progress)
+            self._arm_blend = self._start_arm_blend + (1.0 - self._start_arm_blend) * arm_blend
         else:
-            arm_blend = depth_ratio
+            progress = min(1.0, self._elapsed_s / self.transition_s)
+            self._arm_blend = self._start_arm_blend * (1.0 - progress * progress * (3.0 - 2.0 * progress))
+        if not self.active:
+            return dict(STANDING)
         # Advance the torso while bending both knees, with fixed floor targets.
         pose = compute_pose(
             self.forward_mm * depth_ratio * (2.0 - depth_ratio),
             0.0, *self._feet,
             com_z=ROBOT["com_height"] - self.depth_mm,
-        )
-        pose[11] = round(STANDING[11] - self.arm_forward_pwm * arm_blend)
-        pose[22] = round(STANDING[22] + self.arm_forward_pwm * arm_blend)
+        ) if self.depth_mm > 0.1 else dict(STANDING)
+        pose[11] = round(STANDING[11] - self.arm_forward_pwm * self._arm_blend)
+        pose[22] = round(STANDING[22] + self.arm_forward_pwm * self._arm_blend)
         return pose
 
 
