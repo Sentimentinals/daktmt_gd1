@@ -80,7 +80,7 @@ DIR = {
 class Config:
     # --- Hardware ---
     backend: str = "serial"
-    port: str = "/dev/ttyACM0"
+    port: str = "/dev/serial/by-id/usb-RTrobot_RTrobot_Servo_Controller_56FF64483438-if00"
     baudrate: int = 115200
     csv: str = "out/log.csv"
     update_ms: int = 30
