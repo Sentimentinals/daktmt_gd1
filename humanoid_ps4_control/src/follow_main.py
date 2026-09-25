@@ -134,6 +134,8 @@ def run_follow(
                             forward = 0.0
                             turn = 0.0
                             print(f"[follow] Stopped: {status.lower()}.")
+                        elif status.startswith("SEARCHING TARGET"):
+                            forward = turn = 0.0
                         else:
                             forward, turn, avoid_status = obstacle_planner.update(
                                 depth,

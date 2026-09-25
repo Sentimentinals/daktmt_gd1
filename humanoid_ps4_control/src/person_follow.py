@@ -359,6 +359,7 @@ class PersonObstaclePlanner:
         turn_speed: float,
     ) -> None:
         self.stop_distance_mm = max(80, stop_distance_mm)
+        self.side_clear_mm = self.stop_distance_mm + max(100, clear_margin_mm)
         self.plan_distance_mm = (
             self.stop_distance_mm + max(200, clear_margin_mm * 2) + 100
         )
@@ -374,11 +375,18 @@ class PersonObstaclePlanner:
 
     @staticmethod
     def _corridors(depth) -> tuple[int | None, int | None, int | None]:
-        return (
-            depth.region_median_mm(1, 7, 0, 3),
-            depth.region_median_mm(1, 7, 2, 6),
-            depth.region_median_mm(1, 7, 5, 8),
-        )
+        distances = []
+        for first, last in ((0, 3), (2, 6), (5, 8)):
+            blocks = []
+            for row in (1, 3, 5):
+                values = [depth.distances_mm[r * 8 + c]
+                          for r in (row, row + 1) for c in range(first, last)]
+                valid = [v for v in values if 20 <= v <= 4000]
+                if len(valid) < len(values) * 0.75:
+                    break
+                blocks.append(min(valid))
+            distances.append(min(blocks) if len(blocks) == 3 else None)
+        return tuple(distances)
 
     def update(
         self,
@@ -387,12 +395,15 @@ class PersonObstaclePlanner:
         target_turn: float,
     ) -> tuple[float, float, str | None]:
         if depth is None:
-            if self.direction:
-                return 0.0, 0.0, "AVOID TOF WAIT"
-            return forward, target_turn, None
+            return 0.0, 0.0, "AVOID TOF WAIT"
 
         obstacle_mm = depth.obstacle_distance_mm
         left_mm, center_mm, right_mm = self._corridors(depth)
+        if center_mm is None:
+            return 0.0, 0.0, "AVOID TOF WAIT"
+        obstacle_mm = min(center_mm, obstacle_mm) if obstacle_mm is not None else center_mm
+        left_open = left_mm is not None and left_mm >= self.side_clear_mm
+        right_open = right_mm is not None and right_mm >= self.side_clear_mm
         new_sample = depth.sensor_time_ms != self._last_sample_id
         if new_sample:
             self._last_sample_id = depth.sensor_time_ms
@@ -402,26 +413,38 @@ class PersonObstaclePlanner:
                 if forward > 0.0 and obstacle_mm is not None and obstacle_mm <= self.stop_distance_mm:
                     self._near_frames = self.stable_frames
                 if self._near_frames >= self.stable_frames:
+                    if not left_open and not right_open:
+                        return 0.0, 0.0, "AVOID BLOCKED"
                     left_score = left_mm or 0
                     right_score = right_mm or 0
-                    if abs(left_score - right_score) < 80 and target_turn:
+                    if not right_open:
+                        self.direction = 1
+                    elif not left_open:
+                        self.direction = -1
+                    elif abs(left_score - right_score) < 80 and target_turn:
                         self.direction = 1 if target_turn > 0.0 else -1
                     else:
                         self.direction = 1 if left_score >= right_score else -1
                     self._near_frames = 0
             else:
-                center_clear = center_mm is not None and center_mm >= self.plan_distance_mm
+                center_clear = obstacle_mm >= self.plan_distance_mm
                 self._clear_frames = self._clear_frames + 1 if center_clear else 0
                 if self._clear_frames >= self.stable_frames:
                     self.reset()
                     return forward, target_turn, None
 
         if self.direction == 0:
+            if self._near_frames >= self.stable_frames and not left_open and not right_open:
+                return 0.0, 0.0, "AVOID BLOCKED"
+            if obstacle_mm <= self.stop_distance_mm and (forward > 0 or target_turn):
+                return 0.0, 0.0, "AVOID BLOCKED"
             return forward, target_turn, None
 
-        front_mm = center_mm if center_mm is not None else obstacle_mm
-        if front_mm is None:
-            return 0.0, self.direction * self.turn_speed, "AVOID SCANNING"
+        if not (left_open if self.direction > 0 else right_open):
+            if not new_sample or not (right_open if self.direction > 0 else left_open):
+                return 0.0, 0.0, "AVOID BLOCKED"
+            self.direction = -self.direction
+        front_mm = obstacle_mm
         if front_mm <= self.stop_distance_mm:
             safe_forward = 0.0
         else:
