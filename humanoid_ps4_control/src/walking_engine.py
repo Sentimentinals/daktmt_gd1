@@ -454,11 +454,13 @@ class DynamicWalkingEngine:
 
     def _side_slide_pose(
         self,
-        com_y: float,
+        side_direction: float,
         left_foot: np.ndarray,
         right_foot: np.ndarray,
     ) -> dict[int, int]:
         pose = dict(STANDING)
+        # Anchor the body to the trailing foot: open first, then pull together.
+        com_y = float(left_foot[1]) + self.hw if side_direction > 0.0 else float(right_foot[1]) - self.hw
         for foot, hip_y, hip_id, ankle_id, sign in (
             (left_foot, com_y - self.hw, 12, 16, -1.0),
             (right_foot, com_y + self.hw, 21, 17, 1.0),
@@ -640,7 +642,7 @@ class DynamicWalkingEngine:
                 self._com_x = self._com_y = 0.0
         elif side_active:
             pose = self._side_slide_pose(
-                pose_com_y,
+                side_len_now,
                 pose_foot_L,
                 pose_foot_R,
             )

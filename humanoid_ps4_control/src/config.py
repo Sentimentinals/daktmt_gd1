@@ -24,7 +24,7 @@ GAIT = {
     "arm_swing_pwm": 50,
     "arm_right_dir": 1,
     "arm_left_dir": -1,
-    "max_side_step_len": 22.0,
+    "max_side_step_len": 33.0,
     "max_turn_step_len": 12.0,
 }
 
