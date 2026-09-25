@@ -190,6 +190,7 @@ class DynamicWalkingEngine:
         arm_swing_pwm: int | None = None,
         arm_right_dir: int | None = None,
         arm_left_dir: int | None = None,
+        hip_out_deg: float = 0.0,
     ) -> None:
         self.dt = dt
         self.t_step = t_step
@@ -204,6 +205,7 @@ class DynamicWalkingEngine:
         self.step_height = max(0.0, step_height)
         self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
         self.forward_lean_deg = max(0.0, float(forward_lean_deg))
+        self.hip_out_deg = max(0.0, float(hip_out_deg))
         self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
@@ -670,7 +672,9 @@ class DynamicWalkingEngine:
                 roll = math.degrees(math.atan2(self.hw * self.zmp_support_ratio, self.zc)) * self.ankle_roll_gain
                 pose[16] = STANDING[16] + round(DIR[16] * PWM_PER_DEG * roll * left_load)
                 pose[17] = STANDING[17] + round(DIR[17] * PWM_PER_DEG * roll * right_load)
-            if any(self.step_start_pose[sid] != STANDING[sid] for sid in (12, 21)):
+            for sid in (12, 16, 17, 21):
+                pose[sid] += round(DIR[sid] * PWM_PER_DEG * self.hip_out_deg)
+            if self.hip_out_deg or any(self.step_start_pose[sid] != STANDING[sid] for sid in (12, 21)):
                 prepare = self._phase_progress(
                     (self.n_s - 1 - len(self.zmp_y_queue)) / max(1, self.n_s - 1), 0.0, self.lift_start_phase,
                 )
