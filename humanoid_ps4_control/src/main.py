@@ -24,8 +24,8 @@ def run_manual(
 
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
-        t_step=args.t_step,
-        t_dbl=args.t_dbl,
+        t_step=args.t_step / args.manual_walk_tempo,
+        t_dbl=args.t_dbl / args.manual_walk_tempo,
         max_step_len=args.walk_step_length_mm,
         max_turn_step_len=args.max_turn_step_len,
         max_side_step_len=args.max_side_step_len,
