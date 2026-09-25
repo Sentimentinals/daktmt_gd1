@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "model_id": "uci-har-public-2045e435c955",
+  "experimental": true,
+  "feature_names": [
+    "roll_std_deg",
+    "pitch_std_deg",
+    "roll_range_deg",
+    "pitch_range_deg",
+    "roll_rate_rms_dps",
+    "pitch_rate_rms_dps",
+    "roll_rate_peak_dps",
+    "pitch_rate_peak_dps",
+    "roll_jerk_rms_dps2",
+    "pitch_jerk_rms_dps2"
+  ],
+  "profiles": {
+    "global": {
+      "center": [
+        0.2925053,
+        0.3132262,
+        0.9922561,
+        1.044651,
+        0.823836,
+        0.8857183,
+        1.6805151,
+        1.7269129,
+        4.5870696,
+        4.3041205
+      ],
+      "scale": [
+        0.1616765,
+        0.180605,
+        0.486052,
+        0.5520315,
+        0.5,
+        0.5,
+        1.0,
+        1.0,
+        5.0,
+        5.0
+      ],
+      "threshold": 7.31424,
+      "samples": 883
+    }
+  },
+  "source": {
+    "doi": "10.24432/C54S4K",
+    "license": "CC BY 4.0",
+    "authors": "Reyes-Ortiz, Anguita, Ghio, Oneto, Parra (2013)",
+    "url": "https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones",
+    "archive_sha256": "2045e435c955214b38145fb5fa00776c72814f01b203fec405152dac7d5bfeb0"
+  },
+  "method": "Gravity proxy = total_acc - body_acc; roll=atan2(gy,gx), pitch=atan2(-gz,hypot(gx,gy)); 50Hz to 33.33Hz; first 10 gait features; median/MAD baseline.",
+  "validation": {
+    "fit_windows": 883,
+    "calibration_windows": 343,
+    "fit_subjects": [
+      3,
+      5,
+      6,
+      7,
+      11,
+      14,
+      15,
+      16,
+      19,
+      21,
+      22,
+      23,
+      26,
+      27,
+      28,
+      29
+    ],
+    "calibration_subjects": [
+      1,
+      8,
+      17,
+      25,
+      30
+    ],
+    "test_subjects": [
+      2,
+      4,
+      9,
+      10,
+      12,
+      13,
+      18,
+      20,
+      24
+    ],
+    "test": {
+      "walking": {
+        "windows": 496,
+        "flagged": 0,
+        "flag_rate": 0.0
+      },
+      "upstairs": {
+        "windows": 471,
+        "flagged": 28,
+        "flag_rate": 0.05945
+      },
+      "downstairs": {
+        "windows": 420,
+        "flagged": 5,
+        "flag_rate": 0.0119
+      },
+      "sitting": {
+        "windows": 491,
+        "flagged": 27,
+        "flag_rate": 0.05499
+      },
+      "standing": {
+        "windows": 532,
+        "flagged": 19,
+        "flag_rate": 0.03571
+      },
+      "laying": {
+        "windows": 537,
+        "flagged": 31,
+        "flag_rate": 0.05773
+      }
+    },
+    "synthetic_sensitivity": {
+      "injection": "15 degree roll pulse, samples 30..37 at 33.33Hz, on held-out walking only; NOT real faults",
+      "windows": 496,
+      "flagged": 496
+    }
+  },
+  "limitations": "Human phone gravity (0.3Hz filtered) is not BNO055 robot orientation. Original windows overlap 50 percent. Activities other than walking are NOT fault labels. No robot accuracy or predictive-maintenance claim. Excludes unavailable gravity/asymmetry/step-count features. Requires robot baseline."
+}

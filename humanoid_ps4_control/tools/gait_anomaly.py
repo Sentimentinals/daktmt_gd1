@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import io
 import json
 import math
 import statistics
 import time
 import urllib.request
+import zipfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.gait_anomaly import FEATURE_NAMES
+from src.gait_anomaly import FEATURE_NAMES, _Sample, extract_features
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -130,6 +133,7 @@ def train(args: argparse.Namespace) -> int:
 def inspect(args: argparse.Namespace) -> int:
     payload = json.loads(args.model.read_text(encoding="utf-8"))
     print(f"model_id={payload.get('model_id', 'unknown')}")
+    print(f"experimental={payload.get('experimental', False)}")
     for name, profile in payload.get("profiles", {}).items():
         print(
             f"{name}: samples={profile.get('samples', 0)} "
@@ -177,8 +181,100 @@ def _build_profile(rows: list[list[float]]) -> dict[str, object]:
 def _score(values: list[float], center: list[float], scale: list[float]) -> float:
     return math.sqrt(
         sum(((value - mid) / width) ** 2 for value, mid, width in zip(values, center, scale))
-        / len(FEATURE_NAMES)
+        / len(values)
     )
+
+
+def train_public(args: argparse.Namespace) -> int:
+    """Human walking proxy, never a validated robot fault classifier."""
+    import numpy as np
+
+    archive_bytes = args.dataset.read_bytes()
+    source_hash = hashlib.sha256(archive_bytes).hexdigest()
+    archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
+    nested = next((name for name in archive.namelist() if name.endswith(".zip")), None)
+    if nested:
+        archive = zipfile.ZipFile(io.BytesIO(archive.read(nested)))
+    prefix = next(name[:-len("train/y_train.txt")] for name in archive.namelist()
+                  if name.endswith("train/y_train.txt"))
+
+    def read_array(name):
+        return np.loadtxt(io.BytesIO(archive.read(prefix + name)))
+
+    splits = {}
+    injected_rows = []
+    for split in ("train", "test"):
+        labels = read_array(f"{split}/y_{split}.txt").astype(int)
+        subjects = read_array(f"{split}/subject_{split}.txt").astype(int)
+        gravity = []
+        for axis in "xyz":
+            folder = f"{split}/Inertial Signals/"
+            gravity.append(read_array(folder + f"total_acc_{axis}_{split}.txt")
+                           - read_array(folder + f"body_acc_{axis}_{split}.txt"))
+        gx, gy, gz = gravity
+        # Phone x points along gravity at the waist: map x to upright robot z.
+        roll = np.degrees(np.arctan2(gy, gx))
+        pitch = np.degrees(np.arctan2(-gz, np.hypot(gx, gy)))
+        sample_times = np.arange(128) / 50.0
+        target_times = np.arange(0.0, 2.54, 0.03)
+        rows = []
+        for i in range(len(labels)):
+            r = np.degrees(np.unwrap(np.radians(roll[i])))
+            p = np.degrees(np.unwrap(np.radians(pitch[i])))
+            samples = [_Sample(float(t), float(a), float(b), None, "none", 0)
+                       for t, a, b in zip(target_times,
+                           np.interp(target_times, sample_times, r),
+                           np.interp(target_times, sample_times, p))]
+            features = extract_features(samples)
+            rows.append([features[name] for name in FEATURE_NAMES[:10]])
+            if split == "test" and labels[i] == 1:
+                disturbed = [_Sample(s.time_s, s.roll_deg + (15.0 if 30 <= j < 38 else 0.0),
+                                     s.pitch_deg, None, "none", 0) for j, s in enumerate(samples)]
+                injected = extract_features(disturbed)
+                injected_rows.append([injected[name] for name in FEATURE_NAMES[:10]])
+        splits[split] = (labels, subjects, rows)
+
+    labels, subjects, rows = splits["train"]
+    calibration_subjects = set(sorted(set(subjects))[::5])
+    normal = [row for label, subject, row in zip(labels, subjects, rows)
+              if label == 1 and subject not in calibration_subjects]
+    calibration = [row for label, subject, row in zip(labels, subjects, rows)
+                   if label == 1 and subject in calibration_subjects]
+    test_labels, test_subjects, test_rows = splits["test"]
+    assert not set(subjects) & set(test_subjects)
+    profile = _build_profile(normal)
+    score = lambda row: _score(row, profile["center"], profile["scale"])
+    profile["threshold"] = round(max(2.5, _percentile([score(r) for r in calibration], .99) * 1.25), 5)
+    evaluation = {}
+    for label, name in enumerate(("walking", "upstairs", "downstairs", "sitting", "standing", "laying"), 1):
+        values = [score(row) for activity, row in zip(test_labels, test_rows) if activity == label]
+        flagged = sum(value > profile["threshold"] for value in values)
+        evaluation[name] = {"windows": len(values), "flagged": flagged,
+                            "flag_rate": round(flagged / len(values), 5)}
+    payload = {
+        "version": 1, "model_id": "uci-har-public-" + source_hash[:12],
+        "experimental": True, "feature_names": list(FEATURE_NAMES[:10]),
+        "profiles": {"global": profile},
+        "source": {"doi": "10.24432/C54S4K", "license": "CC BY 4.0",
+                   "authors": "Reyes-Ortiz, Anguita, Ghio, Oneto, Parra (2013)",
+                   "url": "https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones",
+                   "archive_sha256": source_hash},
+        "method": "Gravity proxy = total_acc - body_acc; roll=atan2(gy,gx), pitch=atan2(-gz,hypot(gx,gy)); 50Hz to 33.33Hz; first 10 gait features; median/MAD baseline.",
+        "validation": {"fit_windows": len(normal), "calibration_windows": len(calibration),
+                       "fit_subjects": sorted(map(int, set(subjects) - calibration_subjects)),
+                       "calibration_subjects": sorted(map(int, calibration_subjects)),
+                       "test_subjects": sorted(map(int, set(test_subjects))),
+                       "test": evaluation,
+                       "synthetic_sensitivity": {"injection": "15 degree roll pulse, samples 30..37 at 33.33Hz, on held-out walking only; NOT real faults",
+                                                 "windows": len(injected_rows),
+                                                 "flagged": sum(score(row) > profile["threshold"] for row in injected_rows)}},
+        "limitations": "Human phone gravity (0.3Hz filtered) is not BNO055 robot orientation. Original windows overlap 50 percent. Activities other than walking are NOT fault labels. No robot accuracy or predictive-maintenance claim. Excludes unavailable gravity/asymmetry/step-count features. Requires robot baseline.",
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(payload["validation"], indent=2))
+    print(f"Public-data experimental model: {args.output}")
+    return 0
 
 
 def _percentile(values: list[float], quantile: float) -> float:
@@ -212,6 +308,10 @@ def parse_args() -> argparse.Namespace:
     inspect_parser = commands.add_parser("inspect", help="Show model profiles and thresholds")
     inspect_parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     inspect_parser.set_defaults(handler=inspect)
+    public_parser = commands.add_parser("train-public", help="Train an experimental UCI HAR walking proxy")
+    public_parser.add_argument("--dataset", type=Path, required=True, help="Official UCI HAR ZIP")
+    public_parser.add_argument("--output", type=Path, default=DEFAULT_MODEL.with_name("gait_anomaly_public.json"))
+    public_parser.set_defaults(handler=train_public)
     return parser.parse_args()
 
 

@@ -49,23 +49,28 @@ class _Profile:
 
 
 class GaitAnomalyModel:
-    def __init__(self, model_id: str, profiles: dict[str, _Profile]) -> None:
+    def __init__(self, model_id: str, profiles: dict[str, _Profile],
+                 feature_names=FEATURE_NAMES, experimental: bool = False) -> None:
         if "global" not in profiles:
             raise ValueError("Gait anomaly model requires a global profile")
         self.model_id = model_id
         self.profiles = profiles
+        self.feature_names = tuple(feature_names)
+        self.experimental = experimental
 
     @classmethod
     def load(cls, path: Path) -> "GaitAnomalyModel":
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if payload.get("version") != 1 or tuple(payload.get("feature_names", ())) != FEATURE_NAMES:
+        names = tuple(payload.get("feature_names", ()))
+        if (payload.get("version") != 1 or not names or len(set(names)) != len(names)
+                or any(name not in FEATURE_NAMES for name in names)):
             raise ValueError("Unsupported gait anomaly model format")
         profiles = {}
         for name, raw in payload.get("profiles", {}).items():
             center = tuple(float(value) for value in raw["center"])
             scale = tuple(float(value) for value in raw["scale"])
             threshold = float(raw["threshold"])
-            if len(center) != len(FEATURE_NAMES) or len(scale) != len(FEATURE_NAMES):
+            if len(center) != len(names) or len(scale) != len(names):
                 raise ValueError(f"Invalid feature count in profile {name}")
             if (
                 not all(math.isfinite(value) for value in (*center, *scale, threshold))
@@ -79,17 +84,18 @@ class GaitAnomalyModel:
                 threshold=threshold,
                 samples=max(0, int(raw.get("samples", 0))),
             )
-        return cls(str(payload.get("model_id", "unknown")), profiles)
+        return cls(str(payload.get("model_id", "unknown")), profiles, names,
+                   bool(payload.get("experimental", False)))
 
     def score(self, profile_name: str, features: dict[str, float]) -> tuple[float, float, str]:
         selected_name = profile_name if profile_name in self.profiles else "global"
         profile = self.profiles[selected_name]
-        values = [float(features[name]) for name in FEATURE_NAMES]
+        values = [float(features[name]) for name in self.feature_names]
         distance_sq = sum(
             ((value - center) / scale) ** 2
             for value, center, scale in zip(values, profile.center, profile.scale)
         )
-        return math.sqrt(distance_sq / len(FEATURE_NAMES)), profile.threshold, selected_name
+        return math.sqrt(distance_sq / len(self.feature_names)), profile.threshold, selected_name
 
 
 class GaitHealthMonitor:
@@ -116,6 +122,8 @@ class GaitHealthMonitor:
         self.warning_windows = max(1, int(warning_windows))
         self.model: GaitAnomalyModel | None = None
         self.model_error: str | None = None
+        if not self.model_path.is_file():
+            self.model_path = model_path.with_name("gait_anomaly_public.json")
         if self.enabled and self.model_path.is_file():
             try:
                 self.model = GaitAnomalyModel.load(self.model_path)
@@ -123,7 +131,8 @@ class GaitHealthMonitor:
                 self.model_error = str(exc)
         if self.enabled:
             if self.model is not None:
-                print(f"[gait-health] Loaded TinyML baseline {self.model.model_id}.")
+                kind = "PUBLIC TEST" if self.model.experimental else "robot baseline"
+                print(f"[gait-health] Loaded {kind}: {self.model.model_id}.")
             elif self.model_error is not None:
                 print(f"[gait-health] Model error: {self.model_error}")
             else:
@@ -244,7 +253,7 @@ class GaitHealthMonitor:
         return self._snapshot(status)
 
     def close(self) -> None:
-        if self._closed or self.model is None or self._assessed_windows == 0:
+        if self._closed or self.model is None or self.model.experimental or self._assessed_windows == 0:
             self._closed = True
             return
         self._closed = True
@@ -266,6 +275,8 @@ class GaitHealthMonitor:
             print(f"[gait-health] Cannot write maintenance history: {exc}")
 
     def _maintenance_status(self) -> str:
+        if self.model is not None and self.model.experimental:
+            return "ROBOT BASELINE REQUIRED"
         if not self._ratios:
             return "INSUFFICIENT DATA"
         anomaly_rate = sum(self._recent_anomalies) / len(self._recent_anomalies)
@@ -292,7 +303,7 @@ class GaitHealthMonitor:
         return (current / self._history_baseline - 1.0) * 100.0
 
     def _load_history_baseline(self) -> float | None:
-        if self.model is None or not self.history_path.is_file():
+        if self.model is None or self.model.experimental or not self.history_path.is_file():
             return None
         values = []
         try:
@@ -315,13 +326,15 @@ class GaitHealthMonitor:
         return self._last_status if self._window_id else "SAMPLING"
 
     def _snapshot(self, status: str) -> dict[str, object]:
+        experimental = self.model is not None and self.model.experimental
         anomaly_rate = (
             sum(self._recent_anomalies) / len(self._recent_anomalies)
             if self._recent_anomalies
             else None
         )
         return {
-            "status": status,
+            "status": f"PUBLIC TEST | {status}" if experimental else status,
+            "experimental": experimental,
             "model_ready": self.model is not None,
             "model_error": self.model_error,
             "window_id": self._window_id,
@@ -331,7 +344,7 @@ class GaitHealthMonitor:
             "threshold": self._last_threshold,
             "features": self._last_features,
             "maintenance": {
-                "state": self._maintenance_state,
+                "state": "ROBOT BASELINE REQUIRED" if experimental else self._maintenance_state,
                 "windows": self._assessed_windows,
                 "anomaly_rate": anomaly_rate,
                 "trend_percent": self._trend_percent(),

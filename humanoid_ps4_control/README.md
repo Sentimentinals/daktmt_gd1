@@ -127,10 +127,40 @@ giữ cổng serial ESP32.
 - Terrain balance cần IMU hợp lệ và mốc đứng yên.
 - Camera-ToF có thuật toán nhận diện hình học cầu thang; mặc định chỉ DETECT/PREVIEW.
   Auto-step vẫn khóa đến khi hiệu chuẩn bàn chân/ToF và kiểm chứng trên robot thật.
-- TinyML Gait Anomaly Monitor có luồng thu dữ liệu/train, nhưng chưa có baseline
-  `deploy/models/gait_anomaly.json` trong Git. Chưa được xem là mô hình đã huấn luyện
-  hoặc dự đoán tuổi thọ servo; monitor không điều khiển servo.
+- TinyML Gait Anomaly có model thử nghiệm dữ liệu người UCI HAR, hiển thị
+  `PUBLIC TEST`. Baseline riêng của robot `deploy/models/gait_anomaly.json`
+  được ưu tiên khi có; model công khai không đánh giá bảo trì và không điều khiển servo.
 - One-foot balance, camera mimic, pickup và get-up-back không thuộc runtime hiện tại.
+
+## Train Gait Anomaly
+
+Model thử nghiệm: `deploy/models/gait_anomaly_public.json`. Nguồn:
+[UCI HAR](https://doi.org/10.24432/C54S4K), Reyes-Ortiz, Anguita, Ghio, Oneto,
+Parra (2013), CC BY 4.0. File model chứa nguồn, SHA256 archive, cách tiền xử lý,
+các subject train/calibration/test và kết quả đánh giá. Góc được suy ra từ
+`total_acc - body_acc`, không phải orientation BNO055 đo trên robot. Chỉ dùng
+10 đặc trưng góc; bỏ gravity norm, bất đối xứng chân và nhịp bước vì dataset
+không cung cấp thông tin tương đương. Các hoạt động ngoài walking không phải
+nhãn lỗi, nên tỷ lệ bị đánh dấu không được gọi là độ chính xác phát hiện hỏng.
+
+Train lại từ ZIP chính thức tải tại UCI:
+
+```bash
+python -m tools.gait_anomaly train-public --dataset /path/to/UCI_HAR_Dataset.zip
+python -m tools.gait_anomaly inspect --model deploy/models/gait_anomaly_public.json
+```
+
+Để có baseline đúng robot, chạy main rồi mở terminal thứ hai; chỉ thu lúc robot
+đi bình thường trên sàn/nguồn đã ghi nhận:
+
+```bash
+python -m tools.gait_anomaly collect --url http://127.0.0.1:8765 --seconds 180
+python -m tools.gait_anomaly train
+python -m tools.gait_anomaly inspect
+```
+
+Khởi động lại main để nạp baseline robot. Dữ liệu người chỉ dùng thử pipeline;
+chưa chứng minh dự đoán hỏng servo hoặc tuổi thọ còn lại.
 
 ## Kiểm tra trước demo
 
