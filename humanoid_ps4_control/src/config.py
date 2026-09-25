@@ -197,11 +197,11 @@ class Config:
     dance_head_pwm: int = 180
 
     # --- Manual Squat ---
-    manual_squat_depth_mm: float = 40.0
-    manual_squat_forward_mm: float = 8.0
+    manual_squat_depth_mm: float = 70.0
+    manual_squat_forward_mm: float = 20.0
     manual_squat_arm_forward_pwm: int = 0
     manual_squat_arm_raise_s: float = 0.35
-    manual_squat_transition_s: float = 2.0
+    manual_squat_transition_s: float = 1.4
 
     # --- Getup ---
     getup_speed: float = 1.0

@@ -93,12 +93,9 @@ class SquatEngine:
         self.arm_raise_s = max(self.dt, arm_raise_s) if self.arm_forward_pwm else 0.0
         self.transition_s = max(self.dt, transition_s)
         half_hip = ROBOT["half_hip"]
-        self._squat_pose = compute_pose(
-            self.forward_mm,
-            0.0,
+        self._feet = (
             np.array([0.0, -half_hip, 0.0]),
             np.array([0.0, half_hip, 0.0]),
-            com_z=ROBOT["com_height"] - self.max_depth_mm,
         )
         self.reset()
 
@@ -154,9 +151,12 @@ class SquatEngine:
             arm_blend = arm_progress * arm_progress * (3.0 - 2.0 * arm_progress)
         else:
             arm_blend = depth_ratio
-        pose = dict(STANDING)
-        for sid in (13, 14, 15, 18, 19, 20):
-            pose[sid] = round(STANDING[sid] + (self._squat_pose[sid] - STANDING[sid]) * depth_ratio)
+        # Advance the torso while bending both knees, with fixed floor targets.
+        pose = compute_pose(
+            self.forward_mm * depth_ratio * (2.0 - depth_ratio),
+            0.0, *self._feet,
+            com_z=ROBOT["com_height"] - self.depth_mm,
+        )
         pose[11] = round(STANDING[11] - self.arm_forward_pwm * arm_blend)
         pose[22] = round(STANDING[22] + self.arm_forward_pwm * arm_blend)
         return pose
