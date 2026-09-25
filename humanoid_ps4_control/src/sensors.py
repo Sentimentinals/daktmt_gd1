@@ -156,8 +156,7 @@ def parse_serial_depth_line(line: str) -> Optional[DepthReading]:
         distances = tuple(int(value) for value in fields[2:])
     except ValueError:
         return None
-    if any(value < 0 or value > 4000 for value in distances):
-        return None
+    distances = tuple(value if 20 <= value <= 4000 else 0 for value in distances)
     return DepthReading(distances, sensor_time_ms)
 
 
