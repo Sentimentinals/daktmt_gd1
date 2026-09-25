@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import mimetypes
 import socket
 import sys
@@ -151,7 +152,8 @@ class GaitDashboard:
     @staticmethod
     def _axis(value: object) -> float:
         try:
-            return max(-1.0, min(1.0, float(value)))
+            number = float(value)
+            return max(-1.0, min(1.0, number)) if math.isfinite(number) else 0.0
         except (TypeError, ValueError):
             return 0.0
 

@@ -71,6 +71,7 @@ class DepthObstacleGuard:
         self.stable_frames = max(1, stable_frames)
         self.blocked = False
         self._near_frames = 0
+        self._last_sample_id = None
 
     def update(
         self,
@@ -80,7 +81,11 @@ class DepthObstacleGuard:
         distance = depth.obstacle_distance_mm if depth is not None else None
         if distance is None:
             self._near_frames = 0
+            self._last_sample_id = None
             return self.blocked, None
+        if depth.sensor_time_ms == self._last_sample_id:
+            return self.blocked, distance
+        self._last_sample_id = depth.sensor_time_ms
 
         stop_mm = self.stop_distance_mm if stop_distance_mm is None else max(80, stop_distance_mm)
         if self.blocked:

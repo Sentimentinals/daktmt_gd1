@@ -247,6 +247,7 @@ class HeadlessCamera:
         with self._lock:
             return (
                 self._person_frame is not None
+                and time.monotonic() - self._person_frame.captured_at < 0.8
                 and self._person_frame.single_person is not None
                 and self._person_stable_frames >= self.stable_frames
                 and not self._person_ignored

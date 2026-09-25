@@ -49,8 +49,13 @@ def run_follow(
         max_turn_step_len=args.max_turn_step_len,
         step_height=args.walk_step_height_mm,
         crouch_depth_mm=args.walk_crouch_depth_mm,
+        forward_lean_deg=args.walk_forward_lean_deg,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
+        lift_start_phase=args.walk_lift_start_phase,
+        swing_advance_end_phase=args.walk_swing_advance_end_phase,
+        lift_end_phase=args.walk_lift_end_phase,
+        landing_roll_release_start=args.walk_landing_roll_release_start,
         arm_swing_pwm=0,
     )
     obstacle_planner = PersonObstaclePlanner(
@@ -63,11 +68,9 @@ def run_follow(
     previous_ignore = False
     previous_stop = False
     previous_fall_active = fall_safety.active
-    last_pose = dict(STANDING)
 
     try:
         with backend:
-            last_pose = backend.current_pose
             try:
                 dashboard.set_runtime("follow", "Follow ready")
                 while True:
@@ -108,7 +111,6 @@ def run_follow(
                         obstacle_planner.reset()
                         if not fall_safety.active:
                             backend.send(STANDING, duration_ms=args.stop_ms, force=True)
-                            last_pose = dict(STANDING)
                             print("[follow] Stopped at STANDING.")
                     previous_stop = stop_pressed
 
@@ -137,6 +139,11 @@ def run_follow(
                         elif status.startswith("SEARCHING TARGET"):
                             forward = turn = 0.0
                         else:
+                            # Foreground obstacles can make target ranging report HOLD.
+                            if (" HOLD " in status and depth is not None
+                                    and depth.obstacle_distance_mm is not None
+                                    and depth.obstacle_distance_mm <= obstacle_planner.plan_distance_mm):
+                                forward = args.person_follow_speed
                             forward, turn, avoid_status = obstacle_planner.update(
                                 depth,
                                 forward,
@@ -164,9 +171,8 @@ def run_follow(
                     previous_fall_active = fall_active
                     pose[25] = STANDING[25]
                     backend.send(pose, duration_ms=args.update_ms)
-                    last_pose = backend.current_pose
                     dashboard.publish(
-                        pose=last_pose,
+                        pose=backend.current_pose,
                         gait=engine.telemetry_snapshot(),
                         sensor_snapshot=snapshot,
                         status=status,

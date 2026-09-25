@@ -53,6 +53,10 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
   tiếp tục theo người đó; mất target thì dừng, không tự chọn người khác.
 - Không có ToF hợp lệ thì không tiến theo người. Đây là tránh vật cản cục bộ,
   không phải bản đồ đường đi hay bảo đảm giữ ID khi người che khuất nhau.
+- Bộ né xét vật cản từ 650 mm, chọn bên có dữ liệu đủ và khoảng trống ít nhất
+  450 mm; dưới 350 mm thì ngừng tiến. Hai bên bị chắn thì chờ. Khi đường thông
+  qua 3 mẫu ToF mới, robot tiếp tục follow. Đây là ngưỡng đo, chưa phải khoảng
+  cách dừng đã đo thực tế; walking còn phải hoàn tất bước đang thực hiện.
 
 ### Balance và an toàn
 
@@ -64,7 +68,9 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
   Không áp dụng trong Manual/Person Follow; không tạo bộ bù hay bước dậm riêng.
 - FSR hiện chỉ trả lực hai chân qua telemetry, không khóa walking hoặc balance.
 - Trong chuỗi đứng dậy chủ động, fall detection tạm nhường quyền. Chỉ trả tay
-  về standing khi IMU xác nhận thẳng và ổn định; mất IMU sẽ giữ tay chống đỡ.
+  về standing khi IMU xác nhận thẳng và ổn định; ở cuối chuỗi, mất IMU sẽ giữ
+  tay dang ngang. Chuỗi gồm chống tay, đẩy ngực, thu chân, chuyển trọng tâm,
+  duỗi chân và dang tay, rồi hạ tay.
 
 ## Phần cứng
 

@@ -76,7 +76,6 @@ def run_terrain_auto(
     last_balance_at = time.monotonic()
     cooldown_until = 0.0
     lead_leg = "left"
-    last_pose = dict(STANDING)
     calibration_error = ""
     if not args.stair_geometry_calibrated:
         calibration_error = "STAIR PREVIEW | CALIBRATE TOF AND FOOT DIMENSIONS"
@@ -89,7 +88,6 @@ def run_terrain_auto(
 
     try:
         with backend:
-            last_pose = backend.current_pose
             dashboard.set_runtime("terrain", "Terrain Auto ready - V balance, U stairs")
 
             while True:
@@ -343,9 +341,8 @@ def run_terrain_auto(
                     balance.reset()
 
                 backend.send(pose, duration_ms=args.stop_ms if control.stop else args.update_ms, force=control.stop)
-                last_pose = backend.current_pose
                 dashboard.publish(
-                    pose=last_pose,
+                    pose=backend.current_pose,
                     gait=gait,
                     sensor_snapshot=snapshot,
                     status=status,
