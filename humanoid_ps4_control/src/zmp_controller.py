@@ -113,10 +113,10 @@ class ZMPPreviewController:
         """Advance one controller tick and return the new CoM position."""
         zmp_cur = self._x[0] - self._zmp_accel_coeff * self._x[2]
 
-        # Kajita convention: e(k) = p(k) - p_ref(k).
+        # The augmented error receives -p_ref, so the positive G gains add feedforward.
         self._ei += zmp_cur - zmp_ref_now
 
         preview_sum = float(np.dot(self.G, zmp_preview[: self.preview_steps]))
-        u = -self.Ki * self._ei - float(self.Kx @ self._x) - preview_sum
+        u = -self.Ki * self._ei - float(self.Kx @ self._x) + preview_sum
         self._x = self._A @ self._x + self._B_vec * u
         return float(self._x[0])
