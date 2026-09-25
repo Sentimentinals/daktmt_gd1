@@ -32,7 +32,6 @@ def run_follow(
     camera.set_detector(detector, stable_frames=args.person_detect_stable_frames)
     follow = PersonFollowController(
         turn_deadband=args.person_follow_turn_deadband,
-        stop_height_ratio=args.person_follow_stop_height_ratio,
         lost_timeout_s=args.person_follow_lost_timeout_s,
         forward_speed=args.person_follow_speed,
         turn_speed=args.person_follow_turn_speed,
@@ -139,7 +138,7 @@ def run_follow(
                             print(f"[follow] Stopped: {status.lower()}.")
                         elif status.startswith("SEARCHING TARGET"):
                             forward = turn = 0.0
-                        elif " HOLD " in status or "CAMERA CLOSE" in status:
+                        elif " HOLD " in status:
                             obstacle_planner.reset()
                             forward = turn = 0.0
                         else:

@@ -139,10 +139,9 @@ class Config:
     person_detect_stable_frames: int = 3
     person_follow_lost_timeout_s: float = 1.0
     person_follow_turn_deadband: float = 0.10
-    person_follow_stop_height_ratio: float = 0.58
     person_follow_speed: float = 0.18
     person_follow_turn_speed: float = 0.12
-    person_follow_target_distance_mm: int = 1000
+    person_follow_target_distance_mm: int = 100
     person_follow_distance_deadband_mm: int = 100
     person_follow_slow_range_mm: int = 700
     person_follow_tof_filter_alpha: float = 0.30
@@ -187,7 +186,7 @@ class Config:
     terrain_balance_deadband_deg: float = 0.35
 
     # --- ToF Obstacle Guard ---
-    tof_obstacle_stop_mm: int = 1000
+    tof_obstacle_stop_mm: int = 100
     tof_obstacle_clear_margin_mm: int = 100
     tof_obstacle_stable_frames: int = 3
 

@@ -246,21 +246,19 @@ class PersonFollowController:
     def __init__(
         self,
         turn_deadband: float,
-        stop_height_ratio: float,
         lost_timeout_s: float,
         forward_speed: float,
         turn_speed: float,
-        target_distance_mm: int = 1000,
+        target_distance_mm: int = 100,
         distance_deadband_mm: int = 100,
         slow_range_mm: int = 700,
         tof_filter_alpha: float = 0.30,
     ) -> None:
         self.turn_deadband = max(0.02, min(0.4, turn_deadband))
-        self.stop_height_ratio = max(0.2, min(0.9, stop_height_ratio))
         self.lost_timeout_s = max(0.2, lost_timeout_s)
         self.forward_speed = max(0.0, min(1.0, forward_speed))
         self.turn_speed = max(0.0, min(1.0, turn_speed))
-        self.target_distance_mm = max(250, target_distance_mm)
+        self.target_distance_mm = max(100, target_distance_mm)
         self.distance_deadband_mm = max(30, distance_deadband_mm)
         self.slow_range_mm = max(100, slow_range_mm)
         self.tof_filter_alpha = max(0.05, min(1.0, tof_filter_alpha))
@@ -329,10 +327,6 @@ class PersonFollowController:
             )
             self._last_distance_sample_id = distance_sample_id
 
-        if turn:
-            return 0.0, turn, f"TARGET #{self.target_id} ALIGNING"
-        if person.height_ratio >= self.stop_height_ratio:
-            return 0.0, 0.0, f"TARGET #{self.target_id} CAMERA CLOSE"
         if self._filtered_distance_mm is None:
             return 0.0, 0.0, f"TARGET #{self.target_id} TOF WAIT"
 
@@ -340,6 +334,8 @@ class PersonFollowController:
         excess = distance - self.target_distance_mm
         if excess <= 0:
             return 0.0, 0.0, f"TARGET #{self.target_id} HOLD {distance} MM"
+        if turn:
+            return 0.0, turn, f"TARGET #{self.target_id} ALIGNING"
 
         scale = min(1.0, max(0.0, excess - self.distance_deadband_mm) / self.slow_range_mm)
         scale = scale * scale * (3.0 - 2.0 * scale)
