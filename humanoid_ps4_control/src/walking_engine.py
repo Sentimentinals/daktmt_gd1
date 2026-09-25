@@ -188,6 +188,7 @@ class DynamicWalkingEngine:
         arm_right_dir: int | None = None,
         arm_left_dir: int | None = None,
         hip_out_deg: float = 0.0,
+        side_swing_tempo: float = 1.0,
     ) -> None:
         self.dt = dt
         self.t_step = t_step
@@ -203,6 +204,7 @@ class DynamicWalkingEngine:
         self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
         self.forward_lean_deg = max(0.0, float(forward_lean_deg))
         self.hip_out_deg = max(0.0, float(hip_out_deg))
+        self.side_swing_tempo = max(1.0, float(side_swing_tempo))
         self.ready_pose = dict(STANDING)
         self.zmp_support_ratio = GAIT["zmp_support_ratio"] if zmp_support_ratio is None else zmp_support_ratio
         self.ankle_roll_gain = GAIT["ankle_roll_gain"] if ankle_roll_gain is None else ankle_roll_gain
@@ -393,16 +395,19 @@ class DynamicWalkingEngine:
             swing_distance = target_x - swing_start_x
 
         step_n_s = self.n_s
+        advance_end = self.swing_advance_end_phase
+        if side_dominant:
+            advance_end = self.lift_start_phase + (advance_end - self.lift_start_phase) / self.side_swing_tempo
         for k in range(step_n_s):
             alpha = k / max(step_n_s - 1, 1)
-            swing_t = self._phase_progress(alpha, self.lift_start_phase, self.swing_advance_end_phase)
+            swing_t = self._phase_progress(alpha, self.lift_start_phase, advance_end)
 
             lift_factor = self._lift_profile(alpha)
             support_load = (
                 self._phase_progress(alpha, 0.0, self.lift_start_phase)
                 if transfer_from_double_support else 1.0
             )
-            landing_t = self._phase_progress(alpha, self.swing_advance_end_phase, self.lift_end_phase)
+            landing_t = self._phase_progress(alpha, advance_end, self.lift_end_phase)
             phase_mode = "land" if landing_t > 0.0 else "swing"
             release_t = 0.0
             if phase_mode == "land":
@@ -411,7 +416,7 @@ class DynamicWalkingEngine:
                     self.swing_advance_end_phase + (1.0 - self.swing_advance_end_phase) * self.landing_roll_release_start,
                 )
                 if side_dominant:
-                    release_start = self.swing_advance_end_phase
+                    release_start = advance_end
                 release_t = self._phase_progress(alpha, release_start, 1.0)
                 zmp_y = stance_y + (next_stance_y - stance_y) * release_t
             else:

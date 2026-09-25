@@ -204,7 +204,7 @@ class HeadlessCamera:
                 self._cv2.rectangle(frame, (x1, y1), (x2, y2), (69, 208, 154), 2)
                 self._cv2.putText(
                     frame,
-                    f"PERSON #{person.track_id} {person.confidence:.2f}",
+                    f"PERSON #{person.track_id} CONF {person.confidence:.0%}",
                     (x1, max(18, y1 - 7)),
                     self._cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,

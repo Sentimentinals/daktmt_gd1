@@ -90,11 +90,12 @@ class Config:
     walk_speed: float = 0.50
     turn_speed: float = 0.45
     side_speed: float = 0.55
-    manual_walk_tempo: float = 1.50
+    manual_walk_tempo: float = 1.80
+    side_swing_tempo: float = 1.50
     max_turn_step_len: float = GAIT["max_turn_step_len"]
     max_side_step_len: float = GAIT["max_side_step_len"]
     walk_step_length_mm: float = 48.0
-    walk_step_height_mm: float = 41.6
+    walk_step_height_mm: float = 58.24
     walk_hip_out_deg: float = 3.0
     walk_crouch_depth_mm: float = 8.0
     walk_forward_lean_deg: float = 1.0
