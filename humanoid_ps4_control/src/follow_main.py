@@ -139,12 +139,10 @@ def run_follow(
                             print(f"[follow] Stopped: {status.lower()}.")
                         elif status.startswith("SEARCHING TARGET"):
                             forward = turn = 0.0
+                        elif " HOLD " in status or "CAMERA CLOSE" in status:
+                            obstacle_planner.reset()
+                            forward = turn = 0.0
                         else:
-                            # Foreground obstacles can make target ranging report HOLD.
-                            if (" HOLD " in status and depth is not None
-                                    and depth.obstacle_distance_mm is not None
-                                    and depth.obstacle_distance_mm <= obstacle_planner.plan_distance_mm):
-                                forward = args.person_follow_speed
                             forward, turn, avoid_status = obstacle_planner.update(
                                 depth,
                                 forward,

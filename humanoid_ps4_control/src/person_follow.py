@@ -250,7 +250,7 @@ class PersonFollowController:
         lost_timeout_s: float,
         forward_speed: float,
         turn_speed: float,
-        target_distance_mm: int = 700,
+        target_distance_mm: int = 1000,
         distance_deadband_mm: int = 100,
         slow_range_mm: int = 700,
         tof_filter_alpha: float = 0.30,
@@ -337,11 +337,11 @@ class PersonFollowController:
             return 0.0, 0.0, f"TARGET #{self.target_id} TOF WAIT"
 
         distance = round(self._filtered_distance_mm)
-        excess = distance - self.target_distance_mm - self.distance_deadband_mm
+        excess = distance - self.target_distance_mm
         if excess <= 0:
             return 0.0, 0.0, f"TARGET #{self.target_id} HOLD {distance} MM"
 
-        scale = min(1.0, excess / self.slow_range_mm)
+        scale = min(1.0, max(0.0, excess - self.distance_deadband_mm) / self.slow_range_mm)
         scale = scale * scale * (3.0 - 2.0 * scale)
         forward = self.forward_speed * (0.45 + 0.55 * scale)
         status = f"TARGET #{self.target_id} FOLLOW {distance} MM"
@@ -407,7 +407,7 @@ class PersonObstaclePlanner:
         new_sample = depth.sensor_time_ms != self._last_sample_id
         if new_sample:
             self._last_sample_id = depth.sensor_time_ms
-            near = obstacle_mm is not None and obstacle_mm <= self.plan_distance_mm
+            near = obstacle_mm is not None and obstacle_mm <= self.stop_distance_mm
             if self.direction == 0:
                 self._near_frames = self._near_frames + 1 if near and forward > 0.0 else 0
                 if forward > 0.0 and obstacle_mm is not None and obstacle_mm <= self.stop_distance_mm:
