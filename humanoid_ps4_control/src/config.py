@@ -4,8 +4,6 @@ from dataclasses import dataclass
 
 
 PWM_PER_DEG = 2000.0 / 180.0
-STANCE_HIP_OUT_DEG = 4.0
-STANCE_ANKLE_COMP_DEG = 0.0
 
 
 # --- Physical Robot Dimensions & Properties ---
@@ -14,18 +12,6 @@ ROBOT = {
     "half_hip": 28.0,
     "upper_leg": 80.0,
     "lower_leg": 75.0,
-}
-
-# --- Default Gait Parameters ---
-GAIT = {
-    "zmp_support_ratio": 0.80,
-    "ankle_roll_gain": -1.00,
-    "command_deadzone": 0.02,
-    "arm_swing_pwm": 50,
-    "arm_right_dir": 1,
-    "arm_left_dir": -1,
-    "max_side_step_len": 33.0,
-    "max_turn_step_len": 12.0,
 }
 
 # --- Calibrated standing pulse widths ---
@@ -51,15 +37,14 @@ STANDING = {
 
 # --- Calibrated standing joint angles ---
 STAND_ANG = {
-    "hip_roll": STANCE_ANKLE_COMP_DEG,
     "R_hip_pitch": 18.0,
     "R_knee": 36.0,
     "R_ankle": 18.0,
-    "R_hip_abduct": STANCE_HIP_OUT_DEG,
+    "R_hip_abduct": 4.0,
     "L_hip_pitch": 18.0,
     "L_knee": 36.0,
     "L_ankle": 18.0,
-    "L_hip_abduct": STANCE_HIP_OUT_DEG,
+    "L_hip_abduct": 4.0,
 }
 
 # --- Direction configuration per servo ---
@@ -86,15 +71,14 @@ class Config:
     update_ms: int = 30
     stop_ms: int = 250
 
-    # --- Walking Engine (Linked to GAIT values by default) ---
-    walk_speed: float = 0.50
-    turn_speed: float = 0.45
-    side_speed: float = 0.55
-    manual_walk_tempo: float = 1.80
+    # --- Manual gait: distances in mm, durations in seconds ---
+    walk_step_length_mm: float = 24.0
+    walk_turn_length_mm: float = 5.4
+    walk_side_length_mm: float = 18.15
+    walk_step_time_s: float = 0.69
+    walk_settle_time_s: float = 0.81
     side_swing_tempo: float = 1.50
-    max_turn_step_len: float = GAIT["max_turn_step_len"]
-    max_side_step_len: float = GAIT["max_side_step_len"]
-    walk_step_length_mm: float = 48.0
+    # Shared leg geometry/profile; autonomous modes use shorter, slower steps.
     walk_step_height_mm: float = 58.24
     walk_hip_out_deg: float = 3.0
     walk_crouch_depth_mm: float = 8.0
@@ -102,14 +86,11 @@ class Config:
     walk_lift_start_phase: float = 0.30
     walk_swing_advance_end_phase: float = 0.60
     walk_lift_end_phase: float = 0.86
-    walk_landing_roll_release_start: float = 0.42
-    t_step: float = 1.45
-    t_dbl: float = 0.20
-    zmp_support_ratio: float = GAIT["zmp_support_ratio"]
-    ankle_roll_gain: float = GAIT["ankle_roll_gain"]
-    arm_swing_pwm: int = GAIT["arm_swing_pwm"]
-    arm_right_dir: int = GAIT["arm_right_dir"]
-    arm_left_dir: int = GAIT["arm_left_dir"]
+    zmp_support_ratio: float = 0.80
+    ankle_roll_gain: float = -1.00
+    arm_swing_pwm: int = 50
+    auto_step_time_s: float = 1.26
+    auto_settle_time_s: float = 1.47
 
     # --- Live Camera & Person Follow ---
     vision_camera_width: int = 480
@@ -140,10 +121,9 @@ class Config:
     person_detect_stable_frames: int = 3
     person_follow_lost_timeout_s: float = 1.0
     person_follow_turn_deadband: float = 0.10
-    person_follow_speed: float = 0.18
-    person_follow_turn_speed: float = 0.12
-    person_follow_target_distance_mm: int = 100
-    person_follow_distance_deadband_mm: int = 100
+    person_follow_step_length_mm: float = 8.64
+    person_follow_turn_length_mm: float = 1.44
+    person_follow_crawl_band_mm: int = 100  # Low-speed range above the stop distance; not a stop zone.
     person_follow_slow_range_mm: int = 700
     person_follow_tof_filter_alpha: float = 0.30
     person_camera_tof_height_mm: float = 130.0
@@ -160,8 +140,8 @@ class Config:
     stair_detect_every_frames: int = 3
     stair_detect_stable_frames: int = 4
     stair_camera_align_deadband: float = 0.12
-    stair_approach_speed: float = 0.12
-    stair_turn_speed: float = 0.10
+    stair_approach_step_mm: float = 2.16
+    stair_turn_step_mm: float = 0.40
     stair_default_riser_mm: float = 20.0
     stair_min_riser_mm: float = 15.0
     stair_max_riser_mm: float = 25.0
@@ -191,7 +171,7 @@ class Config:
     terrain_balance_limit_deg: float = 8.0
     terrain_balance_deadband_deg: float = 0.35
 
-    # --- ToF Obstacle Guard ---
+    # --- Shared ToF stop distance: people and obstacles ---
     tof_obstacle_stop_mm: int = 100
     tof_obstacle_clear_margin_mm: int = 100
     tof_obstacle_stable_frames: int = 3
@@ -234,12 +214,11 @@ class Config:
     fall_arm_forward_pwm: int = 700
 
     # --- Sensor Feedback ---
-    sensor_feedback: bool = True
     sensor_port: str = "auto"
     sensor_baudrate: int = 115200
     sensor_timeout_s: float = 0.25
     sensor_depth_timeout_s: float = 0.65
-    sensor_use_imu: bool = True
+    sensor_use_imu: bool = True  # Fall safety also requires IMU, even if this is False.
     sensor_use_foot_fsr: bool = True
     sensor_use_depth: bool = True
     foot_fsr_invert: bool = False

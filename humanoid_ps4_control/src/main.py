@@ -24,11 +24,11 @@ def run_manual(
 
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
-        t_step=args.t_step / args.manual_walk_tempo,
-        t_dbl=args.t_dbl / args.manual_walk_tempo,
+        step_time_s=args.walk_step_time_s,
+        settle_time_s=args.walk_settle_time_s,
         max_step_len=args.walk_step_length_mm,
-        max_turn_step_len=args.max_turn_step_len,
-        max_side_step_len=args.max_side_step_len,
+        max_turn_step_len=args.walk_turn_length_mm,
+        max_side_step_len=args.walk_side_length_mm,
         side_swing_tempo=args.side_swing_tempo,
         step_height=args.walk_step_height_mm,
         hip_out_deg=args.walk_hip_out_deg,
@@ -39,10 +39,7 @@ def run_manual(
         lift_start_phase=args.walk_lift_start_phase,
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,
-        landing_roll_release_start=args.walk_landing_roll_release_start,
         arm_swing_pwm=args.arm_swing_pwm,
-        arm_right_dir=args.arm_right_dir,
-        arm_left_dir=args.arm_left_dir,
     )
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,
@@ -82,9 +79,9 @@ def run_manual(
                     if not state.armed or state.mode != "manual":
                         break
                     snapshot = sensor_hub.read() if sensor_hub is not None else None
-                    forward = state.forward * args.walk_speed
-                    turn = state.turn * args.turn_speed
-                    side = state.side * args.side_speed
+                    forward = state.forward
+                    turn = state.turn
+                    side = state.side
                     locomotion_requested = bool(forward or turn or side)
                     reset_requested = state.stop or state.reset
                     if reset_requested:
@@ -278,7 +275,7 @@ def main() -> None:
     dashboard.start()
     camera.start()
     sensor_hub = None
-    if args.sensor_feedback or args.fall_detection_enabled:
+    if any((args.sensor_use_imu, args.sensor_use_foot_fsr, args.sensor_use_depth, args.fall_detection_enabled)):
         sensor_hub = RobotSensorHub(
             port=args.sensor_port,
             baudrate=args.sensor_baudrate,

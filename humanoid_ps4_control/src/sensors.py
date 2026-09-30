@@ -74,11 +74,7 @@ class DepthObstacleGuard:
         self._near_frames = 0
         self._last_sample_id = None
 
-    def update(
-        self,
-        depth: DepthReading | None,
-        stop_distance_mm: int | None = None,
-    ) -> tuple[bool, int | None]:
+    def update(self, depth: DepthReading | None) -> tuple[bool, int | None]:
         distance = depth.obstacle_distance_mm if depth is not None else None
         if distance is None:
             self._near_frames = 0
@@ -88,11 +84,11 @@ class DepthObstacleGuard:
             return self.blocked, distance
         self._last_sample_id = depth.sensor_time_ms
 
-        stop_mm = self.stop_distance_mm if stop_distance_mm is None else max(80, stop_distance_mm)
         if self.blocked:
-            if distance >= stop_mm + self.clear_margin_mm:
+            if distance >= self.stop_distance_mm + self.clear_margin_mm:
                 self.blocked = False
-        elif distance <= stop_mm:
+                self._near_frames = 0
+        elif distance <= self.stop_distance_mm:
             self._near_frames += 1
             if self._near_frames >= self.stable_frames:
                 self.blocked = True

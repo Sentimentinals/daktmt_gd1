@@ -39,10 +39,10 @@ def run_terrain_auto(
 
     approach = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
-        t_step=max(1.25, args.t_step),
-        t_dbl=args.t_dbl,
-        max_step_len=18.0,
-        max_turn_step_len=4.0,
+        step_time_s=args.auto_step_time_s,
+        settle_time_s=args.auto_settle_time_s,
+        max_step_len=args.stair_approach_step_mm,
+        max_turn_step_len=args.stair_turn_step_mm,
         max_side_step_len=0.0,
         step_height=24.0,
         zmp_support_ratio=args.zmp_support_ratio,
@@ -104,13 +104,7 @@ def run_terrain_auto(
                             target_roll_deg=reference[0],
                             target_pitch_deg=reference[1],
                             max_correction_deg=args.terrain_balance_limit_deg,
-                            roll_deadband_deg=args.terrain_balance_deadband_deg,
-                            pitch_deadband_deg=args.terrain_balance_deadband_deg,
-                            pitch_ankle_gain=1.0,
-                            pitch_hip_gain=0.30,
-                            roll_ankle_gain=1.0,
-                            roll_hip_gain=0.25,
-                            double_support_gain=1.0,
+                            deadband_deg=args.terrain_balance_deadband_deg,
                         )
                     )
                     balance_enabled = True
@@ -261,12 +255,12 @@ def run_terrain_auto(
                     status = "TOO CLOSE TO EDGE | REPOSITION MANUALLY"
                 elif enabled and abs(geometry.center_error) > args.stair_camera_align_deadband:
                     turn_room = edge_near > args.stair_foot_toe_mm + args.stair_landing_margin_mm + 18.0
-                    turn = -math.copysign(args.stair_turn_speed, geometry.center_error) if turn_room else 0.0
+                    turn = -math.copysign(1.0, geometry.center_error) if turn_room else 0.0
                     pose = approach.update(0.0, turn, 0.0)
                     gait = approach.telemetry_snapshot()
                     status = f"ALIGNING {geometry.center_error:+.2f}" if turn_room else "TOO CLOSE TO TURN | REPOSITION MANUALLY"
                 elif enabled and landing_stride > args.stair_step_depth_mm and edge_near > args.stair_foot_toe_mm + args.stair_landing_margin_mm + 18.0:
-                    pose = approach.update(args.stair_approach_speed, 0.0, 0.0)
+                    pose = approach.update(1.0, 0.0, 0.0)
                     gait = approach.telemetry_snapshot()
                     status = f"APPROACHING {geometry.edge_distance_mm} MM"
                 elif enabled and landing_stride > args.stair_step_depth_mm:
@@ -335,7 +329,6 @@ def run_terrain_auto(
                         roll_deg=imu.roll_deg,
                         pitch_deg=imu.pitch_deg,
                         dt=dt,
-                        support_leg=str(gait.get("support_leg", "double")),
                     )
                 elif balance is not None:
                     balance.reset()

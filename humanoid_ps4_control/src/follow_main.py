@@ -34,19 +34,17 @@ def run_follow(
     follow = PersonFollowController(
         turn_deadband=args.person_follow_turn_deadband,
         lost_timeout_s=args.person_follow_lost_timeout_s,
-        forward_speed=args.person_follow_speed,
-        turn_speed=args.person_follow_turn_speed,
-        target_distance_mm=args.person_follow_target_distance_mm,
-        distance_deadband_mm=args.person_follow_distance_deadband_mm,
+        target_distance_mm=args.tof_obstacle_stop_mm,
+        crawl_band_mm=args.person_follow_crawl_band_mm,
         slow_range_mm=args.person_follow_slow_range_mm,
         tof_filter_alpha=args.person_follow_tof_filter_alpha,
     )
     engine = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
-        t_step=args.t_step,
-        t_dbl=args.t_dbl,
-        max_step_len=args.walk_step_length_mm,
-        max_turn_step_len=args.max_turn_step_len,
+        step_time_s=args.auto_step_time_s,
+        settle_time_s=args.auto_settle_time_s,
+        max_step_len=args.person_follow_step_length_mm,
+        max_turn_step_len=args.person_follow_turn_length_mm,
         step_height=args.walk_step_height_mm,
         hip_out_deg=args.walk_hip_out_deg,
         crouch_depth_mm=args.walk_crouch_depth_mm,
@@ -56,14 +54,12 @@ def run_follow(
         lift_start_phase=args.walk_lift_start_phase,
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,
-        landing_roll_release_start=args.walk_landing_roll_release_start,
         arm_swing_pwm=0,
     )
     obstacle_planner = PersonObstaclePlanner(
         stop_distance_mm=args.tof_obstacle_stop_mm,
         clear_margin_mm=args.tof_obstacle_clear_margin_mm,
         stable_frames=args.tof_obstacle_stable_frames,
-        turn_speed=args.person_follow_turn_speed,
     )
     association = PersonDepthAssociation(
         height_mm=args.person_camera_tof_height_mm,
@@ -155,7 +151,7 @@ def run_follow(
                             obstacle_planner.reset()
                             forward = turn = 0.0
                             status = f"TARGET #{follow.target_id} TOF WAIT"
-                        elif (distance_mm <= max(args.person_follow_target_distance_mm, args.tof_obstacle_stop_mm)
+                        elif (distance_mm <= args.tof_obstacle_stop_mm
                               and kind != "OBJECT"):
                             obstacle_planner.reset()
                             forward = turn = 0.0
@@ -163,7 +159,7 @@ def run_follow(
                         else:
                             # Only confirmed non-person evidence may override a close-range HOLD.
                             if " HOLD " in status and kind == "OBJECT":
-                                forward = args.person_follow_speed
+                                forward = 1.0
                             forward, turn, avoid_status = obstacle_planner.update(
                                 depth,
                                 forward,

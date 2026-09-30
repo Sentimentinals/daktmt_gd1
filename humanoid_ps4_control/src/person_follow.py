@@ -338,23 +338,21 @@ class PersonDepthAssociation:
 
 
 class PersonFollowController:
+    """Return normalized direction commands; the gait owns stride lengths."""
+
     def __init__(
         self,
         turn_deadband: float,
         lost_timeout_s: float,
-        forward_speed: float,
-        turn_speed: float,
-        target_distance_mm: int = 100,
-        distance_deadband_mm: int = 100,
-        slow_range_mm: int = 700,
-        tof_filter_alpha: float = 0.30,
+        target_distance_mm: int,
+        crawl_band_mm: int,
+        slow_range_mm: int,
+        tof_filter_alpha: float,
     ) -> None:
         self.turn_deadband = max(0.02, min(0.4, turn_deadband))
         self.lost_timeout_s = max(0.2, lost_timeout_s)
-        self.forward_speed = max(0.0, min(1.0, forward_speed))
-        self.turn_speed = max(0.0, min(1.0, turn_speed))
         self.target_distance_mm = max(100, target_distance_mm)
-        self.distance_deadband_mm = max(30, distance_deadband_mm)
+        self.crawl_band_mm = max(30, crawl_band_mm)
         self.slow_range_mm = max(100, slow_range_mm)
         self.tof_filter_alpha = max(0.05, min(1.0, tof_filter_alpha))
         self.enabled = False
@@ -402,7 +400,7 @@ class PersonFollowController:
                 1.0,
                 (abs(horizontal_error) - self.turn_deadband) / max(0.01, 0.5 - self.turn_deadband),
             )
-            turn = (self.turn_speed * (0.25 + 0.75 * scale)) * (
+            turn = (0.25 + 0.75 * scale) * (
                 1.0 if horizontal_error > 0.0 else -1.0
             )
 
@@ -432,9 +430,9 @@ class PersonFollowController:
         if turn:
             return 0.0, turn, f"TARGET #{self.target_id} ALIGNING"
 
-        scale = min(1.0, max(0.0, excess - self.distance_deadband_mm) / self.slow_range_mm)
+        scale = min(1.0, max(0.0, excess - self.crawl_band_mm) / self.slow_range_mm)
         scale = scale * scale * (3.0 - 2.0 * scale)
-        forward = self.forward_speed * (0.45 + 0.55 * scale)
+        forward = 0.45 + 0.55 * scale
         status = f"TARGET #{self.target_id} FOLLOW {distance} MM"
         return forward, turn, status
 
@@ -447,7 +445,6 @@ class PersonObstaclePlanner:
         stop_distance_mm: int,
         clear_margin_mm: int,
         stable_frames: int,
-        turn_speed: float,
     ) -> None:
         self.stop_distance_mm = max(80, stop_distance_mm)
         self.side_clear_mm = self.stop_distance_mm + max(100, clear_margin_mm)
@@ -455,7 +452,6 @@ class PersonObstaclePlanner:
             self.stop_distance_mm + max(200, clear_margin_mm * 2) + 100
         )
         self.stable_frames = max(1, stable_frames)
-        self.turn_speed = max(0.05, min(1.0, turn_speed))
         self.reset()
 
     def reset(self) -> None:
@@ -545,6 +541,6 @@ class PersonObstaclePlanner:
         side = "LEFT" if self.direction > 0 else "RIGHT"
         return (
             safe_forward,
-            self.direction * self.turn_speed,
+            float(self.direction),
             f"AVOID {side} {obstacle_mm if obstacle_mm is not None else front_mm} MM",
         )

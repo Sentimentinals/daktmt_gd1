@@ -23,12 +23,36 @@ cảm biến.
 Manual vẫn điều khiển được khi ESP32 hoặc cảm biến mất kết nối. ToF chỉ hiển
 thị cảnh báo vật cản trong mode này, không ghi đè lệnh của người điều khiển.
 
-Walking mặt phẳng dùng độ nâng mục tiêu 26 mm (`walk_step_height_mm`),
-sải bước cấu hình 38 mm và hệ số lệnh tiến/lùi 0.50 (`walk_speed`);
+Walking mặt phẳng dùng độ nâng mục tiêu 58,24 mm (`walk_step_height_mm`),
+sải bước 24 mm (`walk_step_length_mm`), không nhân thêm hệ số `walk_speed`;
 chân trụ ở mặt sàn, chân bước vẫn có nâng/hạ, không khóa cả hai chân tại Z = 0.
 Thả phím sẽ hoàn tất bước rồi về standing. Manual không có IMU/push recovery
 ghi đè; fall detection vẫn được ưu tiên. Các giá trị là quỹ đạo tính toán, cần
 thử có người giữ robot để xác nhận tiếp xúc sàn và tải servo thực tế.
+
+Thông số chỉnh trong `src/config.py`, không sửa thêm hệ số trong `main.py`:
+
+| Thông số | Mặc định | Tác dụng |
+| --- | --- | --- |
+| `walk_step_length_mm` | 24 | Sải tiến/lùi của Manual |
+| `walk_turn_length_mm` | 5,4 | Biên độ bước quay của Manual |
+| `walk_side_length_mm` | 18,15 | Biên độ ngang; quỹ đạo đi ngang thuần dùng 90% giá trị này |
+| `walk_step_height_mm` | 58,24 | Độ nâng chân mục tiêu, không phải góc servo |
+| `walk_step_time_s` | 0,69 | Thời gian mỗi bước Manual; giảm để nhanh hơn |
+| `walk_settle_time_s` | 0,81 | Thời gian về standing sau bước cuối |
+| `side_swing_tempo` | 1,5 | Tốc độ vung ngang trong bước, không nhân biên độ |
+| `walk_hip_out_deg` | 3 | Độ dạng hông khi walking, không đổi standing |
+| `walk_crouch_depth_mm` | 8 | Độ hạ thân khi tiến/lùi |
+| `walk_forward_lean_deg` | 1 | Độ chúi thân khi tiến |
+
+Follow và tiếp cận cầu thang dùng `auto_step_time_s=1.26`,
+`auto_settle_time_s=1.47`, cùng biên độ riêng `person_follow_*_length_mm` và
+`stair_*_step_mm`; tăng Manual không làm tăng tốc các mode tự động.
+Đã bỏ `GAIT`, `walk_speed/turn_speed/side_speed`, `manual_walk_tempo`,
+`t_step/t_dbl` và tham số nhả ankle bị trùng mốc kết thúc lift. Với chu kỳ hiện tại
+30 ms, cấu hình mới giữ nguyên PWM ở các ca dry-run so với trước khi tinh giản.
+Các thời gian được làm tròn theo chu kỳ cập nhật; không có tham số tăng mô-men
+servo bằng phần mềm.
 
 ### Terrain Auto
 
@@ -55,6 +79,9 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
   không phải bản đồ đường đi hay bảo đảm giữ ID khi người che khuất nhau.
 - ToF đọc nền liên tục (firmware 5 Hz), dùng ô gần nhất trong vùng trước mặt
   để dừng tiến tại 100 mm; không suy ra mét từ chiều cao khung người trong ảnh.
+- Chỉ một ngưỡng dừng `tof_obstacle_stop_mm` cho cả người và vật cản.
+  `person_follow_crawl_band_mm` là vùng chạy chậm phía ngoài ngưỡng này,
+  không phải một khoảng dừng bổ sung.
 - Camera ở đầu, ToF ở ngực thấp hơn 130 mm, cùng nhìn thẳng. Phần đối chiếu
   chiếu vùng ToF lên ảnh, cần 3 cặp ảnh/ToF mới trước khi xác nhận. Vùng trùng
   bất kỳ khung người nào được xử lý là người; vùng hoàn toàn nằm trong ảnh và
@@ -85,6 +112,10 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
   standing, Auto stair đã tắt và không còn động tác đang chạy hoặc đang dừng.
   Không áp dụng trong Manual/Person Follow; không tạo bộ bù hay bước dậm riêng.
 - FSR hiện chỉ trả lực hai chân qua telemetry, không khóa walking hoặc balance.
+- Bật/tắt từng cảm biến bằng `sensor_use_imu`, `sensor_use_foot_fsr`,
+  `sensor_use_depth`; không còn cờ tổng `sensor_feedback`. Fall safety bật thì
+  vẫn yêu cầu IMU. Balance chỉ bù lúc đứng hai chân, không còn gain chân swing
+  hay phần tích phân không sử dụng.
 - Trong chuỗi đứng dậy chủ động, fall detection tạm nhường quyền. Chỉ trả tay
   về standing khi IMU xác nhận thẳng và ổn định; ở cuối chuỗi, mất IMU sẽ giữ
   tay dang ngang. Chuỗi gồm chống tay, đẩy ngực, thu chân, chuyển trọng tâm,
