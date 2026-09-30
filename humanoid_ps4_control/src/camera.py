@@ -23,7 +23,7 @@ class HeadlessCamera:
         self._frame_sequence = 0
         self._jpeg_frame = None
         self._jpeg_sequence = -1
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._stop = threading.Event()
         self._capture_thread = None
         self._detector_thread = None
@@ -144,8 +144,11 @@ class HeadlessCamera:
             try:
                 detection = detector.detect(frame)
             except Exception as exc:
+                with self._lock:
+                    if detector is not self._detector:
+                        continue
+                    self.set_detector(None)
                 print(f"[camera] Detection stopped: {exc}")
-                self.set_detector(None)
                 continue
             with self._lock:
                 if detector is not self._detector:

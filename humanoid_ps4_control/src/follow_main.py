@@ -33,7 +33,6 @@ def run_follow(
     camera.set_detector(detector, stable_frames=args.person_detect_stable_frames)
     follow = PersonFollowController(
         turn_deadband=args.person_follow_turn_deadband,
-        lost_timeout_s=args.person_follow_lost_timeout_s,
         target_distance_mm=args.tof_obstacle_stop_mm,
         crawl_band_mm=args.person_follow_crawl_band_mm,
         slow_range_mm=args.person_follow_slow_range_mm,
@@ -140,8 +139,7 @@ def run_follow(
                             distance_sample_id=distance_sample_id,
                             now_s=perception_at,
                         )
-                        if (status == "TARGET LOST" or status.startswith("SEARCHING TARGET")
-                                or not 0 <= perception_at - frame.captured_at <= 0.5):
+                        if status == "TARGET LOST":
                             obstacle_planner.reset()
                             association.reset()
                             forward = 0.0

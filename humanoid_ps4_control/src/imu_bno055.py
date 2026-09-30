@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -34,22 +35,30 @@ def parse_serial_imu_line(
 
     try:
         quaternion = [float(value) for value in fields[2:6]]
+        yaw, roll, pitch = (
+            float(fields[6]) * yaw_sign,
+            float(fields[7]) * roll_sign,
+            float(fields[8]) * pitch_sign,
+        )
+        gravity = [float(value) for value in fields[13:]]
+        if not all(math.isfinite(value) for value in (*quaternion, yaw, roll, pitch, *gravity)):
+            return None
         quaternion_norm_sq = sum(value * value for value in quaternion)
         calibration = [int(value) for value in fields[9:13]]
         if not 0.25 <= quaternion_norm_sq <= 2.25 or any(value not in range(4) for value in calibration):
             return None
         return IMUReading(
-            roll_deg=float(fields[7]) * roll_sign,
-            pitch_deg=float(fields[8]) * pitch_sign,
-            yaw_deg=float(fields[6]) * yaw_sign,
+            roll_deg=roll,
+            pitch_deg=pitch,
+            yaw_deg=yaw,
             sensor_time_ms=int(fields[1]),
             system_cal=calibration[0],
             gyro_cal=calibration[1],
             accel_cal=calibration[2],
             mag_cal=calibration[3],
-            gravity_x=float(fields[13]) if len(fields) == 16 else None,
-            gravity_y=float(fields[14]) if len(fields) == 16 else None,
-            gravity_z=float(fields[15]) if len(fields) == 16 else None,
+            gravity_x=gravity[0] if gravity else None,
+            gravity_y=gravity[1] if gravity else None,
+            gravity_z=gravity[2] if gravity else None,
         )
     except (TypeError, ValueError):
         return None

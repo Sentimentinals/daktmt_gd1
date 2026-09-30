@@ -119,7 +119,6 @@ class Config:
     person_detect_confidence: float = 0.55
     person_detect_every_frames: int = 3
     person_detect_stable_frames: int = 3
-    person_follow_lost_timeout_s: float = 1.0
     person_follow_turn_deadband: float = 0.10
     person_follow_step_length_mm: float = 8.64
     person_follow_turn_length_mm: float = 1.44

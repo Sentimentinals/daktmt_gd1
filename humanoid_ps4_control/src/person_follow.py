@@ -9,6 +9,9 @@ from typing import Optional
 from .sensors import DepthReading
 
 
+PERSON_FRAME_MAX_AGE_S = 0.5
+
+
 def _box_center(box: tuple[int, int, int, int]) -> tuple[float, float]:
     x1, y1, x2, y2 = box
     return (0.5 * (x1 + x2), 0.5 * (y1 + y2))
@@ -279,7 +282,7 @@ class PersonDepthAssociation:
                now_s: float | None = None) -> str:
         now = time.monotonic() if now_s is None else now_s
         distance = depth.front_distance_mm if depth is not None else None
-        if distance is None or not 0 <= now - frame.captured_at <= 0.5:
+        if distance is None or not 0 <= now - frame.captured_at <= PERSON_FRAME_MAX_AGE_S:
             self.reset()
             return "UNKNOWN"
         if depth.sensor_time_ms == self._sample_id and now - self._sample_at > 0.65:
@@ -343,35 +346,30 @@ class PersonFollowController:
     def __init__(
         self,
         turn_deadband: float,
-        lost_timeout_s: float,
         target_distance_mm: int,
         crawl_band_mm: int,
         slow_range_mm: int,
         tof_filter_alpha: float,
     ) -> None:
         self.turn_deadband = max(0.02, min(0.4, turn_deadband))
-        self.lost_timeout_s = max(0.2, lost_timeout_s)
         self.target_distance_mm = max(100, target_distance_mm)
         self.crawl_band_mm = max(30, crawl_band_mm)
         self.slow_range_mm = max(100, slow_range_mm)
         self.tof_filter_alpha = max(0.05, min(1.0, tof_filter_alpha))
         self.enabled = False
         self.target_id: int | None = None
-        self._last_seen_s = None
         self._filtered_distance_mm = None
         self._last_distance_sample_id = None
 
     def enable(self, target_id: int) -> None:
         self.enabled = True
         self.target_id = target_id
-        self._last_seen_s = None
         self._filtered_distance_mm = None
         self._last_distance_sample_id = None
 
     def disable(self) -> None:
         self.enabled = False
         self.target_id = None
-        self._last_seen_s = None
         self._filtered_distance_mm = None
         self._last_distance_sample_id = None
 
@@ -386,12 +384,8 @@ class PersonFollowController:
             return 0.0, 0.0, "OFF"
         now = time.monotonic() if now_s is None else now_s
         person = frame.person_by_id(self.target_id)
-        if person is not None and now - frame.captured_at <= self.lost_timeout_s:
-            self._last_seen_s = now
-        elif self._last_seen_s is None or now - self._last_seen_s > self.lost_timeout_s:
+        if person is None or not 0 <= now - frame.captured_at <= PERSON_FRAME_MAX_AGE_S:
             return 0.0, 0.0, "TARGET LOST"
-        else:
-            return 0.0, 0.0, f"SEARCHING TARGET #{self.target_id}"
 
         horizontal_error = 0.5 - person.center_x_ratio
         turn = 0.0

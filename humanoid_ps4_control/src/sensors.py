@@ -130,7 +130,7 @@ def parse_serial_feet_line(
         sensor_time_ms = int(fields[1])
         left_raw = int(round(float(fields[4])))
         right_raw = int(round(float(fields[7])))
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
     if not 0 <= left_raw <= 4095 or not 0 <= right_raw <= 4095:
         return None

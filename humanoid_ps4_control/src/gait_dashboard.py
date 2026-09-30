@@ -154,7 +154,7 @@ class GaitDashboard:
         try:
             number = float(value)
             return max(-1.0, min(1.0, number)) if math.isfinite(number) else 0.0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return 0.0
 
     def _expire_control_locked(self, now: float) -> None:
@@ -172,7 +172,7 @@ class GaitDashboard:
         emergency = bool(request.get("emergency_stop", False))
         try:
             sequence = int(request.get("sequence", -1))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             sequence = -1
         with self._control_lock:
             self._expire_control_locked(now)
@@ -204,7 +204,6 @@ class GaitDashboard:
                     self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
                     self._control_actions.clear()
                     self._control_actions.append(priority)
-                self._control_last_at = now
                 return 200, self._control_payload_locked(now)
 
             self._control_sequence = sequence
