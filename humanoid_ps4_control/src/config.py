@@ -146,6 +146,11 @@ class Config:
     person_follow_distance_deadband_mm: int = 100
     person_follow_slow_range_mm: int = 700
     person_follow_tof_filter_alpha: float = 0.30
+    person_camera_tof_height_mm: float = 130.0
+    person_camera_hfov_deg: float = 53.5
+    person_camera_vfov_deg: float = 41.41
+    person_tof_fov_deg: float = 45.0
+    person_tof_flip_vertical: bool = True
 
     # --- Stair Detection & Climbing ---
     stair_model: str = "deploy/models/stair_detector.onnx"

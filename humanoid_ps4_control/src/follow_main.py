@@ -9,6 +9,7 @@ from .person_follow import (
     PersonFollowController,
     PersonFrame,
     PersonObstaclePlanner,
+    PersonDepthAssociation,
 )
 from .walking_engine import DynamicWalkingEngine
 
@@ -64,6 +65,14 @@ def run_follow(
         stable_frames=args.tof_obstacle_stable_frames,
         turn_speed=args.person_follow_turn_speed,
     )
+    association = PersonDepthAssociation(
+        height_mm=args.person_camera_tof_height_mm,
+        camera_hfov_deg=args.person_camera_hfov_deg,
+        camera_vfov_deg=args.person_camera_vfov_deg,
+        tof_fov_deg=args.person_tof_fov_deg,
+        flip_vertical=args.person_tof_flip_vertical,
+        stable_frames=args.person_detect_stable_frames,
+    )
     previous_follow = False
     previous_ignore = False
     previous_stop = False
@@ -87,6 +96,7 @@ def run_follow(
                             follow.enable(person.track_id)
                             engine.reset()
                             obstacle_planner.reset()
+                            association.reset()
                             print(f"[follow] Target #{person.track_id} locked.")
                         else:
                             print("[follow] Follow rejected: one stable person is required.")
@@ -98,6 +108,7 @@ def run_follow(
                             follow.disable()
                             engine.reset()
                             obstacle_planner.reset()
+                            association.reset()
                             print("[follow] Person follow stopped.")
                         else:
                             camera.ignore_person()
@@ -109,6 +120,7 @@ def run_follow(
                         follow.disable()
                         engine.reset()
                         obstacle_planner.reset()
+                        association.reset()
                         if not fall_safety.active:
                             backend.send(STANDING, duration_ms=args.stop_ms, force=True)
                             print("[follow] Stopped at STANDING.")
@@ -122,26 +134,36 @@ def run_follow(
                     status = "FOLLOW READY"
                     if follow.enabled:
                         frame = camera.person_frame() or PersonFrame()
-                        distance_mm = depth.tracking_distance_mm if depth is not None else None
+                        perception_at = time.monotonic()
+                        distance_mm = depth.front_distance_mm if depth is not None else None
                         distance_sample_id = depth.sensor_time_ms if depth is not None else None
+                        kind = association.update(frame, depth, now_s=perception_at)
                         forward, turn, status = follow.command(
                             frame,
                             distance_mm=distance_mm,
                             distance_sample_id=distance_sample_id,
+                            now_s=perception_at,
                         )
-                        if status == "TARGET LOST":
-                            follow.disable()
-                            engine.reset()
+                        if (status == "TARGET LOST" or status.startswith("SEARCHING TARGET")
+                                or not 0 <= perception_at - frame.captured_at <= 0.5):
                             obstacle_planner.reset()
+                            association.reset()
                             forward = 0.0
                             turn = 0.0
-                            print(f"[follow] Stopped: {status.lower()}.")
-                        elif status.startswith("SEARCHING TARGET"):
-                            forward = turn = 0.0
-                        elif " HOLD " in status:
+                            status = f"TARGET #{follow.target_id} WAIT CAMERA/TARGET"
+                        elif distance_mm is None:
                             obstacle_planner.reset()
                             forward = turn = 0.0
+                            status = f"TARGET #{follow.target_id} TOF WAIT"
+                        elif (distance_mm <= max(args.person_follow_target_distance_mm, args.tof_obstacle_stop_mm)
+                              and kind != "OBJECT"):
+                            obstacle_planner.reset()
+                            forward = turn = 0.0
+                            status = f"TARGET #{follow.target_id} WAIT {kind} | TOF {distance_mm} MM"
                         else:
+                            # Only confirmed non-person evidence may override a close-range HOLD.
+                            if " HOLD " in status and kind == "OBJECT":
+                                forward = args.person_follow_speed
                             forward, turn, avoid_status = obstacle_planner.update(
                                 depth,
                                 forward,
@@ -161,6 +183,7 @@ def run_follow(
                             follow.disable()
                             engine.reset()
                             obstacle_planner.reset()
+                            association.reset()
                         pose = backend.current_pose
                         status = f"FALL: {fall_safety.reason}"
                     elif previous_fall_active:

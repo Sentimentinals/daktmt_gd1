@@ -44,8 +44,9 @@ class DepthReading:
         return self.region_median_mm(2, 6, 2, 6)
 
     @property
-    def tracking_distance_mm(self) -> Optional[int]:
-        return self.region_median_mm(2, 6, 3, 5)
+    def front_distance_mm(self) -> Optional[int]:
+        values = [self.distances_mm[r * 8 + c] for r in range(1, 7) for c in range(1, 7)]
+        return min((value for value in values if 20 <= value <= 4000), default=None)
 
     @property
     def obstacle_distance_mm(self) -> Optional[int]:

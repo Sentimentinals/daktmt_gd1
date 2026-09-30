@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from .sensors import DepthReading
 
 
 def _box_center(box: tuple[int, int, int, int]) -> tuple[float, float]:
@@ -34,11 +37,6 @@ class PersonDetection:
     def center_x_ratio(self) -> float:
         x1, _, x2, _ = self.box
         return ((x1 + x2) * 0.5) / max(1, self.frame_width)
-
-    @property
-    def height_ratio(self) -> float:
-        _, y1, _, y2 = self.box
-        return max(0.0, y2 - y1) / max(1, self.frame_height)
 
 
 @dataclass(frozen=True)
@@ -242,6 +240,103 @@ class PersonDetector:
         return self._last
 
 
+class PersonDepthAssociation:
+    """Conservative box association, not a metric camera distance estimator."""
+
+    def __init__(self, height_mm: float, camera_hfov_deg: float, camera_vfov_deg: float,
+                 tof_fov_deg: float, flip_vertical: bool, stable_frames: int = 3) -> None:
+        if (not math.isfinite(height_mm) or height_mm < 0
+                or any(not math.isfinite(fov) or not 1 < fov < 179
+                       for fov in (camera_hfov_deg, camera_vfov_deg, tof_fov_deg))):
+            raise ValueError("Invalid camera/ToF mounting geometry")
+        self.height_mm = height_mm
+        self.camera_x = math.tan(math.radians(camera_hfov_deg / 2))
+        self.camera_y = math.tan(math.radians(camera_vfov_deg / 2))
+        self.tof_tan = math.tan(math.radians(tof_fov_deg / 2))
+        self.flip_vertical = flip_vertical
+        self.stable_frames = max(2, stable_frames)
+        self.reset()
+
+    def reset(self) -> None:
+        self._sample_id = None
+        self._sample_at = self._image_at = self._confirmed_at = float("-inf")
+        self._range = None
+        self._center = None
+        self._label = "UNKNOWN"
+        self._person_id = None
+        self._votes = 0
+
+    def _zone_box(self, row: int, col: int, distance_mm: int) -> tuple[float, ...]:
+        row = 7 - row if self.flip_vertical else row
+        x1 = 0.5 + (col / 4 - 1) * self.tof_tan / (2 * self.camera_x)
+        x2 = 0.5 + ((col + 1) / 4 - 1) * self.tof_tan / (2 * self.camera_x)
+        offset = self.height_mm / distance_mm
+        y1 = 0.5 + ((row / 4 - 1) * self.tof_tan + offset) / (2 * self.camera_y)
+        y2 = 0.5 + (((row + 1) / 4 - 1) * self.tof_tan + offset) / (2 * self.camera_y)
+        return x1, y1, x2, y2
+
+    def update(self, frame: PersonFrame, depth: DepthReading | None,
+               now_s: float | None = None) -> str:
+        now = time.monotonic() if now_s is None else now_s
+        distance = depth.front_distance_mm if depth is not None else None
+        if distance is None or not 0 <= now - frame.captured_at <= 0.5:
+            self.reset()
+            return "UNKNOWN"
+        if depth.sensor_time_ms == self._sample_id and now - self._sample_at > 0.65:
+            self._votes = 0
+            self._confirmed_at = float("-inf")
+            return "UNKNOWN"
+        if self._votes >= self.stable_frames and now - self._confirmed_at > 2.0:
+            self._votes = 0
+        zones = [(r, c, depth.distances_mm[r * 8 + c])
+                 for r in range(1, 7) for c in range(1, 7)
+                 if distance <= depth.distances_mm[r * 8 + c] <= distance + max(20, distance * 0.10)]
+        center = tuple(sum(zone[i] for zone in zones) / len(zones) for i in (0, 1))
+        continuous = self._range is not None and (
+            abs(distance - self._range) <= max(40, self._range * 0.25)
+            and math.dist(center, self._center) <= 1.5
+            and depth.sensor_time_ms >= self._sample_id
+            and now - self._sample_at <= 0.65
+        )
+        if not continuous:
+            self.reset()
+        new_depth = depth.sensor_time_ms != self._sample_id
+        if new_depth:
+            self._sample_id, self._sample_at = depth.sensor_time_ms, now
+            self._range, self._center = distance, center
+
+        matches = set()
+        fully_visible = True
+        for row, col, value in zones:
+            x1, y1, x2, y2 = self._zone_box(row, col, value)
+            fully_visible &= 0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1
+            for person in frame.people:
+                bx1, by1, bx2, by2 = person.box
+                # Expand boxes to avoid classifying a person's boundary as an object.
+                if (x2 >= bx1 / person.frame_width - 0.04 and x1 <= bx2 / person.frame_width + 0.04
+                        and y2 >= by1 / person.frame_height - 0.04 and y1 <= by2 / person.frame_height + 0.04):
+                    matches.add(person.track_id)
+        label = "PERSON" if matches else "OBJECT" if fully_visible else "UNKNOWN"
+        person_id = min(matches) if matches else None
+        fresh_pair = new_depth and frame.captured_at > self._image_at
+        if label != "UNKNOWN":
+            if (label, person_id) != (self._label, self._person_id):
+                self._label, self._person_id, self._votes = label, person_id, 0
+                self._confirmed_at = float("-inf")
+            if fresh_pair:
+                self._image_at = frame.captured_at
+                self._votes = min(self.stable_frames, self._votes + 1)
+                if self._votes >= self.stable_frames:
+                    self._confirmed_at = now
+        # Blind-zone memory is bounded and cannot survive jumps, stale input, or ID loss.
+        if self._label == "PERSON" and frame.person_by_id(self._person_id) is None:
+            self.reset()
+            return "UNKNOWN"
+        if self._votes >= self.stable_frames and now - self._confirmed_at <= 2.0:
+            return self._label
+        return "UNKNOWN"
+
+
 class PersonFollowController:
     def __init__(
         self,
@@ -393,7 +488,7 @@ class PersonObstaclePlanner:
         if depth is None:
             return 0.0, 0.0, "AVOID TOF WAIT"
 
-        obstacle_mm = depth.obstacle_distance_mm
+        obstacle_mm = depth.front_distance_mm
         left_mm, center_mm, right_mm = self._corridors(depth)
         if center_mm is None:
             return 0.0, 0.0, "AVOID TOF WAIT"

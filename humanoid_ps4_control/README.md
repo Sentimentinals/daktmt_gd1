@@ -53,10 +53,28 @@ vị trí gắn ToF. Khi nhận diện đúng, dashboard hiển thị
   tiếp tục theo người đó; mất target thì dừng, không tự chọn người khác.
 - Không có ToF hợp lệ thì không tiến theo người. Đây là tránh vật cản cục bộ,
   không phải bản đồ đường đi hay bảo đảm giữ ID khi người che khuất nhau.
-- Bộ né xét vật cản từ 650 mm, chọn bên có dữ liệu đủ và khoảng trống ít nhất
-  450 mm; dưới 350 mm thì ngừng tiến. Hai bên bị chắn thì chờ. Khi đường thông
-  qua 3 mẫu ToF mới, robot tiếp tục follow. Đây là ngưỡng đo, chưa phải khoảng
-  cách dừng đã đo thực tế; walking còn phải hoàn tất bước đang thực hiện.
+- ToF đọc nền liên tục (firmware 5 Hz), dùng ô gần nhất trong vùng trước mặt
+  để dừng tiến tại 100 mm; không suy ra mét từ chiều cao khung người trong ảnh.
+- Camera ở đầu, ToF ở ngực thấp hơn 130 mm, cùng nhìn thẳng. Phần đối chiếu
+  chiếu vùng ToF lên ảnh, cần 3 cặp ảnh/ToF mới trước khi xác nhận. Vùng trùng
+  bất kỳ khung người nào được xử lý là người; vùng hoàn toàn nằm trong ảnh và
+  ngoài các khung người là vật có thể né. Đây là suy đoán hình học, không phải
+  model nhận diện mọi vật thể. Vật che người hoặc detector bỏ sót vẫn có thể gây nhầm.
+- Tới 100 mm: `WAIT PERSON` giữ target và chờ, `AVOID LEFT/RIGHT` chỉ né khi
+  có bằng chứng vật và bên thoáng ít nhất 200 mm; `WAIT UNKNOWN` đứng chờ.
+  Lịch sử đối chiếu chỉ giữ tối đa 2 giây khi vùng đo/khoảng cách liên tục;
+  mất ảnh/ToF, đổi ID hoặc số đo nhảy sẽ hủy bằng chứng. Người đi xa thì tiếp tục
+  cùng ID; mất người thì `WAIT CAMERA/TARGET`, không tự khóa người khác.
+- Khi đang né, đường trước phải thoáng ít nhất 400 mm qua 3 mẫu mới để thoát né.
+  Hai bên bị chắn thì chờ. 100 mm tính từ ToF, không phải mép robot; walking
+  còn hoàn tất bước đang thực hiện nên chưa bảo đảm khoảng dừng thực tế 10 cm.
+- `person_camera_*`, `person_tof_fov_deg`, `person_tof_flip_vertical` trong
+  `src/config.py` chỉ áp dụng cho follow, không dùng góc nghiêng ToF của stair.
+  Giả định hai trục song song, thẳng hàng ngang, không lệch trước/sau; chưa có
+  hiệu chuẩn lens/crop. FOV danh định Pi Camera V1 là 53.5 x 41.41 độ theo
+  [Raspberry Pi](https://www.raspberrypi.com/documentation/accessories/camera.html),
+  ToF dùng 45 x 45 độ theo [ST](https://www.st.com/resource/en/datasheet/vl53l5cx.pdf).
+  Cần kiểm tra hướng hàng ToF và vùng ảnh thực tế trước khi thử né gần người.
 
 ### Balance và an toàn
 

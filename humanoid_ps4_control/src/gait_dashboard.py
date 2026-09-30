@@ -340,6 +340,7 @@ class GaitDashboard:
             if distance is not None:
                 depth = {
                     "center_mm": distance.center_distance_mm,
+                    "front_mm": distance.front_distance_mm,
                     "obstacle_mm": distance.obstacle_distance_mm,
                     "grid_mm": distance.distances_mm,
                 }
