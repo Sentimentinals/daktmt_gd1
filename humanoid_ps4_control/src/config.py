@@ -73,7 +73,7 @@ class Config:
 
     # --- Manual gait: distances in mm, durations in seconds ---
     walk_step_length_mm: float = 24.0
-    walk_turn_length_mm: float = 5.4
+    walk_turn_length_mm: float = 8.1
     walk_side_length_mm: float = 18.15
     walk_step_time_s: float = 0.69
     walk_settle_time_s: float = 0.81

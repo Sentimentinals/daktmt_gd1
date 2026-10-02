@@ -406,7 +406,7 @@ class DynamicWalkingEngine:
             self.body_lean_queue.append(lean_start + (lean_target - lean_start) * drop_t)
 
             swing_base_z = swing_start_z + (swing_target_z - swing_start_z) * swing_t
-            lift_height = self.step_height * 0.55 if turn_dominant else self.step_height
+            lift_height = self.step_height * 0.45 if turn_dominant else self.step_height
             z = swing_base_z if side_dominant else swing_base_z + lift_height * lift_factor
 
             advance_start = min(self.swing_advance_end_phase - 0.10, self.lift_start_phase + 0.10)
