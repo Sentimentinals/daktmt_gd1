@@ -38,8 +38,10 @@ const control = {
   sending: false,
   pending: false,
 };
+const heldAxisKeys = new Map();
 
 function releaseMotion() {
+  heldAxisKeys.clear();
   control.axes.forward = 0;
   control.axes.turn = 0;
   control.axes.side = 0;
@@ -111,9 +113,8 @@ function updateControlUI(state = {}) {
   }
 }
 
-async function sendControl(emergencyStop = false, immediate = false) {
-  const priority = emergencyStop || control.actions.has("reset") || control.actions.has("stop");
-  if (control.sending && !priority && (!immediate || control.actions.size > 0)) {
+async function sendControl(emergencyStop = false, immediate = false, interrupt = false) {
+  if (control.sending && !emergencyStop && !interrupt && (!immediate || control.actions.size > 0)) {
     control.pending = true;
     return;
   }
@@ -182,12 +183,13 @@ function queueAction(action) {
     updateControlUI();
   }
   control.actions.add(action);
-  sendControl();
+  sendControl(false, false, action === "reset" || action === "stop");
 }
 
 function setAxis(name, value, button) {
   if (!control.armed || control.mode !== "manual") return;
   control.axes[name] = Number(value);
+  document.querySelectorAll(`[data-axis="${name}"]`).forEach((item) => setButtonActive(item, false));
   setButtonActive(button, Number(value) !== 0);
   sendControl(false, true);
 }
@@ -328,8 +330,9 @@ function bindWebControl() {
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if (axisKeys[key]) {
       event.preventDefault();
-      if (event.repeat) return;
+      if (event.repeat || !control.armed || control.mode !== "manual") return;
       const [axis, value] = axisKeys[key];
+      heldAxisKeys.set(key, [axis, value]);
       const button = document.querySelector(`[data-axis="${axis}"][data-value="${value}"]`);
       setAxis(axis, value, button);
     } else if (actionKeys[key] && !event.repeat) {
@@ -348,10 +351,12 @@ function bindWebControl() {
   });
   window.addEventListener("keyup", (event) => {
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-    if (axisKeys[key]) {
+    if (heldAxisKeys.has(key)) {
       const [axis] = axisKeys[key];
-      const button = document.querySelector(`[data-axis="${axis}"][data-value="${axisKeys[key][1]}"]`);
-      setAxis(axis, 0, button);
+      heldAxisKeys.delete(key);
+      const [, value] = [...heldAxisKeys.values()].reverse().find(([name]) => name === axis) || [axis, 0];
+      const button = document.querySelector(`[data-axis="${axis}"][data-value="${value}"]`);
+      setAxis(axis, value, button);
     } else if (actionKeys[key]) {
       setActionActive(actionKeys[key], false);
     } else if (key === "Escape") {

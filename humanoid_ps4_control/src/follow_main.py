@@ -68,9 +68,6 @@ def run_follow(
         flip_vertical=args.person_tof_flip_vertical,
         stable_frames=args.person_detect_stable_frames,
     )
-    previous_follow = False
-    previous_ignore = False
-    previous_stop = False
     previous_fall_active = fall_safety.active
 
     try:
@@ -83,8 +80,7 @@ def run_follow(
                     if not control.armed or control.mode != "follow":
                         break
 
-                    follow_pressed = control.follow
-                    if follow_pressed and not previous_follow:
+                    if control.follow:
                         frame = camera.person_frame() or PersonFrame()
                         person = frame.single_person
                         if camera.person_ready() and person is not None:
@@ -95,10 +91,7 @@ def run_follow(
                             print(f"[follow] Target #{person.track_id} locked.")
                         else:
                             print("[follow] Follow rejected: one stable person is required.")
-                    previous_follow = follow_pressed
-
-                    ignore_pressed = control.ignore_person
-                    if ignore_pressed and not previous_ignore:
+                    if control.ignore_person:
                         if follow.enabled:
                             follow.disable()
                             engine.reset()
@@ -108,10 +101,7 @@ def run_follow(
                         else:
                             camera.ignore_person()
                             print("[follow] Detected person ignored.")
-                    previous_ignore = ignore_pressed
-
-                    stop_pressed = control.stop
-                    if stop_pressed and not previous_stop:
+                    if control.stop:
                         follow.disable()
                         engine.reset()
                         obstacle_planner.reset()
@@ -119,8 +109,6 @@ def run_follow(
                         if not fall_safety.active:
                             backend.send(STANDING, duration_ms=args.stop_ms, force=True)
                             print("[follow] Stopped at STANDING.")
-                    previous_stop = stop_pressed
-
                     snapshot = sensor_hub.read() if sensor_hub is not None else None
                     depth = snapshot.depth if snapshot is not None else None
 

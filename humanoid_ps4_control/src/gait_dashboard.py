@@ -198,12 +198,6 @@ class GaitDashboard:
                 else []
             )
             if sequence <= self._control_sequence:
-                priority = next((name for name in ("reset", "stop") if name in actions), None)
-                if priority and self._control_armed:
-                    self._control_mode = "manual" if priority == "reset" else self._control_mode
-                    self._control_axes = {"forward": 0.0, "turn": 0.0, "side": 0.0}
-                    self._control_actions.clear()
-                    self._control_actions.append(priority)
                 return 200, self._control_payload_locked(now)
 
             self._control_sequence = sequence

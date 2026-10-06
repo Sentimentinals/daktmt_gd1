@@ -63,8 +63,6 @@ def run_manual(
         clear_margin_mm=args.tof_obstacle_clear_margin_mm,
         stable_frames=args.tof_obstacle_stable_frames,
     )
-    previous_getup = False
-    previous_dance = False
     previous_fall = fall_safety.active
     recovery_active = False
     reset_until = 0.0
@@ -97,7 +95,7 @@ def run_manual(
                     if resetting:
                         forward = turn = side = 0.0
                         locomotion_requested = False
-                    elif state.getup and not previous_getup:
+                    elif state.getup:
                         protected_pose = backend.current_pose
                         fall_safety.begin_recovery()
                         recovery_active = True
@@ -119,15 +117,12 @@ def run_manual(
                         locomotion_requested = False
                     elif (
                         state.dance
-                        and not previous_dance
                         and not getup.running
                         and not squat.active
                         and not fall_safety.active
                     ):
                         arm_dance.toggle()
                         engine.reset()
-                    previous_getup = state.getup
-                    previous_dance = state.dance
                     gait = stationary_gait()
                     if getup.running:
                         reading = snapshot.imu if snapshot is not None else None

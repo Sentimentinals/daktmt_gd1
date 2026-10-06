@@ -154,11 +154,16 @@ class HeadlessCamera:
                 if detector is not self._detector:
                     continue
                 if hasattr(detection, "people"):
+                    previous = self._person_frame.single_person if self._person_frame is not None else None
                     self._person_frame = detection
                     self._stair_frame = None
                     is_new = detection.captured_at != self._last_person_timestamp
                     if detection.single_person is not None and is_new:
-                        self._person_stable_frames += 1
+                        if previous is not None and previous.track_id == detection.single_person.track_id:
+                            self._person_stable_frames += 1
+                        else:
+                            self._person_stable_frames = 1
+                            self._person_ignored = False
                     elif detection.single_person is None and is_new:
                         self._person_stable_frames = 0
                         self._person_ignored = False
