@@ -193,6 +193,8 @@ def run_manual(
                         engine.reset()
                         squat.reset()
                         pose = dict(STANDING)
+                        reset_until = started + args.stop_ms / 1000.0
+                        resetting = True
                         status = "UPRIGHT - STANDING"
                         gait = stationary_gait()
                     previous_fall = fall_active
@@ -232,7 +234,10 @@ def run_manual(
                 backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
                 time.sleep(args.stop_ms / 1000.0)
     finally:
-        dashboard.set_runtime("idle", "Manual control stopped")
+        status = "GET-UP HOLD | SUPPORT ROBOT BEFORE RESET" if getup.running else "Manual control stopped"
+        if getup.running:
+            dashboard.disarm(status)
+        dashboard.set_runtime("idle", status)
         print("[main] Manual web control exited.")
 
 
@@ -329,7 +334,7 @@ def main() -> None:
                     now = time.monotonic()
                     if now - last_idle_publish >= 0.10:
                         status = "FALL DETECTED - ARMS FORWARD" if fall_safety.active else (
-                            state["runtime_status"] if state["runtime_status"].startswith("STAIR HOLD") else "WEB CONTROL READY"
+                            state["runtime_status"] if state["runtime_status"].startswith(("STAIR HOLD", "GET-UP HOLD")) else "WEB CONTROL READY"
                         )
                         dashboard.publish(
                             pose=backend.current_pose,
@@ -362,7 +367,7 @@ def main() -> None:
                         )
                 except Exception as exc:
                     status = dashboard.control_payload()["runtime_status"]
-                    dashboard.disarm(status if status.startswith("STAIR HOLD") else f"{state['mode']} unavailable: {exc}")
+                    dashboard.disarm(status if status.startswith(("STAIR HOLD", "GET-UP HOLD")) else f"{state['mode']} unavailable: {exc}")
                     print(f"[main] {state['mode']} unavailable: {exc}")
     except KeyboardInterrupt:
         print("\n[main] Ctrl+C received. Stopping web control.")

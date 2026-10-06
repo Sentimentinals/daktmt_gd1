@@ -151,8 +151,6 @@ class SerialRTBackend:
         if not force and not is_moving and self._frame_count % 10 != 0:
             return
 
-        self._prev_pose = dict(pose)
-
         # Send all active servos in every moving frame. This prevents hidden
         # action-group playback on the board from taking control of untouched
         # channels, while chunking keeps each UART write below the FIFO limit.
@@ -161,9 +159,12 @@ class SerialRTBackend:
         for i in range(0, len(items), batch_size):
             batch = dict(items[i : i + batch_size])
             cmd = _build_rt_command(batch, duration_ms) + "\r\n"
-            self._serial.write(cmd.encode("ascii"))
+            data = cmd.encode("ascii")
+            if self._serial.write(data) != len(data):
+                raise OSError("Incomplete servo controller write")
             self._serial.flush()
             time.sleep(0.002)
+        self._prev_pose = dict(pose)
 
     def close(self) -> None:
         if self._serial and self._serial.is_open:
