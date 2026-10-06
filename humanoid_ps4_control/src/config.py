@@ -162,10 +162,9 @@ class Config:
     stair_landing_margin_mm: float = 8.0
     stair_tof_forward_offset_mm: float = 0.0
     stair_tof_mount_height_mm: float = 220.0
-    stair_tof_pitch_down_deg: float = 16.0
+    stair_tof_pitch_down_deg: float = 0.0  # Chest ToF faces forward; measure any actual tilt.
     stair_tof_vertical_fov_deg: float = 45.0
     stair_tof_flip_vertical: bool = True
-    stair_tof_edge_min_delta_mm: float = 120.0
     # --- Terrain IMU Balance ---
     terrain_balance_limit_deg: float = 8.0
     terrain_balance_deadband_deg: float = 0.35

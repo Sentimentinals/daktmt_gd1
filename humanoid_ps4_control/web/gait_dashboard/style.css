@@ -622,7 +622,46 @@ button.active kbd {
 
 .control-camera {
   display: grid;
-  grid-template-rows: auto minmax(320px, 1fr) auto;
+  grid-template-rows: auto minmax(320px, 1fr) auto auto;
+}
+
+#stairReadouts[hidden] {
+  display: none;
+}
+
+.stair-readouts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+
+.stair-readouts > div {
+  min-width: 0;
+  padding: 12px;
+}
+
+.stair-readouts span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.stair-readouts strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font: 600 13px var(--mono);
+}
+
+.stair-readouts p {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .camera-frame {

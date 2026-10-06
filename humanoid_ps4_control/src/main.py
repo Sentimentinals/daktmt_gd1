@@ -333,7 +333,9 @@ def main() -> None:
                 if not state["armed"]:
                     now = time.monotonic()
                     if now - last_idle_publish >= 0.10:
-                        status = "FALL DETECTED - ARMS FORWARD" if fall_safety.active else "WEB CONTROL READY"
+                        status = "FALL DETECTED - ARMS FORWARD" if fall_safety.active else (
+                            state["runtime_status"] if state["runtime_status"].startswith("STAIR HOLD") else "WEB CONTROL READY"
+                        )
                         dashboard.publish(
                             pose=backend.current_pose,
                             gait=stationary_gait("fall" if fall_safety.active else "idle"),
@@ -364,7 +366,8 @@ def main() -> None:
                             args, dashboard, camera, backend, sensor_hub, fall_safety,
                         )
                 except Exception as exc:
-                    dashboard.disarm(f"{state['mode']} unavailable: {exc}")
+                    status = dashboard.control_payload()["runtime_status"]
+                    dashboard.disarm(status if status.startswith("STAIR HOLD") else f"{state['mode']} unavailable: {exc}")
                     print(f"[main] {state['mode']} unavailable: {exc}")
     except KeyboardInterrupt:
         print("\n[main] Ctrl+C received. Stopping web control.")

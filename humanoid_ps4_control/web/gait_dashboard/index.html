@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#ffffff">
   <title>Humanoid Control</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='6' fill='%23e7f4ec'/%3E%3Cpath d='M1 1h62v62H1z' fill='none' stroke='%23147a56' stroke-width='2'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%230e6344'%3EH17%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css?v=20261006-buttons">
+  <link rel="stylesheet" href="/style.css?v=20261006-stair">
 </head>
 <body>
   <a class="skip-link" href="#controlSection">Skip to controls</a>
@@ -97,6 +97,12 @@
             <img id="cameraFeed" alt="Pi Camera live feed">
             <div id="cameraOffline" class="camera-offline">CAMERA OFFLINE</div>
           </div>
+          <div id="stairReadouts" class="stair-readouts" hidden>
+            <div><span>Edge (ToF)</span><strong id="stairEdge">--</strong></div>
+            <div><span>Riser (ToF)</span><strong id="stairRiser">--</strong></div>
+            <div><span>Lift target</span><strong id="stairLift">--</strong></div>
+            <p id="stairStatus" aria-live="polite">Waiting for stair data</p>
+          </div>
           <div class="mini-grid">
             <div><span>Status</span><strong id="motionStatus">Waiting</strong></div>
             <div><span>Balance</span><strong id="balanceStatus">--</strong></div>
@@ -111,6 +117,6 @@
 
   </main>
 
-  <script type="module" src="/app.js?v=20261006-buttons"></script>
+  <script type="module" src="/app.js?v=20261006-stair"></script>
 </body>
 </html>

@@ -38,6 +38,7 @@ class StairGeometry:
     center_error: float
     source: str
     edge_uncertainty_mm: float = 0.0
+    riser_measured: bool = False
 
 
 class StairDetector:
@@ -59,18 +60,23 @@ class StairDetector:
         self._frame_count = 0
         self._last = StairFrame()
         model = Path(model_path)
-        self._net = cv2.dnn.readNetFromONNX(str(model)) if model.is_file() else None
+        self._net = None
+        if model.is_file():
+            try:
+                self._net = cv2.dnn.readNetFromONNX(str(model))
+            except cv2.error as exc:
+                print(f"[stair] ONNX unavailable; using line detection: {exc}")
 
     @property
     def model_ready(self) -> bool:
         return self._net is not None
 
     def detect(self, frame) -> StairFrame:
+        if frame is None or frame.ndim != 3 or frame.shape[2] != 3:
+            raise ValueError("Stair detector expects a three-channel camera frame")
         self._frame_count += 1
         if self._frame_count % self.detect_every_frames:
             return self._last
-        if frame is None or frame.ndim != 3 or frame.shape[2] != 3:
-            raise ValueError("Stair detector expects a three-channel camera frame")
 
         model_detection = self._detect_model(frame) if self._net is not None else None
         line_detection = self._detect_lines(frame)
@@ -92,15 +98,20 @@ class StairDetector:
 
     def _detect_model(self, frame) -> Optional[StairDetection]:
         width = frame.shape[1]
-        detections = detect_yolo(
-            self._cv2,
-            self._net,
-            frame,
-            class_count=1,
-            input_size=self.input_size,
-            confidence=self.confidence,
-            iou_threshold=self.iou_threshold,
-        )
+        try:
+            detections = detect_yolo(
+                self._cv2,
+                self._net,
+                frame,
+                class_count=1,
+                input_size=self.input_size,
+                confidence=self.confidence,
+                iou_threshold=self.iou_threshold,
+            )
+        except self._cv2.error as exc:
+            self._net = None
+            print(f"[stair] ONNX inference unavailable; using line detection: {exc}")
+            return None
         if not detections:
             return None
         detected = max(detections, key=lambda item: item.confidence * item.area_ratio)
@@ -147,7 +158,12 @@ class StairDetector:
                     separated[-1] = line
             else:
                 separated.append(line)
-        if not separated:
+        if not separated or len(separated) > 12:
+            return None
+        # Tread edges share a horizontal span; unrelated floor/noise lines do not.
+        common_left = max(min(line[0], line[2]) for line in separated)
+        common_right = min(max(line[0], line[2]) for line in separated)
+        if common_right - common_left < width * 0.28:
             return None
 
         centers = [(line[1] + line[3]) * 0.5 for line in separated]
@@ -197,7 +213,7 @@ class StairDetector:
 
 
 def estimate_stair_geometry(
-    detection: StairDetection,
+    detection: StairDetection | None,
     depth: DepthReading | None,
     *,
     default_riser_mm: float,
@@ -208,33 +224,43 @@ def estimate_stair_geometry(
     vertical_fov_deg: float,
     flip_vertical: bool,
     forward_offset_mm: float = 0.0,
-    range_edge_min_delta_mm: float = 120.0,
+    roll_deg: float = 0.0,
 ) -> StairGeometry:
     direction = "unknown"
     edge_distance = None
     edge_uncertainty = 0.0
     riser_height = default_riser_mm
-    source = detection.source
+    source = detection.source if detection is not None else "no-camera"
 
-    if depth is not None:
-        rows = [depth.region_median_mm(row, row + 1, 3, 5) for row in range(8)]
-        if flip_vertical:
-            rows.reverse()
+    if depth is not None and len(depth.distances_mm) == 64 and all(math.isfinite(v) for v in (
+        mount_height_mm, pitch_down_deg, vertical_fov_deg, roll_deg, forward_offset_mm,
+    )) and mount_height_mm > 0 and 0 < vertical_fov_deg < 90:
+        pitch = math.radians(pitch_down_deg)
+        roll = math.radians(roll_deg)
+        half_fov = math.tan(math.radians(vertical_fov_deg * 0.5))
         points = []
-        for row, distance in enumerate(rows):
-            if distance is None:
-                continue
-            ray_offset = ((row + 0.5) / 8.0 - 0.5) * vertical_fov_deg
-            ray_down = math.radians(pitch_down_deg + ray_offset)
-            if 0.0 < ray_down < math.pi / 2:
-                points.append((
-                    distance * math.cos(ray_down) + forward_offset_mm,
-                    mount_height_mm - distance * math.sin(ray_down),
-                ))
+        tolerance = min(5.0, default_riser_mm * 0.25)
+        for row in range(8):
+            sensor_row = 7 - row if flip_vertical else row
+            samples = []
+            for col in (3, 4):
+                distance = depth.distances_mm[sensor_row * 8 + col]
+                if not 20 <= distance <= 4000:
+                    continue
+                # ULD distance_mm is axial depth, already radial-to-perpendicular
+                # compensated by ST. Reconstruct a zone, then rotate to the floor.
+                down = distance * ((row + 0.5) / 4.0 - 1.0) * half_fov
+                right = distance * ((col + 0.5) / 4.0 - 1.0) * half_fov
+                down = down * math.cos(roll) - right * math.sin(roll)
+                forward = distance * math.cos(pitch) - down * math.sin(pitch)
+                height = mount_height_mm - distance * math.sin(pitch) - down * math.cos(pitch)
+                if forward > 0 and height < mount_height_mm:
+                    samples.append((forward + forward_offset_mm, height))
+            if len(samples) == 2 and abs(samples[0][1] - samples[1][1]) <= 2 * tolerance:
+                points.append((median(p[0] for p in samples), median(p[1] for p in samples)))
         points.sort()
         # Raw range gradients also occur on flat ground. Require two horizontal
         # levels, each supported by multiple zones, with the near level at floor.
-        tolerance = min(5.0, default_riser_mm * 0.25)
         for split in range(2, len(points) - 1):
             near = points[:split]
             far = points[split:split + 2]
@@ -271,66 +297,18 @@ def estimate_stair_geometry(
         if direction != "unknown":
             source += "+tof-levels"
         else:
-            best_edge = None
-            for split in range(2, 7):
-                upper = [value for value in rows[:split] if value is not None]
-                lower = [value for value in rows[split:] if value is not None]
-                if len(upper) < 2 or len(lower) < 2:
-                    continue
-                upper_boundary = rows[split - 1]
-                lower_boundary = rows[split]
-                if upper_boundary is None or lower_boundary is None:
-                    continue
-                upper_level = median(upper)
-                lower_level = median(lower)
-                contrast = abs(lower_level - upper_level)
-                boundary_delta = abs(lower_boundary - upper_boundary)
-                threshold = max(range_edge_min_delta_mm, min(upper_level, lower_level) * 0.12)
-                if contrast < threshold or boundary_delta < threshold:
-                    continue
-                upper_spread = median(abs(value - upper_level) for value in upper)
-                lower_spread = median(abs(value - lower_level) for value in lower)
-                if max(upper_spread, lower_spread) > contrast * 0.40:
-                    continue
-                score = contrast + boundary_delta - upper_spread - lower_spread
-                if best_edge is None or score > best_edge[0]:
-                    best_edge = (
-                        score,
-                        split,
-                        upper_level,
-                        lower_level,
-                        upper_spread,
-                        lower_spread,
-                    )
+            source += "+tof-unresolved"
 
-            if best_edge is not None:
-                _, split, upper_level, lower_level, upper_spread, lower_spread = best_edge
-                lower_is_near = lower_level < upper_level
-                direction = "up" if lower_is_near else "down"
-                boundary_row = split if lower_is_near else split - 1
-                boundary_distance = rows[boundary_row]
-                ray_offset = ((boundary_row + 0.5) / 8.0 - 0.5) * vertical_fov_deg
-                ray_down = math.radians(pitch_down_deg + ray_offset)
-                forward_scale = math.cos(ray_down) if 0.0 < ray_down < math.pi / 2 else 1.0
-                edge_distance = round(boundary_distance * forward_scale + forward_offset_mm)
-                near_spread = lower_spread if lower_is_near else upper_spread
-                edge_uncertainty = max(18.0, min(45.0, 18.0 + near_spread * 0.10))
-                riser_height = default_riser_mm
-                source += "+tof-range-edge"
-            else:
-                source += "+tof-unresolved"
-
-    confidence = detection.confidence
+    confidence = detection.confidence if detection is not None else 0.0
     if direction == "unknown":
         confidence *= 0.72
-    elif source.endswith("+tof-range-edge"):
-        confidence = min(0.95, confidence + 0.12)
     return StairGeometry(
         direction=direction,
         confidence=confidence,
         edge_distance_mm=edge_distance,
         riser_height_mm=max(min_riser_mm, min(max_riser_mm, riser_height)),
-        center_error=detection.center_error,
+        center_error=detection.center_error if detection is not None else 0.0,
         source=source,
         edge_uncertainty_mm=edge_uncertainty,
+        riser_measured=direction != "unknown",
     )

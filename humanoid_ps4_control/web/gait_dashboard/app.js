@@ -62,6 +62,11 @@ function setActionActive(action, enabled) {
   });
 }
 
+function resetStairReadouts(status) {
+  for (const id of ["stairEdge", "stairRiser", "stairLift"]) $(id).textContent = "--";
+  $("stairStatus").textContent = status;
+}
+
 function showModeTransition() {
   const label = MODE_LABELS[control.mode] || control.mode.toUpperCase();
   $("motionStatus").textContent = control.armed ? `STARTING ${label}` : `${label} SELECTED`;
@@ -71,6 +76,7 @@ function showModeTransition() {
   $("stepCount").textContent = "0";
   $("swingLeg").textContent = "NONE";
   $("modeBadge").textContent = "IDLE";
+  resetStairReadouts("Waiting for current Terrain Auto data");
 }
 
 function updateControlUI(state = {}) {
@@ -80,6 +86,7 @@ function updateControlUI(state = {}) {
   $("armLabel").textContent = control.armed ? "Disable control" : "Enable control";
   $("controlStatus").textContent = control.armed ? "ARMED" : "Disabled";
   $("controlStatus").classList.toggle("armed", control.armed);
+  $("stairReadouts").hidden = control.mode !== "terrain";
   document.querySelectorAll("[data-mode]").forEach((button) => {
     const active = button.dataset.mode === control.mode;
     button.classList.toggle("active", active);
@@ -197,6 +204,14 @@ function updateReadouts(frame) {
     $("balanceStatus").title = $("balanceStatus").textContent;
     $("stepCount").textContent = gait.step_count ?? 0;
     $("swingLeg").textContent = String(gait.swing_leg || "none").toUpperCase();
+    if (control.mode === "terrain") {
+      const stair = gait.perception || {};
+      const millimeters = (value) => Number.isFinite(value) ? `${Math.round(value)} mm` : "--";
+      $("stairEdge").textContent = stair.riser_measured ? millimeters(stair.edge_mm) : "--";
+      $("stairRiser").textContent = stair.riser_measured ? millimeters(stair.riser_mm) : "--";
+      $("stairLift").textContent = stair.riser_measured ? millimeters(stair.lift_mm) : "--";
+      $("stairStatus").textContent = frame.status || "Waiting for stair data";
+    }
   }
   const gaitHealth = $("gaitHealth");
   const maintenanceStatus = $("maintenanceStatus");
@@ -387,6 +402,7 @@ function start() {
       updateCamera(false);
       $("streamState").classList.add("offline");
       $("streamLabel").textContent = "Telemetry stale";
+      resetStairReadouts("Terrain telemetry lost");
     }
   }, 1000);
 }

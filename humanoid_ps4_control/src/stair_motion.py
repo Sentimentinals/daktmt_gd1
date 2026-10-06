@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from .config import DIR, PWM_PER_DEG, ROBOT, STANDING
+from .config import DIR, PWM_PER_DEG, ROBOT, STAND_ANG, STANDING
 from .walking_engine import compute_pose
 
 
@@ -24,6 +24,13 @@ class StairStepEngine:
         ankle_roll_gain: float,
         crouch_depth_mm: float = 0.0,
     ) -> None:
+        if not all(math.isfinite(v) for v in (
+            clearance_mm, shift_s, swing_s, transfer_s, settle_s,
+            zmp_support_ratio, ankle_roll_gain, crouch_depth_mm,
+        )):
+            raise ValueError("Stair motion settings must be finite")
+        if not 0 < zmp_support_ratio <= 1 or crouch_depth_mm < 0:
+            raise ValueError("Invalid stair support ratio or crouch depth")
         self.clearance_mm = max(5.0, clearance_mm)
         self.durations = {
             "shift": max(0.25, shift_s),
@@ -36,11 +43,13 @@ class StairStepEngine:
         self.ankle_roll_gain = ankle_roll_gain
         self.crouch_depth_mm = max(0.0, float(crouch_depth_mm))
         self.active = False
+        self.paused = False
         self.direction = "up"
         self.lead_leg = "left"
         self.step_height_mm = 0.0
         self.step_depth_mm = 0.0
         self.started_at = 0.0
+        self._last_update_at = 0.0
         self.phase = "idle"
         self.support_leg = "double"
         self.lift_factor = 0.0
@@ -52,6 +61,9 @@ class StairStepEngine:
             "left": [0.0, -ROBOT["half_hip"], 0.0],
             "right": [0.0, ROBOT["half_hip"], 0.0],
         }
+        self._neutral_pose = compute_pose(
+            0.0, 0.0, np.array(self.feet_mm["left"]), np.array(self.feet_mm["right"]),
+        )
 
     @staticmethod
     def _curve(value: float) -> float:
@@ -85,6 +97,10 @@ class StairStepEngine:
         self.step_height_mm = signed_height
         self.step_depth_mm = abs(step_depth_mm)
         self.started_at = time.monotonic() if now is None else now
+        if not math.isfinite(self.started_at):
+            raise ValueError("Stair start time must be finite")
+        self._last_update_at = self.started_at
+        self.paused = False
         # Reject unreachable trajectories before any command reaches the backend.
         try:
             for phase in self.PHASES:
@@ -99,6 +115,7 @@ class StairStepEngine:
 
     def reset(self) -> None:
         self.active = False
+        self.paused = False
         self.phase = "idle"
         self.support_leg = "double"
         self.lift_factor = 0.0
@@ -110,10 +127,36 @@ class StairStepEngine:
             "right": [0.0, ROBOT["half_hip"], 0.0],
         }
 
-    def update(self, now: float | None = None) -> dict[int, int]:
+    def max_stride_mm(self, riser_mm: float) -> float:
+        lateral = ROBOT["half_hip"] * self.zmp_support_ratio
+        knee_limit = min(
+            STAND_ANG[f"{side}_knee"] + (
+                self._neutral_pose[sid] - STANDING[sid]
+                + (2500 if DIR[sid] > 0 else 500) - STANDING[sid]
+            ) / (DIR[sid] * PWM_PER_DEG)
+            for side, sid in (("L", 14), ("R", 19))
+        )
+        minimum_leg_sq = ROBOT["upper_leg"] ** 2 + ROBOT["lower_leg"] ** 2 + (
+            2 * ROBOT["upper_leg"] * ROBOT["lower_leg"] * math.cos(math.radians(knee_limit))
+        )
+        vertical = math.sqrt(max(0.0, minimum_leg_sq - lateral ** 2)) + abs(riser_mm)
+        # Torso rise overlaps the trailing foot's vertical lift.
+        vertical = max(vertical, ROBOT["com_height"] - self.crouch_depth_mm - self.clearance_mm)
+        reach_sq = (ROBOT["upper_leg"] + ROBOT["lower_leg"] - 0.5) ** 2
+        return math.sqrt(max(0.0, reach_sq - vertical ** 2 - lateral ** 2))
+
+    def update(self, now: float | None = None, *, paused: bool = False) -> dict[int, int]:
         if not self.active:
             return dict(STANDING)
-        elapsed = (time.monotonic() if now is None else now) - self.started_at
+        now = time.monotonic() if now is None else now
+        if not math.isfinite(now) or now < self._last_update_at:
+            raise ValueError("Stair update time must be finite and monotonic")
+        # Exclude held time, including the first resume frame, from trajectory time.
+        if paused or self.paused:
+            self.started_at += now - self._last_update_at
+        self.paused = paused
+        self._last_update_at = now
+        elapsed = now - self.started_at
         phase, progress = self._phase_at(elapsed)
         if phase is None:
             self._phase_pose("settle", 1.0)
@@ -149,19 +192,21 @@ class StairStepEngine:
         body_x = 0.0
         body_y = 0.0
         body_z = ROBOT["com_height"] - self.crouch_depth_mm
-        # A descending foot needs earlier torso advance to stay within leg reach.
-        lead_body_x = depth * (0.45 if signed_height < 0.0 else 0.05)
-        lead_load = 0.0
+        reach_height = math.sqrt(max(0.0,
+            (ROBOT["upper_leg"] + ROBOT["lower_leg"] - 0.5) ** 2
+            - depth ** 2 - lead_support_y ** 2,
+        ))
+        lead_body_z = min(body_z, reach_height + min(0.0, signed_height))
+        transfer_body_z = min(body_z + signed_height, reach_height)
         if phase == "shift":
             body_y = trail_support_y * s
             body_z = ROBOT["com_height"] - self.crouch_depth_mm * s
-            lead_load = 0.5 * (1.0 - s)
             self.support_leg = "right" if lead_left else "left"
             self.lift_factor = 0.0
             self.landing_progress = 0.0
         elif phase == "lead_swing":
             body_y = trail_support_y
-            body_x = lead_body_x * s
+            body_z += (lead_body_z - body_z) * self._curve((progress - 0.30) / 0.40)
             lead_foot[0], lead_foot[2] = self._swing_position(progress)
             self.support_leg = "right" if lead_left else "left"
             self.lift_factor = self._bump(progress)
@@ -169,9 +214,9 @@ class StairStepEngine:
         elif phase == "transfer":
             lead_foot[0] = depth
             lead_foot[2] = signed_height
-            body_x = lead_body_x + (depth * 0.70 - lead_body_x) * s
+            body_x = depth * s
             body_y = trail_support_y + (lead_support_y - trail_support_y) * s
-            lead_load = s
+            body_z = lead_body_z + (transfer_body_z - lead_body_z) * s
             self.support_leg = "double"
             self.lift_factor = 0.0
             self.landing_progress = 1.0
@@ -179,9 +224,9 @@ class StairStepEngine:
             lead_foot[0] = depth
             lead_foot[2] = signed_height
             trail_foot[0], trail_foot[2] = self._swing_position(progress)
-            body_x = depth * 0.70
+            body_x = depth
             body_y = lead_support_y
-            lead_load = 1.0
+            body_z = transfer_body_z + (body_z + signed_height - transfer_body_z) * self._curve(progress / 0.30)
             self.support_leg = self.lead_leg
             self.lift_factor = self._bump(progress)
             self.landing_progress = max(0.0, (progress - 0.70) / 0.30)
@@ -190,10 +235,9 @@ class StairStepEngine:
             lead_foot[2] = signed_height
             trail_foot[0] = depth
             trail_foot[2] = signed_height
-            body_x = depth * (0.70 + 0.30 * s)
+            body_x = depth
             body_y = lead_support_y * (1.0 - s)
-            body_z += (signed_height + self.crouch_depth_mm) * s
-            lead_load = 1.0 - 0.5 * s
+            body_z += signed_height + self.crouch_depth_mm * s
             self.support_leg = "double"
             self.lift_factor = 0.0
             self.landing_progress = 1.0
@@ -222,11 +266,17 @@ class StairStepEngine:
             support_leg=self.support_leg,
             ankle_roll_gain=self.ankle_roll_gain,
         )
-        # Continuous load transfer instead of a discrete support-leg PWM jump.
-        roll = math.degrees(math.atan2(body_y, body_z - min(foot_left[2], foot_right[2]))) * self.ankle_roll_gain
-        left_load = lead_load if lead_left else 1.0 - lead_load
-        for sid, load in ((16, left_load), (17, 1.0 - left_load)):
-            pose[sid] = STANDING[sid] + round(DIR[sid] * PWM_PER_DEG * roll * load)
+        # Use calibrated standing as the IK origin, not rounded nominal angles.
+        for sid in (13, 14, 15, 18, 19, 20):
+            pose[sid] += STANDING[sid] - self._neutral_pose[sid]
+        # Match side-walk's mirrored roll convention and keep each sole level.
+        for foot, hip_y, hip_id, ankle_id, sign in (
+            (foot_left, body_y - half_hip, 12, 16, -1.0),
+            (foot_right, body_y + half_hip, 21, 17, 1.0),
+        ):
+            roll = sign * math.degrees(math.atan2(foot[1] - hip_y, body_z - foot[2]))
+            pose[hip_id] = STANDING[hip_id] + round(DIR[hip_id] * PWM_PER_DEG * roll)
+            pose[ankle_id] = STANDING[ankle_id] - round(DIR[ankle_id] * PWM_PER_DEG * roll * self.ankle_roll_gain)
         if any(not 500 <= pwm <= 2500 for pwm in pose.values()):
             raise ValueError(f"Stair {phase}: servo target outside controller range")
         return pose
@@ -246,6 +296,7 @@ class StairStepEngine:
     def telemetry_snapshot(self) -> dict[str, object]:
         return {
             "phase": self.phase,
+            "paused": self.paused,
             "support_leg": self.support_leg,
             "swing_leg": self.lead_leg if self.phase == "lead_swing" else (
                 "right" if self.lead_leg == "left" else "left"
