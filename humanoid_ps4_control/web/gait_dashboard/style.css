@@ -1,27 +1,27 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family: "Segoe UI Variable", Aptos, "Segoe UI", Arial, sans-serif;
-  background: #0d100f;
-  color: #eef3f0;
+  background: #f1f5f3;
+  color: #192721;
   letter-spacing: 0;
-  --canvas: #0d100f;
-  --surface: #141917;
-  --surface-raised: #1a201d;
-  --surface-deep: #090c0b;
-  --line: #2a332e;
-  --line-strong: #3b4741;
-  --text: #eef3f0;
-  --text-soft: #c5cec9;
-  --muted: #89968f;
-  --faint: #66726c;
-  --accent: #afe06f;
-  --accent-bright: #ccf58f;
-  --accent-soft: #21321f;
-  --accent-ink: #17200e;
-  --amber: #eeb45e;
-  --cyan: #65c7d0;
-  --red: #f16d67;
-  --blue: #7fa6f1;
+  --canvas: #f1f5f3;
+  --surface: #ffffff;
+  --surface-raised: #f8faf9;
+  --surface-deep: #edf3f0;
+  --line: #d6e1da;
+  --line-strong: #b9ccc1;
+  --text: #192721;
+  --text-soft: #3e5147;
+  --muted: #52665b;
+  --faint: #63766b;
+  --accent: #147a56;
+  --accent-bright: #0e6344;
+  --accent-soft: #e7f4ec;
+  --accent-ink: #ffffff;
+  --amber: #92520c;
+  --cyan: #0b7188;
+  --red: #b92f35;
+  --blue: #285ca0;
   --radius-xs: 3px;
   --radius-sm: 5px;
   --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
@@ -71,8 +71,8 @@ button {
 }
 
 button:hover {
-  border-color: #647369;
-  background: #222a26;
+  border-color: #849c8f;
+  background: #eef4f0;
   color: var(--text);
   transform: translateY(-1px);
 }
@@ -89,14 +89,14 @@ input:focus-visible {
 }
 
 button.active {
-  border-color: #779d50;
+  border-color: #8dc3a5;
   background: var(--accent-soft);
   color: var(--accent-bright);
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.38;
+  opacity: 0.62;
   transform: none;
 }
 
@@ -148,7 +148,7 @@ h2 {
   min-height: 72px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--line);
-  background: #101411;
+  background: #ffffff;
 }
 
 .brand,
@@ -169,9 +169,9 @@ h2 {
   width: 40px;
   height: 40px;
   place-items: center;
-  border: 1px solid #73964e;
+  border: 1px solid #a8d5bb;
   border-radius: var(--radius-xs);
-  background: #151e12;
+  background: var(--accent-soft);
   color: var(--accent);
   font: 700 13px var(--mono);
 }
@@ -196,12 +196,12 @@ h2 {
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(175, 224, 111, 0.1);
+  box-shadow: 0 0 0 3px rgba(20, 122, 86, 0.12);
 }
 
 .status-dot.offline {
   background: var(--red);
-  box-shadow: 0 0 0 3px rgba(241, 109, 103, 0.1);
+  box-shadow: 0 0 0 3px rgba(185, 47, 53, 0.12);
 }
 
 .badge {
@@ -212,9 +212,9 @@ h2 {
   min-height: 25px;
   margin-left: 8px;
   padding: 3px 8px;
-  border: 1px solid #526a3e;
+  border: 1px solid #a8d5bb;
   border-radius: var(--radius-xs);
-  background: #1d2b1a;
+  background: var(--accent-soft);
   color: var(--accent-bright);
   font: 700 10px var(--mono);
   font-variant-numeric: tabular-nums;
@@ -239,7 +239,7 @@ h2 {
   min-height: 61px;
   padding: 11px 14px;
   border-bottom: 1px solid var(--line);
-  background: #161b19;
+  background: var(--surface-raised);
 }
 
 .eyebrow {
@@ -280,46 +280,53 @@ h2 {
 
 .arm-button {
   min-width: 138px;
-  border-color: #5d7547;
-  background: #192018;
+  border-color: #a8c0b3;
+  background: #eaf2ed;
+  color: #24543e;
 }
 
 .arm-button.active {
-  border-color: var(--accent);
+  border-color: var(--accent-bright);
   background: var(--accent);
   color: var(--accent-ink);
 }
 
 .control-safety [data-action="reset"] {
-  border-color: #977242;
-  color: #f2c777;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-color: #ddbc91;
+  background: #fff8ef;
+  color: #78460f;
 }
 
 .control-safety [data-action="reset"]:hover,
 .control-safety [data-action="reset"].active {
   border-color: var(--amber);
-  background: #342817;
-  color: #ffdfa0;
+  background: #f9ead2;
+  color: #78460f;
 }
 
 .emergency-button {
   min-width: 102px;
-  border-color: #9c4744;
-  background: #712e2d;
+  border-color: #a6272e;
+  background: var(--red);
   color: #fff;
   font-weight: 750;
 }
 
 .emergency-button:hover,
 .emergency-button.active {
-  border-color: #ff8b85;
-  background: #8b3734;
+  border-color: #891d25;
+  background: #9f242d;
   color: #fff;
 }
 
 .emergency-button.active kbd {
-  border-color: #f6aaa6;
-  background: #51201f;
+  border-color: #f3adae;
+  background: #862027;
+  color: #ffffff;
 }
 
 .control-layout {
@@ -352,7 +359,7 @@ h2 {
   min-height: 72px;
   padding: 12px 15px 12px 17px;
   border: 0;
-  border-bottom: 1px solid #242c28;
+  border-bottom: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
   color: var(--text-soft);
@@ -370,12 +377,12 @@ h2 {
 }
 
 .mode-list button:hover {
-  background: #19201c;
+  background: #f3f8f5;
   transform: none;
 }
 
 .mode-list button.active {
-  background: #1b251b;
+  background: var(--accent-soft);
   color: var(--accent-bright);
 }
 
@@ -411,7 +418,7 @@ h2 {
   align-content: center;
   gap: 18px;
   padding: 18px 14px;
-  background: var(--surface-deep);
+  background: #f5f9f6;
 }
 
 .dpad {
@@ -425,8 +432,8 @@ h2 {
   width: 72px;
   height: 66px;
   padding: 0;
-  border-color: #36413b;
-  background: #171d1a;
+  border-color: var(--line-strong);
+  background: #ffffff;
   color: var(--text);
   font-size: 25px;
   touch-action: none;
@@ -434,8 +441,8 @@ h2 {
 }
 
 .dpad button:hover {
-  border-color: #73816f;
-  background: #202923;
+  border-color: #8fb49e;
+  background: #edf6f0;
 }
 
 .dpad button.active {
@@ -491,9 +498,9 @@ h2 {
 kbd {
   min-width: 24px;
   padding: 2px 5px;
-  border: 1px solid #53605a;
+  border: 1px solid #c7d7ce;
   border-radius: var(--radius-xs);
-  background: #0c100e;
+  background: #f2f6f3;
   color: var(--text-soft);
   font: 700 9px var(--mono);
   line-height: 1.25;
@@ -501,9 +508,16 @@ kbd {
 }
 
 button.active kbd {
-  border-color: #94bd68;
-  background: #25361f;
+  border-color: #afd7bf;
+  background: #e0efe5;
   color: var(--accent-bright);
+}
+
+.arm-button.active kbd,
+.emergency-button kbd {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
 }
 
 .action-grid,
@@ -513,7 +527,7 @@ button.active kbd {
   gap: 7px;
   padding: 10px;
   border-top: 1px solid var(--line);
-  background: #121614;
+  background: var(--surface-raised);
 }
 
 .action-grid button,
@@ -535,14 +549,14 @@ button.active kbd {
   position: relative;
   min-height: 250px;
   overflow: hidden;
-  background: #070908;
+  background: #e7eeea;
 }
 
 .camera-frame::after {
   position: absolute;
   inset: 12px;
   z-index: 3;
-  border: 1px solid rgba(238, 243, 240, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.32);
   content: "";
   pointer-events: none;
 }
@@ -555,6 +569,11 @@ button.active kbd {
   height: 100%;
   object-fit: cover;
 }
+
+.camera-frame img:not([src]) {
+  display: none;
+}
+
 .camera-offline {
   position: absolute;
   inset: 0;
