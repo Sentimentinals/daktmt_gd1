@@ -30,20 +30,8 @@ Thả phím sẽ hoàn tất bước rồi về standing. Manual không có IMU/
 ghi đè; fall detection vẫn được ưu tiên. Các giá trị là quỹ đạo tính toán, cần
 thử có người giữ robot để xác nhận tiếp xúc sàn và tải servo thực tế.
 
-Thông số chỉnh trong `src/config.py`, không sửa thêm hệ số trong `main.py`:
-
-| Thông số | Mặc định | Tác dụng |
-| --- | --- | --- |
-| `walk_step_length_mm` | 24 | Sải tiến/lùi của Manual |
-| `walk_turn_length_mm` | 5,4 | Biên độ bước quay của Manual |
-| `walk_side_length_mm` | 18,15 | Biên độ ngang; quỹ đạo đi ngang thuần dùng 90% giá trị này |
-| `walk_step_height_mm` | 58,24 | Độ nâng chân mục tiêu, không phải góc servo |
-| `walk_step_time_s` | 0,69 | Thời gian mỗi bước Manual; giảm để nhanh hơn |
-| `walk_settle_time_s` | 0,81 | Thời gian về standing sau bước cuối |
-| `side_swing_tempo` | 1,5 | Tốc độ vung ngang trong bước, không nhân biên độ |
-| `walk_hip_out_deg` | 3 | Độ dạng hông khi walking, không đổi standing |
-| `walk_crouch_depth_mm` | 8 | Độ hạ thân khi tiến/lùi |
-| `walk_forward_lean_deg` | 1 | Độ chúi thân khi tiến |
+Xem [thông số walking, quay và đi ngang](#2-walking-quay-và-đi-ngang), gồm
+cấu hình, hiệu chuẩn servo và các hệ số bên trong thuật toán.
 
 Follow và tiếp cận cầu thang dùng `auto_step_time_s=1.26`,
 `auto_settle_time_s=1.47`, cùng biên độ riêng `person_follow_*_length_mm` và
@@ -227,6 +215,231 @@ chưa chứng minh dự đoán hỏng servo hoặc tuổi thọ còn lại.
 - Kiểm tra live camera và ToF trước Person Follow; quay một người trước, nhiều
   người/vật cản sau. Manual chỉ cảnh báo ToF, không tự dừng trước vật cản.
 - Không dùng kết quả dry-run làm bằng chứng đứng dậy/leo thang thành công.
+
+## Thông số chỉnh tay
+
+Thông số walking đối chiếu mã ngày 06/10/2026. Các giá trị là cấu hình nguồn,
+không phải phép đo độ nâng, quãng đường, lực hoặc khả năng leo thật.
+
+### 1. Servo và standing
+
+Chỉnh `STANDING` trong [config.py](src/config.py) để thay tư thế nghỉ. Các động tác
+đều tính từ mốc này nên thay standing ảnh hưởng nhiều chức năng, không chỉ lúc idle.
+Mapping đang dùng trong code:
+
+| Servo | Khớp | `STANDING` (us) |
+| --- | --- | --- |
+| 9 | Khuỷu trái | 1500 |
+| 10 | Nâng/dang tay trái | 2450 |
+| 11 | Vai trái trước/sau | 1500 |
+| 12 | Hông trái dạng ngang | 1500 |
+| 13 | Đùi trái trước/sau | 1522 |
+| 14 | Gối trái | 1500 |
+| 15 | Cổ chân trái trước/sau, ankle pitch | 1500 |
+| 16 | Cổ chân trái nghiêng ngang, ankle roll | 1500 |
+| 17 | Cổ chân phải nghiêng ngang, ankle roll | 1500 |
+| 18 | Cổ chân phải trước/sau, ankle pitch | 1500 |
+| 19 | Gối phải | 1500 |
+| 20 | Đùi phải trước/sau | 1478 |
+| 21 | Hông phải dạng ngang | 1500 |
+| 22 | Vai phải trước/sau | 1470 |
+| 23 | Nâng/dang tay phải | 500 |
+| 24 | Khuỷu phải | 1500 |
+| 25 | Đầu quay trái/phải | 1500 |
+
+Trong chiều lắp đang được code giả định, tăng mốc 13 và giảm mốc 20 làm tăng
+góc đùi trước/sau theo hướng chúi của thuật toán; phải kiểm tra chiều thực tế trước
+khi đổi. Đừng nhầm 12/21 là servo đùi pitch. Với walking, ưu tiên chỉnh
+`walk_forward_lean_deg` thay vì sửa standing để chữa một vấn đề chỉ xảy ra lúc đi.
+
+| Mốc hình học trong `config.py` | Giá trị | Ý nghĩa |
+| --- | --- | --- |
+| `PWM_PER_DEG` | `2000.0 / 180.0` | Khoảng 11.111 us/độ danh định; không phải phép đo servo thật |
+| `ROBOT["com_height"]` | 147.4 mm | Cao độ thân/CoM dùng trong mô hình chân |
+| `ROBOT["half_hip"]` | 28 mm | Nửa khoảng cách hai hông; khoảng cách danh định hai chân 56 mm |
+| `ROBOT["upper_leg"]` | 80 mm | Chiều dài đùi trong IK |
+| `ROBOT["lower_leg"]` | 75 mm | Chiều dài cẳng chân trong IK |
+| `STAND_ANG["L_hip_pitch"]`, `STAND_ANG["R_hip_pitch"]` | 18 độ | Góc đùi gắn với mốc PWM standing |
+| `STAND_ANG["L_knee"]`, `STAND_ANG["R_knee"]` | 36 độ | Góc gối gắn với mốc PWM standing |
+| `STAND_ANG["L_ankle"]`, `STAND_ANG["R_ankle"]` | 18 độ | Góc ankle pitch gắn với mốc PWM standing |
+| `STAND_ANG["L_hip_abduct"]`, `STAND_ANG["R_hip_abduct"]` | 4 độ | Mốc hình học cho mô phỏng stand-up; không tạo thêm độ dạng hông trong gait |
+| `DIR` | 12..16: `+1`; 17..21: `-1` | Chiều chuyển góc chân sang PWM; không đổi để tăng tốc/lực |
+
+Quan hệ chuyển đổi: `PWM = STANDING[id] + DIR[id] * (góc_mới - góc_mốc) * PWM_PER_DEG`.
+Thông số chiều dài chỉ nên sửa sau khi đo khung, không dùng để thay thế độ nâng chân.
+Backend kiểm tra xung nguyên trong 500..2500 us và báo lỗi nếu vượt; không tự cắt
+biên độ để che một tư thế sai. Đây là giới hạn lệnh của dự án, không phải giới hạn
+cơ khí đã xác nhận của mọi khớp.
+
+### 2. Walking, quay và đi ngang
+
+Đối chiếu mã hiện tại ngày 06/10/2026. Tất cả dòng dưới nằm trong
+[config.py](src/config.py); đây là giá trị mục tiêu, không phải phép đo robot thật.
+
+| Thông số | Giá trị hiện tại | Tác dụng khi chỉnh |
+| --- | --- | --- |
+| `walk_step_length_mm` | 24.0 | Khoảng tiến giữa đích chân swing và chân trụ; tăng để bước dài hơn |
+| `walk_turn_length_mm` | 8.1 | Biên độ lệch bước quay Manual; là mm, không phải góc yaw |
+| `walk_side_length_mm` | 18.15 | Sải ngang Manual; tăng để chân swing mở rộng hơn |
+| `walk_step_time_s` | 0.69 | Thời gian một bước Manual; giảm để toàn bộ bước nhanh hơn |
+| `walk_settle_time_s` | 0.81 | Thời gian về standing sau bước cuối; không phải tốc độ từng bước |
+| `side_swing_tempo` | 2.25 | Tăng để vung chân ngang nhanh hơn trong cùng chu kỳ; code không nhận dưới 1 |
+| `walk_step_height_mm` | 58.24 | Độ nâng mục tiêu của bước tiến/lùi; dùng chung với Follow |
+| `walk_hip_out_deg` | 3.0 | Dạng hông và bù ankle khi walking không đi ngang; tăng để giãn chân |
+| `walk_crouch_depth_mm` | 8.0 | Hạ thân khi tiến/lùi; dùng chung với Follow; không áp vào sideways thuần |
+| `walk_forward_lean_deg` | 1.0 | Thêm chúi thân khi tiến; không áp lúc đứng, đi lùi hoặc ngang thuần |
+| `walk_lift_start_phase` | 0.30 | Bắt đầu lift sau 30% chu kỳ; phần trước dùng chuyển tải/chuẩn bị |
+| `walk_swing_advance_end_phase` | 0.60 | Mốc kết thúc đưa chân tới và đạt đỉnh nâng, khoảng 60% chu kỳ |
+| `walk_lift_end_phase` | 0.86 | Kết thúc hạ chân ở 86%; phần còn lại chuyển tải sau tiếp đất |
+| `zmp_support_ratio` | 0.80 | Biên độ dịch tải ngang theo nửa khoảng cách hông; tăng thì chuyển tải mạnh hơn |
+| `ankle_roll_gain` | -1.00 | Hệ số và chiều bù cổ chân ngang; tăng trị tuyệt đối để bù nhiều hơn, không tự đảo dấu |
+| `arm_swing_pwm` | 50 | Biên độ đánh tay khi Manual walking; `0` tắt đánh tay |
+| `auto_step_time_s` | 1.26 | Thời gian bước Follow và bước tiếp cận cầu thang; giảm để nhanh hơn |
+| `auto_settle_time_s` | 1.47 | Thời gian các engine tự động về standing sau bước cuối |
+| `person_follow_step_length_mm` | 8.64 | Sải tiến tối đa khi Follow; lệnh thực tế có thể nhỏ hơn theo ToF |
+| `person_follow_turn_length_mm` | 1.44 | Sải quay tối đa khi Follow; không dùng sải quay Manual |
+| `stair_approach_step_mm` | 2.16 | Sải tiến khi tiếp cận cầu thang; không phải sải bước leo bậc |
+| `stair_turn_step_mm` | 0.40 | Sải quay khi căn hướng cầu thang |
+| `update_ms` | 30 | Chu kỳ engine; 23 khung/bước Manual và 27 khung/settle hiện tại |
+| `stop_ms` | 250 | Thời gian lệnh reset/standing cưỡng bức; không thay thời gian bước |
+| `head_pan_pwm` | 220 | Biên độ đầu khi quay Manual; Follow giữ đầu cố định |
+| `head_pan_direction` | 1.0 | Chiều đầu khi quay Manual; dùng -1 nếu chiều cơ khí bị đảo |
+| `gait_dashboard_command_timeout_s` | 0.6 | Timeout lệnh web; mất heartbeat thì ngắt quyền điều khiển |
+
+Phạm vi cần phân biệt:
+
+- Sải và thời gian Manual không đổi sải/tốc độ Follow. Độ nâng, dạng hông, hạ thân,
+  độ chúi và mốc lift được dùng chung giữa Manual và Follow.
+- `zmp_support_ratio` và `ankle_roll_gain` còn dùng cho bước cầu thang. Không phải gain
+  IMU balance: Manual vẫn không tự bù theo IMU.
+- Đi ngang thuần dùng `0.90 * walk_side_length_mm`, hiện là **16.335 mm** mỗi chân.
+  Đây là hệ số quỹ đạo trong [walking_engine.py](src/walking_engine.py), không phải
+  một `side_speed` khác. Đích bàn chân không nâng Z; chân đi trước mở ra, chân sau kéo theo.
+- Quay thuần dùng `0.45 * walk_step_height_mm`, hiện là **26.208 mm** độ nâng mục tiêu.
+  Không suy ra một bước quay được bao nhiêu độ trên sàn chỉ từ `walk_turn_length_mm`.
+- Tay khi đi ngang dùng `round(0.55 * arm_swing_pwm)`; Follow và tiếp cận cầu thang
+  truyền `arm_swing_pwm=0`, nên chỉnh đánh tay Manual không bật tay ở hai mode đó.
+- Mốc lift bị ràng buộc trong engine: start 0..0.40, end không quá 0.95 và phải sau
+  start ít nhất 0.20; mốc đưa chân tới nằm giữa start + 0.10 và end - 0.05.
+  Đừng đặt các mốc chồng nhau rồi kỳ vọng code dùng nguyên giá trị nhập.
+- Chu kỳ lệnh 30 ms làm thời gian được lượng tử hóa theo khung. Dừng phím không
+  có nghĩa bàn chân đứng yên ngay: engine hoàn tất bước rồi mới settle.
+- Đi ngang nhanh chỉ đổi đoạn đưa chân ngang: từ phase 0.30 đến
+  `0.30 + (0.60 - 0.30) / 2.25 = 0.4333`. Thời gian toàn bước vẫn 0.69 s.
+- Khi tiến/lùi, hạ thân diễn ra trong đoạn chuẩn bị trước lift và giữ khi đi liên tục.
+  Đi lùi vẫn hạ thân nhưng không thêm chúi thân; quay/ngang thuần không hạ thân.
+- Không có tham số lực/mô-men servo trực tiếp. Giảm thời gian tăng tốc chuyển động,
+  không tăng dòng điện hoặc bảo đảm lực dưới tải. Không đổi `baudrate`, `DIR`, kích
+  thước khung hay trọng số LQR để tìm thêm lực.
+- Engine dùng lệnh chuẩn hóa -1..1. Tiến: `forward * walk_step_length_mm`;
+  quay: `turn * walk_turn_length_mm`; ngang: `-side * walk_side_length_mm`.
+  Quãng vung chân không luôn bằng giá trị cấu hình: tiến thuần 24 mm cho đích đầu
+  cách chân trụ 24 mm, các bước đều sau có thể vung 48 mm từ vị trí trước đó.
+  Quay thuần dùng `abs(turn_len) + (-turn_len nếu chân trái, +turn_len nếu chân phải)`;
+  với lệnh quay hết biên độ, đích so với chân trụ là 0 hoặc 16.2 mm. Đây không phải
+  góc yaw đã đạt trên mặt sàn; cần đo thực tế để đánh giá quay.
+
+Thông số thuật toán cấp thấp, không phải nút chỉnh lực thông thường:
+
+| File / vị trí | Giá trị | Vai trò |
+| --- | --- | --- |
+| `walking_engine.py`: `command_deadzone` | 0.02 | Bỏ lệnh chuẩn hóa quá nhỏ; bàn phím bình thường dùng -1, 0, +1 |
+| `walking_engine.py`: `preview_steps` | 24 | Số khung nhìn trước của bộ ZMP; khoảng 0.72 s khi dt = 30 ms |
+| `walking_engine.py`: bước hiệu dụng tối thiểu | 0.1 mm | Lệnh dưới ngưỡng này không tạo bước; không phải chiều cao lift |
+| `walking_engine.py`: `is_idle_ready(tolerance)` | 0.05 | Dung sai trạng thái/quỹ đạo khi xác nhận dừng; không chỉnh lực |
+| `walking_engine.py`: sai lệch PWM khi idle | 3 us | Dung sai so với standing dùng để xác nhận engine đã nghỉ |
+| `walking_engine.py`: hệ số sải ngang | 0.90 | Chỉ dùng khi ngang chiếm ưu thế; đi ngang thuần không nâng Z |
+| `walking_engine.py`: hệ số lift khi quay | 0.45 | Chỉ dùng quay thuần; quay kết hợp tiến/lùi vẫn dùng lift đầy đủ |
+| `walking_engine.py`: độ trễ đưa chân tiến | `min(lift start + 0.10, advance end - 0.10)` | Bắt đầu đưa chân tới sau khi lift đã bắt đầu |
+| `walking_engine.py`: ngưỡng sẵn sàng ngang phối hợp | lift factor / 0.45 | Điều tiết ngang khi đồng thời tiến/quay; không dùng cho ngang thuần |
+| `walking_engine.py`: tay ngang | 0.55 | `round(0.55 * arm_swing_pwm)`, hiện 28 us |
+| `walking_engine.py`: chọn chân trụ từ ZMP | ±0.5 * half_hip | Hiện ±14 mm so với tâm hai chân; khi đang swing vẫn giữ chân đối diện làm trụ |
+| `walking_engine.py`: khoảng cách chân ngang tối thiểu | 2 * half_hip | Hiện 56 mm; chặn chân sau kéo vượt qua chân trước |
+| `zmp_controller.py`: `g` | 9800 mm/s² | Gia tốc trọng trường trong mô hình, không phải lực servo |
+| `zmp_controller.py`: `Qe` | 1.0 | Trọng số sai số ZMP trong LQR |
+| `zmp_controller.py`: `R` | 0.000001 | Trọng số jerk; không đổi tùy tiện để tăng lực |
+| `zmp_controller.py`: `riccati_iters` | 3000 | Giới hạn vòng lặp giải hệ số, không phải số bước chân |
+| `zmp_controller.py`: điều kiện settled | 0.2 mm; 1 mm/s; 20 mm/s²; integral 1.0 | Các sai số được coi là ổn định trong bộ điều khiển |
+| `zmp_controller.py`: dung sai Riccati | 1e-10 | Ngưỡng dừng giải hệ số, chỉ chạy khi khởi tạo controller |
+| `leg_ik.py`: khoảng tránh duỗi/gập tuyệt đối | 0.5 mm | Chặn chiều dài chân trong `abs(L1-L2)+0.5` đến `L1+L2-0.5`; không phải clearance bàn chân |
+
+Lift: start -> đỉnh tại advance end -> hạ về 0 tại lift end. Đưa chân tiến bắt đầu
+ở phase 0.40 và kết thúc ở 0.60 với cấu hình hiện tại. Chuyển tải sau landing bắt
+đầu ở 0.86 và kết thúc ở 1.0; không có biến landing speed riêng.
+Đường cong nối là `t² * (3 - 2t)`, không có lớp rate limit PWM trong walking.
+Backend vẫn kiểm tra miền xung 500..2500 us, không cắt biên độ để che lỗi.
+
+Ankle roll của bước thường chỉ tính tại nhánh walking, không tính rồi ghi đè trong
+IK chung. Trước khi cộng dạng hông, góc bù trụ cực đại danh định là
+`atan2(28 * 0.80, 147.4) * (-1) ≈ -8.641 độ`; không phải góc nghiêng IMU đã đo.
+Sidewalk giữ hông/ankle chân trụ tại tư thế đầu bước; chỉ chân swing mở hoặc kéo theo.
+IMU balance không ghi đè Manual; FSR không phải điều kiện để Manual bước.
+
+### 8. Stair detect, tiếp cận và bước cầu thang
+
+| Thông số trong `config.py` | Giá trị Git | Tác dụng |
+| --- | --- | --- |
+| `stair_model` | `deploy/models/stair_detector.onnx` | Model nhận diện cầu thang |
+| `stair_model_confidence` | 0.55 | Ngưỡng điểm model/xác nhận hình học; tăng chặt hơn |
+| `stair_model_iou_threshold` | 0.45 | IoU loại khung trùng bằng NMS; không phải độ chính xác nhận diện |
+| `stair_model_input_size` | 416 | Kích thước đầu vào; phải phù hợp model ONNX đã export |
+| `stair_detect_every_frames` | 3 | Chu kỳ inference detector; tăng thì bớt tải, trễ hơn |
+| `stair_detect_stable_frames` | 4 | Số cặp phát hiện/ToF mới ổn định trước khi cho bước |
+| `stair_camera_align_deadband` | 0.12 | Sai lệch tâm cầu thang cho phép trước khi quay căn hướng |
+| `stair_approach_step_mm` | 2.16 | Sải tiến của bước tiếp cận, không phải sải leo bậc |
+| `stair_turn_step_mm` | 0.40 | Biên độ bước quay khi căn cầu thang |
+| `stair_default_riser_mm` | 20.0 | Chiều cao bậc danh định trong suy đoán hình học |
+| `stair_min_riser_mm` | 15.0 | Cận dưới chiều cao bậc trong mô hình hiện tại |
+| `stair_max_riser_mm` | 25.0 | Cận trên chiều cao bậc trong mô hình hiện tại |
+| `stair_tread_depth_mm` | 160.0 | Chiều sâu mặt bậc, không phải sải chân |
+| `stair_width_mm` | 320.0 | Bề rộng mặt bậc để kiểm tra chỗ đặt hai chân |
+| `stair_step_depth_mm` | 120.0 | Sải leo tối đa; sải thực tế tính từ mép bậc và kích thước bàn chân |
+| `stair_foot_clearance_mm` | 18.0 | Khoảng hở qua mép bậc; lên bậc 20 mm có đỉnh nâng 38 mm |
+| `stair_crouch_depth_mm` | 35.0 | Độ hạ thân khi thực hiện bước cầu thang |
+| `stair_phase_shift_s` | 1.20 | Thời gian chuyển tải trước khi nâng chân đầu |
+| `stair_phase_swing_s` | 2.80 | Thời gian swing của mỗi chân; dùng hai lần trong một chuỗi |
+| `stair_phase_transfer_s` | 1.20 | Chuyển trọng lượng lên chân đã đặt trên bậc |
+| `stair_phase_settle_s` | 1.50 | Thu về tư thế đứng ở cuối chuỗi |
+| `stair_step_pause_s` | 0.70 | Tạm nghỉ/xác nhận trước bậc kế tiếp |
+| `stair_geometry_calibrated` | False | Khóa bước tự động; chỉ True sau khi đo và kiểm chứng hình học |
+| `stair_foot_toe_mm` | 0.0 | Chiều dài từ mốc bàn chân tới mũi; phải nhập số đo thật |
+| `stair_foot_heel_mm` | 0.0 | Chiều dài từ mốc bàn chân tới gót; phải nhập số đo thật |
+| `stair_foot_width_mm` | 0.0 | Bề rộng bàn chân; không phải khoảng cách hai hông |
+| `stair_landing_margin_mm` | 8.0 | Khoảng dự phòng để cả bàn chân nằm trên mặt bậc |
+| `stair_tof_forward_offset_mm` | 0.0 | Vị trí ToF theo trục trước/sau so với mốc hình học đặt chân |
+| `stair_tof_mount_height_mm` | 220.0 | Cao độ ToF so với sàn dùng để dựng hình học cầu thang |
+| `stair_tof_pitch_down_deg` | 0.0 | ToF ngực nhìn thẳng theo setup; nếu lắp nghiêng phải nhập góc đo thật |
+| `stair_tof_vertical_fov_deg` | 45.0 | FOV dọc để đổi hàng ToF sang góc nhìn |
+| `stair_tof_flip_vertical` | True | Đảo hàng lưới ToF riêng cho thuật toán stair |
+
+**Điểm chưa hiệu chuẩn:** góc mặc định đã khớp setup nhìn thẳng, nhưng chiều cao
+220 mm và vị trí trước/sau của ToF vẫn cần đo. Không bật khóa leo khi chưa đo bàn
+chân/ToF và kiểm chứng hình học. Cảm biến nhìn thẳng không bảo đảm thấy được sàn và
+mặt bậc gần bàn chân; khi không tách được hai mặt phẳng, chỉ báo UNKNOWN/PREVIEW.
+
+Trong [stair_main.py](src/stair_main.py), bước tiếp cận có lift cố định 24 mm, không
+dùng `walk_step_height_mm`; nó dùng thời gian `auto_*`. Bước leo thực ở
+[stair_motion.py](src/stair_motion.py) có các pha shift -> chân đầu -> transfer ->
+chân sau -> settle. Tổng danh định 9.5 s, chưa tính pause 0.7 s và chờ xác nhận.
+Trong mỗi swing: 30% đầu nâng, 40% giữa đưa chân tới ở cao độ đỉnh, 30% cuối hạ.
+Đỉnh lên bằng `riser + clearance`; xuống thì nhấc clearance trước rồi mới hạ xuống bậc.
+Thân ở trên chân sau trong pha đưa chân đầu; pha transfer đưa thân đến vị trí chân
+đầu đã đặt trên bậc trước khi nhấc chân sau. Độ hạ/nâng thân còn phụ thuộc giới hạn
+vươn chân ở sải dài, không dùng các hệ số tiến thân 0.05/0.45 cũ.
+
+Các pha có thời gian tối thiểu được chặn trong constructor: shift 0.25 s, swing
+0.50 s, transfer 0.35 s, settle 0.30 s; clearance tối thiểu 5 mm. Điều kiện runtime
+còn yêu cầu IMU và balance sẵn sàng, roll/pitch lệch reference không quá 3 độ,
+và đủ chỗ đặt toàn bàn chân. Các giá trị 0 chưa đo ở toe/heel/width là khóa an toàn,
+không phải biến thừa để xóa.
+
+ToF phải tách được hai mặt ngang, mỗi mặt có nhiều zone hợp lệ; chênh khoảng cách
+dọc tia đơn thuần không còn được dùng để đoán lên/xuống. Xác nhận gồm bốn cặp
+camera/ToF mới; lặp lại cùng timestamp không được tính thêm. Không cần FSR để bật
+walking, nhưng bước tự động cần IMU upright/calibrated, camera và ToF còn dữ liệu.
+Mất sensor hoặc vượt giới hạn nghiêng trong lúc bước thì giữ tư thế, không tự tiếp
+tục khi sensor trở lại; cần dữ liệu hợp lệ và nhấn U. Fall detection vẫn ưu tiên cao nhất.
+Thoát card giữa bước giữ tư thế và disarm; phải đỡ robot trước khi reset.
 
 ## An toàn
 

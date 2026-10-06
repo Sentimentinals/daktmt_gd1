@@ -263,8 +263,6 @@ class StairStepEngine:
             foot_left,
             foot_right,
             com_z=body_z,
-            support_leg=self.support_leg,
-            ankle_roll_gain=self.ankle_roll_gain,
         )
         # Use calibrated standing as the IK origin, not rounded nominal angles.
         for sid in (13, 14, 15, 18, 19, 20):
