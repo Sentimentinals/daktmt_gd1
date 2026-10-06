@@ -76,8 +76,8 @@ function showModeTransition() {
 function updateControlUI(state = {}) {
   if (typeof state.armed === "boolean") control.armed = state.armed;
   if (state.mode) control.mode = state.mode;
-  $("armButton").classList.toggle("active", control.armed);
-  $("armButton").textContent = control.armed ? "Disable control" : "Enable control";
+  setButtonActive($("armButton"), control.armed);
+  $("armLabel").textContent = control.armed ? "Disable control" : "Enable control";
   $("controlStatus").textContent = control.armed ? "ARMED" : "Disabled";
   $("controlStatus").classList.toggle("armed", control.armed);
   document.querySelectorAll("[data-mode]").forEach((button) => {

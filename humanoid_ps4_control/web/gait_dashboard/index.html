@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#ffffff">
   <title>Humanoid Control</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='6' fill='%23e7f4ec'/%3E%3Cpath d='M1 1h62v62H1z' fill='none' stroke='%23147a56' stroke-width='2'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%230e6344'%3EH17%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css?v=20261006">
+  <link rel="stylesheet" href="/style.css?v=20261006-buttons">
 </head>
 <body>
   <a class="skip-link" href="#controlSection">Skip to controls</a>
@@ -33,9 +33,9 @@
           <strong id="controlStatus" aria-live="polite">Disabled</strong>
         </div>
         <div class="safety-actions">
-          <button id="armButton" type="button" class="arm-button">Enable control</button>
-          <button type="button" data-action="reset"><span>Reset</span><kbd>C</kbd></button>
-          <button id="emergencyButton" type="button" class="emergency-button"><span>STOP</span><kbd>Esc</kbd></button>
+          <button id="armButton" type="button" class="arm-button" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="/icons.svg#power"/></svg><span id="armLabel">Enable control</span></button>
+          <button type="button" data-action="reset" title="Return to standing (C)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#reset"/></svg><span>Reset</span><kbd>C</kbd></button>
+          <button id="emergencyButton" type="button" class="emergency-button" title="Emergency stop (Esc)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#stop"/></svg><span>STOP</span><kbd>Esc</kbd></button>
         </div>
       </div>
 
@@ -45,9 +45,9 @@
             <div><span class="eyebrow">FUNCTION</span><h2>Operating mode</h2></div>
           </div>
           <div class="mode-list" role="group" aria-label="Robot function">
-            <button type="button" class="active" data-mode="manual"><strong>Manual</strong><span>Walking and actions</span></button>
-            <button type="button" data-mode="terrain"><strong>Terrain Auto</strong><span>IMU balance + stair traversal</span></button>
-            <button type="button" data-mode="follow"><strong>Person Follow</strong><span>Camera + ToF tracking</span></button>
+            <button type="button" class="active" data-mode="manual"><svg class="icon" aria-hidden="true"><use href="/icons.svg#manual"/></svg><span class="mode-copy"><strong>Manual</strong><span>Walking and actions</span></span></button>
+            <button type="button" data-mode="terrain"><svg class="icon" aria-hidden="true"><use href="/icons.svg#terrain"/></svg><span class="mode-copy"><strong>Terrain Auto</strong><span>IMU balance + stair traversal</span></span></button>
+            <button type="button" data-mode="follow"><svg class="icon" aria-hidden="true"><use href="/icons.svg#follow"/></svg><span class="mode-copy"><strong>Person Follow</strong><span>Camera + ToF tracking</span></span></button>
           </div>
         </aside>
 
@@ -57,33 +57,33 @@
           </div>
           <div class="drive-body">
             <div class="dpad" aria-label="Walking direction">
-              <button type="button" class="up" data-axis="forward" data-value="1" title="Forward">&uarr;</button>
-              <button type="button" class="left" data-axis="turn" data-value="1" title="Turn left">&larr;</button>
-              <button type="button" class="center" data-action="stop" title="Stop"><span>&#9632;</span><kbd>Space</kbd></button>
-              <button type="button" class="right" data-axis="turn" data-value="-1" title="Turn right">&rarr;</button>
-              <button type="button" class="down" data-axis="forward" data-value="-1" title="Backward">&darr;</button>
+              <button type="button" class="up" data-axis="forward" data-value="1" title="Forward (Up arrow)" aria-label="Forward"><svg class="icon" aria-hidden="true"><use href="/icons.svg#forward"/></svg></button>
+              <button type="button" class="left" data-axis="turn" data-value="1" title="Turn left (Left arrow)" aria-label="Turn left"><svg class="icon" aria-hidden="true"><use href="/icons.svg#turn-left"/></svg></button>
+              <button type="button" class="center" data-action="stop" title="Stop movement (Space)" aria-label="Stop movement"><svg class="icon" aria-hidden="true"><use href="/icons.svg#stop"/></svg><kbd>Space</kbd></button>
+              <button type="button" class="right" data-axis="turn" data-value="-1" title="Turn right (Right arrow)" aria-label="Turn right"><svg class="icon" aria-hidden="true"><use href="/icons.svg#turn-right"/></svg></button>
+              <button type="button" class="down" data-axis="forward" data-value="-1" title="Backward (Down arrow)" aria-label="Backward"><svg class="icon" aria-hidden="true"><use href="/icons.svg#backward"/></svg></button>
             </div>
             <div class="side-control">
               <span>Side walk</span>
               <div>
-                <button type="button" data-axis="side" data-value="1" title="Side left"><span>&larr;</span><kbd>J</kbd></button>
-                <button type="button" data-axis="side" data-value="-1" title="Side right"><span>&rarr;</span><kbd>K</kbd></button>
+                <button type="button" data-axis="side" data-value="1" title="Side left (J)" aria-label="Side left"><svg class="icon" aria-hidden="true"><use href="/icons.svg#side-left"/></svg><kbd>J</kbd></button>
+                <button type="button" data-axis="side" data-value="-1" title="Side right (K)" aria-label="Side right"><svg class="icon" aria-hidden="true"><use href="/icons.svg#side-right"/></svg><kbd>K</kbd></button>
               </div>
             </div>
           </div>
           <div class="action-grid active" data-mode-actions="manual">
-            <button type="button" data-action="dance"><span>Arm dance</span><kbd>L</kbd></button>
-            <button type="button" data-action="squat"><span>Squat</span><kbd>R</kbd></button>
-            <button type="button" data-action="getup_front"><span>Stand up</span><kbd>G</kbd></button>
+            <button type="button" data-action="dance" title="Arm dance (L)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#dance"/></svg><span>Arm dance</span><kbd>L</kbd></button>
+            <button type="button" data-action="squat" title="Squat / return to standing (R)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#backward"/></svg><span>Squat</span><kbd>R</kbd></button>
+            <button type="button" data-action="getup_front" title="Stand up (G)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#forward"/></svg><span>Stand up</span><kbd>G</kbd></button>
           </div>
           <div class="mode-actions">
             <div data-mode-actions="terrain">
-              <button type="button" data-action="terrain_toggle"><span>Balance on/off</span><kbd>V</kbd></button>
-              <button type="button" data-action="stair_toggle"><span>Auto stair on/off</span><kbd>U</kbd></button>
+              <button type="button" data-action="terrain_toggle" title="Toggle balance (V)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#balance"/></svg><span>Balance</span><kbd>V</kbd></button>
+              <button type="button" data-action="stair_toggle" title="Toggle auto stair (U)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#steps"/></svg><span>Auto stair</span><kbd>U</kbd></button>
             </div>
             <div data-mode-actions="follow">
-              <button type="button" data-action="follow"><span>Follow person</span><kbd>Y</kbd></button>
-              <button type="button" data-action="ignore_person"><span>Stop follow</span><kbd>N</kbd></button>
+              <button type="button" data-action="follow" title="Follow person (Y)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#follow"/></svg><span>Follow person</span><kbd>Y</kbd></button>
+              <button type="button" data-action="ignore_person" title="Stop follow (N)"><svg class="icon" aria-hidden="true"><use href="/icons.svg#stop"/></svg><span>Stop follow</span><kbd>N</kbd></button>
             </div>
           </div>
         </section>
@@ -111,6 +111,6 @@
 
   </main>
 
-  <script type="module" src="/app.js?v=20260925"></script>
+  <script type="module" src="/app.js?v=20261006-buttons"></script>
 </body>
 </html>
