@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
@@ -187,6 +188,7 @@ def run_follow(
                     if remaining > 0.0:
                         time.sleep(remaining)
             finally:
+                handling_error = sys.exc_info()[0] is not None
                 try:
                     exit_pose = (
                         backend.current_pose if fall_safety.active else STANDING
@@ -194,7 +196,9 @@ def run_follow(
                     backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
                     time.sleep(args.stop_ms / 1000.0)
                 except Exception as exc:
-                    print(f"[follow] Failed to return to STANDING: {exc}")
+                    print(f"[follow] Failed to send exit pose: {exc}")
+                    if not handling_error:
+                        raise
     finally:
         camera.set_detector(None)
         dashboard.set_runtime("idle", "Person follow stopped")

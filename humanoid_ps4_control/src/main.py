@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from pathlib import Path
+import sys
 import time
 
 from .backends import make_backend
@@ -228,11 +229,17 @@ def run_manual(
                     if remaining > 0:
                         time.sleep(remaining)
             finally:
+                handling_error = sys.exc_info()[0] is not None
                 if recovery_active:
                     fall_safety.end_recovery()
                 exit_pose = backend.current_pose if fall_safety.active or getup.running else STANDING
-                backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
-                time.sleep(args.stop_ms / 1000.0)
+                try:
+                    backend.send(exit_pose, duration_ms=args.stop_ms, force=True)
+                    time.sleep(args.stop_ms / 1000.0)
+                except Exception as exc:
+                    print(f"[main] Failed to send exit pose: {exc}")
+                    if not handling_error:
+                        raise
     finally:
         status = "GET-UP HOLD | SUPPORT ROBOT BEFORE RESET" if getup.running else "Manual control stopped"
         if getup.running:
@@ -333,15 +340,18 @@ def main() -> None:
                 if not state["armed"]:
                     now = time.monotonic()
                     if now - last_idle_publish >= 0.10:
-                        status = "FALL DETECTED - ARMS FORWARD" if fall_safety.active else (
-                            state["runtime_status"] if state["runtime_status"].startswith(("STAIR HOLD", "GET-UP HOLD")) else "WEB CONTROL READY"
-                        )
+                        fall_active = fall_safety.active
+                        status = state["runtime_status"]
+                        if fall_active:
+                            status = "FALL DETECTED - ARMS FORWARD"
+                        elif status == "FALL DETECTED - ARMS FORWARD":
+                            status = "UPRIGHT - STANDING"
                         dashboard.publish(
                             pose=backend.current_pose,
-                            gait=stationary_gait("fall" if fall_safety.active else "idle"),
+                            gait=stationary_gait("fall" if fall_active else "idle"),
                             sensor_snapshot=sensor_hub.read() if sensor_hub is not None else None,
                             status=status,
-                            active=fall_safety.active,
+                            active=fall_active,
                             balance_status=fall_safety.status,
                         )
                         dashboard.set_runtime(state["mode"], status)
