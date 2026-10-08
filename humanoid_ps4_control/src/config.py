@@ -76,6 +76,7 @@ class Config:
     walk_turn_length_mm: float = 8.1
     walk_side_length_mm: float = 18.15
     walk_step_time_s: float = 1.725
+    walk_side_step_time_s: float = 0.69
     walk_settle_time_s: float = 0.81
     side_swing_tempo: float = 2.25
     # Shared leg geometry/profile; autonomous modes use shorter, slower steps.

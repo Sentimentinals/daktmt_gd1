@@ -165,9 +165,11 @@ class DynamicWalkingEngine:
         arm_forward_pwm: int = 0,
         hip_out_deg: float = 0.0,
         side_swing_tempo: float = 1.0,
+        side_step_time_s: float | None = None,
     ) -> None:
         self.dt = dt
         self.n_s = max(1, round(step_time_s / dt))
+        self.side_n_s = self.n_s if side_step_time_s is None else max(1, round(side_step_time_s / dt))
         self.settle_frames = max(1, round(settle_time_s / dt))
 
         self.zc = ROBOT["com_height"]
@@ -200,6 +202,7 @@ class DynamicWalkingEngine:
     def reset(self) -> None:
         self.zmp_ctrl.reset()
         self.zmp_ctrl_x.reset()
+        self._step_frames = self.n_s
         self.step_count = 0
         self.zmp_y_queue: Deque[float] = deque()
         self.zmp_x_queue: Deque[float] = deque()
@@ -295,6 +298,7 @@ class DynamicWalkingEngine:
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
         turn_dominant = abs(turn_len) > 0.1 and abs(step_len) < 0.1 and abs(side_len) < 0.1
+        self._step_frames = self.side_n_s if side_dominant else self.n_s
         if side_dominant:
             base_L[0] = base_R[0] = 0.0
             self.zmp_ctrl_x.reset()
@@ -358,8 +362,8 @@ class DynamicWalkingEngine:
             advance_end = self.lift_start_phase + (advance_end - self.lift_start_phase) / self.side_swing_tempo
         lift_height = self.step_height * 0.45 if turn_dominant else self.step_height
         advance_start = min(self.swing_advance_end_phase - 0.10, self.lift_start_phase + 0.10)
-        for k in range(self.n_s):
-            alpha = k / max(self.n_s - 1, 1)
+        for k in range(self._step_frames):
+            alpha = k / max(self._step_frames - 1, 1)
             swing_t = self._phase_progress(alpha, self.lift_start_phase, advance_end)
 
             lift_factor = self._lift_profile(alpha)
@@ -548,7 +552,7 @@ class DynamicWalkingEngine:
             and swing_leg_now in ("left", "right")
         )
         prepare = self._phase_progress(
-            (self.n_s - 1 - len(self.zmp_y_queue)) / max(1, self.n_s - 1),
+            (self._step_frames - 1 - len(self.zmp_y_queue)) / max(1, self._step_frames - 1),
             0.0, self.lift_start_phase,
         )
         if phase_mode_now == "idle":
@@ -604,10 +608,15 @@ class DynamicWalkingEngine:
             pose[13] += lean_pwm
             pose[20] -= lean_pwm
         if phase_mode_now != "idle" and self.arm_forward_pwm:
+            # Faster sidesteps must not also accelerate the shoulder entry.
+            arm_prepare = self._phase_progress(
+                (self._step_frames - 1 - len(self.zmp_y_queue)) / max(1, self.n_s - 1),
+                0.0, self.lift_start_phase,
+            )
             for sid, direction in ((11, -1), (22, 1)):
                 target = STANDING[sid] + direction * self.arm_forward_pwm
                 start = self.step_start_pose[sid]
-                pose[sid] = round(start + (target - start) * prepare)
+                pose[sid] = round(start + (target - start) * arm_prepare)
         self.prev_pose = pose
         return pose
 
