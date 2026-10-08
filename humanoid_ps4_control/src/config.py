@@ -209,7 +209,7 @@ class Config:
     fall_trigger_frames: int = 2
     fall_reset_tilt_deg: float = 8.0
     fall_reset_frames: int = 12
-    fall_arm_forward_pwm: int = 700
+    fall_arm_forward_pwm: int = 1000  # Shoulder swing: nominal 90 degrees forward
 
     # --- Sensor Feedback ---
     sensor_port: str = "auto"
