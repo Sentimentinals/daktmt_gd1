@@ -32,6 +32,7 @@ def run_manual(
         max_side_step_len=args.walk_side_length_mm,
         side_swing_tempo=args.side_swing_tempo,
         side_step_time_s=args.walk_side_step_time_s,
+        turn_step_time_s=args.walk_turn_step_time_s,
         step_height=args.walk_step_height_mm,
         hip_out_deg=args.walk_hip_out_deg,
         crouch_depth_mm=args.walk_crouch_depth_mm,

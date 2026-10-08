@@ -166,10 +166,12 @@ class DynamicWalkingEngine:
         hip_out_deg: float = 0.0,
         side_swing_tempo: float = 1.0,
         side_step_time_s: float | None = None,
+        turn_step_time_s: float | None = None,
     ) -> None:
         self.dt = dt
         self.n_s = max(1, round(step_time_s / dt))
         self.side_n_s = self.n_s if side_step_time_s is None else max(1, round(side_step_time_s / dt))
+        self.turn_n_s = self.n_s if turn_step_time_s is None else max(1, round(turn_step_time_s / dt))
         self.settle_frames = max(1, round(settle_time_s / dt))
 
         self.zc = ROBOT["com_height"]
@@ -298,7 +300,7 @@ class DynamicWalkingEngine:
 
         side_dominant = abs(side_len) > 0.1 and abs(side_len) >= abs(step_len) + abs(turn_len)
         turn_dominant = abs(turn_len) > 0.1 and abs(step_len) < 0.1 and abs(side_len) < 0.1
-        self._step_frames = self.side_n_s if side_dominant else self.n_s
+        self._step_frames = self.side_n_s if side_dominant else self.turn_n_s if turn_dominant else self.n_s
         if side_dominant:
             base_L[0] = base_R[0] = 0.0
             self.zmp_ctrl_x.reset()
@@ -608,7 +610,7 @@ class DynamicWalkingEngine:
             pose[13] += lean_pwm
             pose[20] -= lean_pwm
         if phase_mode_now != "idle" and self.arm_forward_pwm:
-            # Faster sidesteps must not also accelerate the shoulder entry.
+            # Faster side/turn steps must not also accelerate the shoulder entry.
             arm_prepare = self._phase_progress(
                 (self._step_frames - 1 - len(self.zmp_y_queue)) / max(1, self.n_s - 1),
                 0.0, self.lift_start_phase,

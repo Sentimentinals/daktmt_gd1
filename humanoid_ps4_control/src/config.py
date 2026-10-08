@@ -77,6 +77,7 @@ class Config:
     walk_side_length_mm: float = 18.15
     walk_step_time_s: float = 1.725
     walk_side_step_time_s: float = 0.69
+    walk_turn_step_time_s: float = 1.015
     walk_settle_time_s: float = 0.81
     side_swing_tempo: float = 2.25
     # Shared leg geometry/profile; autonomous modes use shorter, slower steps.
@@ -89,7 +90,7 @@ class Config:
     walk_lift_end_phase: float = 0.86
     zmp_support_ratio: float = 0.80
     ankle_roll_gain: float = -1.00
-    walk_arm_forward_pwm: int = 500  # Nominal 45 degrees forward, held while walking
+    walk_arm_forward_pwm: int = 167  # Nominal 15 degrees forward, held while walking
     auto_step_time_s: float = 1.26
     auto_settle_time_s: float = 1.47
 
