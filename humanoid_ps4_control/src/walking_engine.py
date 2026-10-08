@@ -132,9 +132,9 @@ class SquatEngine:
             self._arm_blend = self._start_arm_blend * (1.0 - progress * progress * (3.0 - 2.0 * progress))
         if not self.active:
             return dict(STANDING)
-        # Advance the torso while bending both knees, with fixed floor targets.
+        # Lower both hips with fixed feet and one shared progress curve.
         pose = compute_pose(
-            self.forward_mm * depth_ratio * (2.0 - depth_ratio),
+            self.forward_mm * depth_ratio,
             0.0, *self._feet,
             com_z=ROBOT["com_height"] - self.depth_mm,
         ) if self.depth_mm > 0.1 else dict(STANDING)

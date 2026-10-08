@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from src.camera import HeadlessCamera
-from src.config import Config, STANDING
+from src.config import Config, DIR, PWM_PER_DEG, ROBOT, STAND_ANG, STANDING
 from src.fall_safety import PriorityBackend
 from src.gait_dashboard import GaitDashboard, WebControlState
 from src.imu_bno055 import IMUReading
@@ -15,6 +15,7 @@ from src.sensors import DepthReading, SensorSnapshot
 from src.stair_main import run_terrain_auto
 from src.stair_motion import StairStepEngine
 from src.stair_perception import StairDetection, StairDetector, StairFrame, StairGeometry, estimate_stair_geometry
+from src.walking_engine import SquatEngine, compute_pose
 
 
 def stepper():
@@ -369,6 +370,85 @@ class TerrainRuntimeTests(unittest.TestCase):
         with patch('src.stair_main.StairDetector'), patch('src.stair_main.time.sleep'):
             run_terrain_auto(Config(), dashboard, Mock(), backend, None, safety)
         self.assertTrue(dashboard.control_state('manual').reset)
+
+
+class SquatTests(unittest.TestCase):
+    def engine(self, **overrides):
+        c = Config()
+        params = dict(dt=c.update_ms / 1000, depth_mm=c.manual_squat_depth_mm,
+                      forward_mm=c.manual_squat_forward_mm,
+                      arm_forward_pwm=c.manual_squat_arm_forward_pwm,
+                      arm_raise_s=c.manual_squat_arm_raise_s,
+                      transition_s=c.manual_squat_transition_s)
+        return SquatEngine(**{**params, **overrides})
+
+    def test_arms_raise_before_legs_lower(self):
+        e = self.engine()
+        e.toggle()
+        for _ in range(math.floor(e.arm_raise_s / e.dt)):
+            p = e.update()
+            self.assertEqual(e.depth_mm, 0)
+            self.assertTrue(all(p[sid] == STANDING[sid] for sid in DIR))
+        self.assertLess(p[11], STANDING[11])
+        self.assertGreater(p[22], STANDING[22])
+
+    def test_symmetric_deep_squat_keeps_floor_targets_and_pitch_compensation(self):
+        e = self.engine()
+        e.toggle()
+        previous = dict(STANDING)
+        for _ in range(math.ceil((e.arm_raise_s + e.transition_s) / e.dt) + 2):
+            p = e.update()
+            self.assertTrue(all(500 <= v <= 2500 for v in p.values()))
+            for left, right in ((13, 20), (14, 19), (15, 18)):
+                self.assertEqual(p[left] + p[right], STANDING[left] + STANDING[right])
+                self.assertLessEqual(abs(p[left] - previous[left]), 35)
+            for sid in (12, 16, 17, 21):
+                self.assertEqual(p[sid], STANDING[sid])
+            angles = [STAND_ANG[name] + (p[sid] - STANDING[sid]) / PWM_PER_DEG
+                      for name, sid in (('L_hip_pitch', 13), ('L_knee', 14), ('L_ankle', 15))]
+            self.assertAlmostEqual(angles[1], angles[0] + angles[2], delta=0.14)
+            if e.depth_mm > 0.1:
+                hip, knee = map(math.radians, angles[:2])
+                x = e.forward_mm * e.depth_mm / e.max_depth_mm
+                x += ROBOT['upper_leg'] * math.sin(hip) + ROBOT['lower_leg'] * math.sin(hip - knee)
+                z = ROBOT['com_height'] - e.depth_mm
+                z -= ROBOT['upper_leg'] * math.cos(hip) + ROBOT['lower_leg'] * math.cos(hip - knee)
+                self.assertAlmostEqual(x, 0, delta=0.5)
+                self.assertAlmostEqual(z, 0, delta=0.5)
+            previous = p
+        self.assertEqual(e.depth_mm, Config.manual_squat_depth_mm)
+        self.assertEqual(e.phase, 'squat-hold')
+        np.testing.assert_array_equal(e._feet, [[0, -ROBOT['half_hip'], 0], [0, ROBOT['half_hip'], 0]])
+        for _ in range(10):
+            self.assertEqual(e.update(), p)
+
+    def test_forward_offset_uses_the_same_progress_as_depth(self):
+        e = self.engine(forward_mm=20)
+        e.toggle()
+        with patch('src.walking_engine.compute_pose', wraps=compute_pose) as solve:
+            for _ in range(math.ceil((e.arm_raise_s + e.transition_s) / e.dt)):
+                e.update()
+                if e.depth_mm > 0.1:
+                    self.assertAlmostEqual(solve.call_args.args[0], 20 * e.depth_mm / e.max_depth_mm)
+
+    def test_toggle_and_reset_return_exact_standing(self):
+        for elapsed in (0.1, 0.6, 1.5, 3.0):
+            with self.subTest(elapsed=elapsed):
+                e = self.engine()
+                e.toggle()
+                for _ in range(math.ceil(elapsed / e.dt)):
+                    e.update()
+                e.toggle()
+                for _ in range(math.ceil((e.arm_raise_s + e.transition_s) / e.dt) + 2):
+                    p = e.update()
+                    self.assertTrue(all(500 <= v <= 2500 for v in p.values()))
+                self.assertEqual(p, STANDING)
+                self.assertFalse(e.active)
+                e.toggle()
+                for _ in range(40):
+                    e.update()
+                e.reset()
+                self.assertEqual(e.update(), STANDING)
 
 
 if __name__ == '__main__':
