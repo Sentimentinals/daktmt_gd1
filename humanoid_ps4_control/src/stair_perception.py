@@ -81,17 +81,18 @@ class StairDetector:
 
         model_detection = self._detect_model(frame) if self._net is not None else None
         line_detection = self._detect_lines(frame)
+        # Model confidence alone is not evidence of visible tread edges.
+        detection = line_detection
         if model_detection is not None and line_detection is not None:
             overlap = self._box_iou(model_detection.box, line_detection.box)
-            confidence = min(0.99, model_detection.confidence + 0.12 * overlap)
-            detection = StairDetection(
-                box=model_detection.box,
-                confidence=confidence,
-                center_error=model_detection.center_error,
-                source="model+lines",
-            )
-        else:
-            detection = model_detection or line_detection
+            if overlap > 0.0:
+                confidence = min(0.99, model_detection.confidence + 0.12 * overlap)
+                detection = StairDetection(
+                    box=model_detection.box,
+                    confidence=confidence,
+                    center_error=model_detection.center_error,
+                    source="model+lines",
+                )
 
         stairs = (detection,) if detection is not None else ()
         self._last = StairFrame(stairs, captured_at)

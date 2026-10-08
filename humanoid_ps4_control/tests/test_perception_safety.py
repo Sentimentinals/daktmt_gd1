@@ -108,6 +108,25 @@ class DetectionTests(unittest.TestCase):
             self.assertIsNone(d._detect_model(self.image))
         self.assertFalse(d.model_ready)
 
+    def test_stair_model_needs_overlapping_tread_edges(self):
+        d = StairDetector.__new__(StairDetector)
+        d.detect_every_frames, d._frame_count = 1, 0
+        d._last, d._net = StairFrame(), Mock()
+        model = StairDetection((20, 100, 140, 230), .9, -.5, 'model')
+        d._detect_model = Mock(return_value=model)
+        matching = StairDetection((30, 150, 130, 220), .6, -.5, 'lines')
+        disjoint = StairDetection((180, 150, 300, 220), .6, .5, 'lines')
+        for lines, source in ((None, None), (disjoint, 'lines'), (matching, 'model+lines')):
+            with self.subTest(source=source):
+                d._detect_lines = Mock(return_value=lines)
+                frame = d.detect(self.image, captured_at=10)
+                self.assertEqual(frame.captured_at, 10)
+                if source is None:
+                    self.assertFalse(frame.stairs)
+                else:
+                    self.assertEqual(frame.primary_stair.source, source)
+                    self.assertEqual(frame.primary_stair.box, model.box if source == 'model+lines' else lines.box)
+
     def test_camera_passes_capture_timestamp_to_detector(self):
         c = HeadlessCamera(320, 240, 12)
         c._detection_frame, c._frame_at, c._detection_sequence = self.image, 10.0, 1
