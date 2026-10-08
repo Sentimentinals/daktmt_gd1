@@ -293,7 +293,7 @@ cơ khí đã xác nhận của mọi khớp.
 | `walk_lift_end_phase` | 0.86 | Kết thúc hạ chân ở 86%; phần còn lại chuyển tải sau tiếp đất |
 | `zmp_support_ratio` | 0.80 | Biên độ dịch tải ngang theo nửa khoảng cách hông; tăng thì chuyển tải mạnh hơn |
 | `ankle_roll_gain` | -1.00 | Hệ số và chiều bù cổ chân ngang; tăng trị tuyệt đối để bù nhiều hơn, không tự đảo dấu |
-| `arm_swing_pwm` | 50 | Biên độ đánh tay khi Manual walking; `0` tắt đánh tay |
+| `walk_arm_forward_pwm` | 500 | Hai vai giữ ra trước khoảng 45 độ khi Manual walking; `0` giữ tay standing |
 | `auto_step_time_s` | 1.26 | Thời gian bước Follow và bước tiếp cận cầu thang; giảm để nhanh hơn |
 | `auto_settle_time_s` | 1.47 | Thời gian các engine tự động về standing sau bước cuối |
 | `person_follow_step_length_mm` | 8.64 | Sải tiến tối đa khi Follow; lệnh thực tế có thể nhỏ hơn theo ToF |
@@ -317,8 +317,8 @@ Phạm vi cần phân biệt:
   một `side_speed` khác. Đích bàn chân không nâng Z; chân đi trước mở ra, chân sau kéo theo.
 - Quay thuần dùng `0.45 * walk_step_height_mm`, hiện là **26.208 mm** độ nâng mục tiêu.
   Không suy ra một bước quay được bao nhiêu độ trên sàn chỉ từ `walk_turn_length_mm`.
-- Tay khi đi ngang dùng `round(0.55 * arm_swing_pwm)`; Follow và tiếp cận cầu thang
-  truyền `arm_swing_pwm=0`, nên chỉnh đánh tay Manual không bật tay ở hai mode đó.
+- Tay Manual lên trong đoạn chuẩn bị trước lift, giữ cố định khi tiến/lùi/quay/ngang,
+  rồi về standing khi dừng. Follow và tiếp cận cầu thang giữ tư thế tay standing.
 - Mốc lift bị ràng buộc trong engine: start 0..0.40, end không quá 0.95 và phải sau
   start ít nhất 0.20; mốc đưa chân tới nằm giữa start + 0.10 và end - 0.05.
   Đừng đặt các mốc chồng nhau rồi kỳ vọng code dùng nguyên giá trị nhập.
@@ -352,7 +352,6 @@ Thông số thuật toán cấp thấp, không phải nút chỉnh lực thông 
 | `walking_engine.py`: hệ số lift khi quay | 0.45 | Chỉ dùng quay thuần; quay kết hợp tiến/lùi vẫn dùng lift đầy đủ |
 | `walking_engine.py`: độ trễ đưa chân tiến | `min(lift start + 0.10, advance end - 0.10)` | Bắt đầu đưa chân tới sau khi lift đã bắt đầu |
 | `walking_engine.py`: ngưỡng sẵn sàng ngang phối hợp | lift factor / 0.45 | Điều tiết ngang khi đồng thời tiến/quay; không dùng cho ngang thuần |
-| `walking_engine.py`: tay ngang | 0.55 | `round(0.55 * arm_swing_pwm)`, hiện 28 us |
 | `walking_engine.py`: chọn chân trụ từ ZMP | ±0.5 * half_hip | Hiện ±14 mm so với tâm hai chân; khi đang swing vẫn giữ chân đối diện làm trụ |
 | `walking_engine.py`: khoảng cách chân ngang tối thiểu | 2 * half_hip | Hiện 56 mm; chặn chân sau kéo vượt qua chân trước |
 | `zmp_controller.py`: `g` | 9800 mm/s² | Gia tốc trọng trường trong mô hình, không phải lực servo |

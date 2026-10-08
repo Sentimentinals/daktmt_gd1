@@ -40,7 +40,7 @@ def run_manual(
         lift_start_phase=args.walk_lift_start_phase,
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,
-        arm_swing_pwm=args.arm_swing_pwm,
+        arm_forward_pwm=args.walk_arm_forward_pwm,
     )
     arm_dance = ArmDanceEngine(
         dt=args.update_ms / 1000.0,

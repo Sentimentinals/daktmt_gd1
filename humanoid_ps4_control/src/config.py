@@ -88,7 +88,7 @@ class Config:
     walk_lift_end_phase: float = 0.86
     zmp_support_ratio: float = 0.80
     ankle_roll_gain: float = -1.00
-    arm_swing_pwm: int = 50
+    walk_arm_forward_pwm: int = 500  # Nominal 45 degrees forward, held while walking
     auto_step_time_s: float = 1.26
     auto_settle_time_s: float = 1.47
 

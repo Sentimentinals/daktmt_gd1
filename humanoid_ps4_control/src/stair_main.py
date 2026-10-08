@@ -34,7 +34,6 @@ def run_terrain_auto(
         step_height=24.0,
         zmp_support_ratio=args.zmp_support_ratio,
         ankle_roll_gain=args.ankle_roll_gain,
-        arm_swing_pwm=0,
     )
     stepper = StairStepEngine(
         clearance_mm=args.stair_foot_clearance_mm,

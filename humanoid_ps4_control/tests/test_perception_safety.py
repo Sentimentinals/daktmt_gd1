@@ -29,6 +29,76 @@ def stepper():
     )
 
 
+class WalkingArmTests(unittest.TestCase):
+    def engine(self, arm_pwm=None):
+        from src.walking_engine import DynamicWalkingEngine
+        c = Config()
+        return DynamicWalkingEngine(
+            dt=c.update_ms / 1000, step_time_s=c.walk_step_time_s,
+            settle_time_s=c.walk_settle_time_s, max_step_len=c.walk_step_length_mm,
+            max_turn_step_len=c.walk_turn_length_mm, max_side_step_len=c.walk_side_length_mm,
+            step_height=c.walk_step_height_mm, side_swing_tempo=c.side_swing_tempo,
+            lift_start_phase=c.walk_lift_start_phase,
+            swing_advance_end_phase=c.walk_swing_advance_end_phase,
+            lift_end_phase=c.walk_lift_end_phase,
+            arm_forward_pwm=c.walk_arm_forward_pwm if arm_pwm is None else arm_pwm,
+        )
+
+    def test_arms_raise_once_hold_across_steps_and_return_to_standing(self):
+        c = Config()
+        target = (STANDING[11] - c.walk_arm_forward_pwm, STANDING[22] + c.walk_arm_forward_pwm)
+        for command in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0),
+                        (0, 0, 1), (0, 0, -1)):
+            with self.subTest(command=command):
+                e, previous = self.engine(), (STANDING[11], STANDING[22])
+                reached = False
+                for _ in range(e.n_s * 4):
+                    pose = e.update(*command)
+                    arms = (pose[11], pose[22])
+                    self.assertTrue(all(500 <= value <= 2500 for value in pose.values()))
+                    self.assertLessEqual(max(abs(a - b) for a, b in zip(arms, previous)), 45)
+                    self.assertLessEqual(arms[0], previous[0])
+                    self.assertGreaterEqual(arms[1], previous[1])
+                    if reached or e.last_lift_factor > 0:
+                        self.assertEqual(arms, target)
+                    reached = reached or arms == target
+                    previous = arms
+                self.assertTrue(reached)
+                for _ in range(e.settle_frames + 2):
+                    pose = e.update(0)
+                    arms = (pose[11], pose[22])
+                    self.assertGreaterEqual(arms[0], previous[0])
+                    self.assertLessEqual(arms[1], previous[1])
+                    previous = arms
+                self.assertEqual(pose, STANDING)
+                self.assertTrue(e.is_idle_ready())
+                e.reset()
+                self.assertEqual(e.update(0), STANDING)
+
+    def test_default_disabled_arms_do_not_change_autonomous_postures(self):
+        e = self.engine(arm_pwm=0)
+        for command in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)):
+            for _ in range(e.n_s * 2):
+                pose = e.update(*command)
+                self.assertEqual((pose[11], pose[22]), (STANDING[11], STANDING[22]))
+
+    def test_fall_overrides_fixed_walking_arms(self):
+        e = self.engine()
+        for _ in range(e.n_s):
+            pose = e.update(1)
+        raw = Mock()
+        backend = PriorityBackend(raw, Config.fall_arm_forward_pwm)
+        backend.send(pose, duration_ms=30)
+        backend.trigger_fall(30)
+        protected = backend.current_pose
+        self.assertLess(protected[11], pose[11])
+        self.assertGreater(protected[22], pose[22])
+        backend.send(e.update(1), duration_ms=30)
+        self.assertEqual(raw.send.call_args.args[0], protected)
+        backend.release_fall(250, return_to_standing=True)
+        self.assertEqual(backend.current_pose, STANDING)
+
+
 class DetectionTests(unittest.TestCase):
     def setUp(self):
         import cv2

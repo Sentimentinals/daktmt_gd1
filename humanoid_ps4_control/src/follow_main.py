@@ -44,7 +44,6 @@ def run_follow(
         lift_start_phase=args.walk_lift_start_phase,
         swing_advance_end_phase=args.walk_swing_advance_end_phase,
         lift_end_phase=args.walk_lift_end_phase,
-        arm_swing_pwm=0,
     )
     obstacle_planner = PersonObstaclePlanner(
         stop_distance_mm=args.tof_obstacle_stop_mm,

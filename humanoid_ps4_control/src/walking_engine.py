@@ -162,7 +162,7 @@ class DynamicWalkingEngine:
         swing_advance_end_phase: float = 0.60,
         lift_end_phase: float = 0.86,
         command_deadzone: float = 0.02,
-        arm_swing_pwm: int = 0,
+        arm_forward_pwm: int = 0,
         hip_out_deg: float = 0.0,
         side_swing_tempo: float = 1.0,
     ) -> None:
@@ -186,7 +186,7 @@ class DynamicWalkingEngine:
             min(self.lift_end_phase - 0.05, swing_advance_end_phase),
         )
         self.command_deadzone = command_deadzone
-        self.arm_swing_pwm = int(arm_swing_pwm)
+        self.arm_forward_pwm = max(0, int(arm_forward_pwm))
         self.preview_steps = 24
 
         self.zmp_ctrl = ZMPPreviewController(dt=dt, zc=self.zc, preview_steps=self.preview_steps)
@@ -207,7 +207,6 @@ class DynamicWalkingEngine:
         self.body_lean_queue: Deque[float] = deque()
         self.foot_L_queue: Deque[np.ndarray] = deque()
         self.foot_R_queue: Deque[np.ndarray] = deque()
-        self.arm_queue: Deque[tuple[int, int]] = deque()
         self.swing_leg_queue: Deque[str] = deque()
         self.support_load_queue: Deque[float] = deque()
         self.lift_factor_queue: Deque[float] = deque()
@@ -248,8 +247,6 @@ class DynamicWalkingEngine:
             return False
         if any(abs(lean) > tolerance for lean in self.body_lean_queue) or abs(self.last_body_lean) > tolerance:
             return False
-        if any(delta != (0, 0) for delta in self.arm_queue):
-            return False
         if any(swing_leg != "none" for swing_leg in self.swing_leg_queue):
             return False
         if any(lift_factor > tolerance for lift_factor in self.lift_factor_queue):
@@ -260,7 +257,7 @@ class DynamicWalkingEngine:
             return False
         if any(abs(side_len) > tolerance for side_len in self.side_len_queue):
             return False
-        if any(abs(self.prev_pose[sid] - STANDING[sid]) > 3 for sid in DIR):
+        if any(abs(self.prev_pose[sid] - STANDING[sid]) > 3 for sid in (*DIR, 11, 22)):
             return False
         return self.zmp_ctrl.is_settled() and self.zmp_ctrl_x.is_settled()
 
@@ -288,7 +285,6 @@ class DynamicWalkingEngine:
                 self.body_lean_queue.append(lean_start * (1.0 - stand_t))
                 self.foot_L_queue.append(neutral_L.copy())
                 self.foot_R_queue.append(neutral_R.copy())
-                self.arm_queue.append((0, 0))
                 self.swing_leg_queue.append("none")
                 self.support_load_queue.append(stand_t)
                 self.lift_factor_queue.append(0.0)
@@ -343,7 +339,6 @@ class DynamicWalkingEngine:
         stance_y = current_center_y + support_sign * support_y_offset
         next_stance_y = next_center_y - support_sign * support_y_offset
 
-        current_arm_delta = self._side_arm_offsets() if side_dominant else self._arm_offsets(swing_is_left)
         target_x = stance_x
         if side_dominant:
             swing_distance = 0.0
@@ -404,7 +399,6 @@ class DynamicWalkingEngine:
             else:
                 self.foot_L_queue.append(np.array([base_L[0], base_L[1], base_L[2]]))
                 self.foot_R_queue.append(np.array([base_R[0] + swing_x_travel, base_R[1] + swing_y_travel, z]))
-            self.arm_queue.append(current_arm_delta)
             self.swing_leg_queue.append(planned_swing_leg)
             self.support_load_queue.append(support_load * (1.0 - release_t))
             self.lift_factor_queue.append(lift_factor)
@@ -456,34 +450,10 @@ class DynamicWalkingEngine:
             return self._phase_progress(phase, self.lift_start_phase, self.swing_advance_end_phase)
         return 1.0 - self._phase_progress(phase, self.swing_advance_end_phase, self.lift_end_phase)
 
-    def _arm_offsets(self, swing_is_left: bool) -> tuple[int, int]:
-        if self.arm_swing_pwm <= 0:
-            return 0, 0
-
-        envelope = self.arm_swing_pwm
-        right_arm = envelope if swing_is_left else -envelope
-        left_arm = -right_arm
-        return right_arm, left_arm
-
-    def _side_arm_offsets(self) -> tuple[int, int]:
-        if self.arm_swing_pwm <= 0:
-            return 0, 0
-
-        front = round(self.arm_swing_pwm * 0.55)
-        return front, -front
-
     @staticmethod
     def _phase_curve(t: float) -> float:
         t = max(0.0, min(1.0, t))
         return t * t * (3.0 - 2.0 * t)
-
-    def _apply_arm_swing(self, pose: dict[int, int], arm_delta: tuple[int, int]) -> dict[int, int]:
-        if self.arm_swing_pwm <= 0:
-            return pose
-
-        pose[22] = STANDING[22] + arm_delta[0]
-        pose[11] = STANDING[11] - arm_delta[1]
-        return pose
 
     def update(
         self,
@@ -527,7 +497,6 @@ class DynamicWalkingEngine:
         body_lean_now = self.body_lean_queue.popleft()
         foot_L_now = self.foot_L_queue.popleft()
         foot_R_now = self.foot_R_queue.popleft()
-        arm_delta_now = self.arm_queue.popleft()
         swing_leg_now = self.swing_leg_queue.popleft()
         support_load_now = self.support_load_queue.popleft()
         lift_factor_now = self.lift_factor_queue.popleft()
@@ -578,6 +547,10 @@ class DynamicWalkingEngine:
             abs(side_len_now) > 0.1
             and swing_leg_now in ("left", "right")
         )
+        prepare = self._phase_progress(
+            (self.n_s - 1 - len(self.zmp_y_queue)) / max(1, self.n_s - 1),
+            0.0, self.lift_start_phase,
+        )
         if phase_mode_now == "idle":
             pose = {
                 sid: round(start + (STANDING[sid] - start) * support_load_now)
@@ -624,17 +597,17 @@ class DynamicWalkingEngine:
             for sid in (12, 16, 17, 21):
                 pose[sid] += round(DIR[sid] * PWM_PER_DEG * self.hip_out_deg)
             if self.hip_out_deg or any(self.step_start_pose[sid] != STANDING[sid] for sid in (12, 21)):
-                prepare = self._phase_progress(
-                    (self.n_s - 1 - len(self.zmp_y_queue)) / max(1, self.n_s - 1), 0.0, self.lift_start_phase,
-                )
                 for sid in (12, 16, 17, 21):
                     pose[sid] = round(self.step_start_pose[sid] + (pose[sid] - self.step_start_pose[sid]) * prepare)
         if body_lean_now > 0.0 and phase_mode_now != "idle" and not side_active:
             lean_pwm = round(body_lean_now * PWM_PER_DEG)
             pose[13] += lean_pwm
             pose[20] -= lean_pwm
-        if phase_mode_now != "idle":
-            pose = self._apply_arm_swing(pose, arm_delta_now)
+        if phase_mode_now != "idle" and self.arm_forward_pwm:
+            for sid, direction in ((11, -1), (22, 1)):
+                target = STANDING[sid] + direction * self.arm_forward_pwm
+                start = self.step_start_pose[sid]
+                pose[sid] = round(start + (target - start) * prepare)
         self.prev_pose = pose
         return pose
 
