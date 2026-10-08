@@ -178,6 +178,7 @@ class RobotSensorHub:
         foot_fsr_filter_alpha: float = 0.18,
         foot_fsr_zero_raw: int = 0,
         foot_fsr_full_raw: int = 4095,
+        log_depth: bool = False,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
@@ -186,6 +187,7 @@ class RobotSensorHub:
         self.use_imu = use_imu
         self.use_foot_fsr = use_foot_fsr
         self.use_depth = use_depth
+        self.log_depth = log_depth
         self.imu_roll_sign = imu_roll_sign
         self.imu_pitch_sign = imu_pitch_sign
         self.imu_yaw_sign = imu_yaw_sign
@@ -233,7 +235,23 @@ class RobotSensorHub:
         self._thread.start()
 
     def _read_loop(self) -> None:
+        next_depth_log = 0.0
         while not self._stop.is_set():
+            now = time.monotonic()
+            if self.log_depth and self.use_depth and now >= next_depth_log:
+                depth = self.read().depth
+                if depth is None:
+                    print("[tof] WAIT: no fresh 64-zone packet from ESP32.", flush=True)
+                else:
+                    valid = sum(20 <= value <= 4000 for value in depth.distances_mm)
+                    print(
+                        f"[tof] center={depth.center_distance_mm or '--'}mm "
+                        f"nearest={depth.front_distance_mm or '--'}mm "
+                        f"obstacle={depth.obstacle_distance_mm or '--'}mm "
+                        f"valid={valid}/64",
+                        flush=True,
+                    )
+                next_depth_log = now + 1.0
             if self._serial is None:
                 try:
                     self._serial = self._connect_serial()

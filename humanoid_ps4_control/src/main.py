@@ -325,6 +325,7 @@ def main() -> None:
             use_imu=args.sensor_use_imu or args.fall_detection_enabled,
             use_foot_fsr=args.sensor_use_foot_fsr,
             use_depth=args.sensor_use_depth,
+            log_depth=True,
             imu_roll_sign=args.imu_roll_sign,
             imu_pitch_sign=args.imu_pitch_sign,
             imu_yaw_sign=args.imu_yaw_sign,
