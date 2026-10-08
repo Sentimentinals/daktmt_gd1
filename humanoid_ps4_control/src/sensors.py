@@ -251,7 +251,7 @@ class RobotSensorHub:
                         f"valid={valid}/64",
                         flush=True,
                     )
-                next_depth_log = now + 1.0
+                next_depth_log = now + 2.0
             if self._serial is None:
                 try:
                     self._serial = self._connect_serial()

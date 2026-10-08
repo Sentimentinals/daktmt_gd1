@@ -59,8 +59,13 @@ def run_follow(
         stable_frames=args.person_detect_stable_frames,
     )
     previous_fall_active = fall_safety.active
+    next_tof_log = 0.0
+    previous_hold = None
+    previous_depth_logging = sensor_hub.log_depth if sensor_hub is not None else False
 
     try:
+        if sensor_hub is not None:
+            sensor_hub.log_depth = False
         with backend:
             try:
                 dashboard.set_runtime("follow", "Follow ready")
@@ -101,14 +106,16 @@ def run_follow(
                             print("[follow] Stopped at STANDING.")
                     snapshot = sensor_hub.read() if sensor_hub is not None else None
                     depth = snapshot.depth if snapshot is not None else None
+                    distance_mm = depth.front_distance_mm if depth is not None else None
 
                     forward = 0.0
                     turn = 0.0
                     status = "FOLLOW READY"
+                    kind = "UNKNOWN"
+                    stop_reason = "FOLLOW_DISABLED" if not follow.enabled else None
                     if follow.enabled:
                         frame = camera.person_frame() or PersonFrame()
                         perception_at = time.monotonic()
-                        distance_mm = depth.front_distance_mm if depth is not None else None
                         distance_sample_id = depth.sensor_time_ms if depth is not None else None
                         kind = association.update(frame, depth, now_s=perception_at)
                         forward, turn, status = follow.command(
@@ -123,15 +130,18 @@ def run_follow(
                             forward = 0.0
                             turn = 0.0
                             status = f"TARGET #{follow.target_id} WAIT CAMERA/TARGET"
+                            stop_reason = "CAMERA/TARGET_LOST"
                         elif distance_mm is None:
                             obstacle_planner.reset()
                             forward = turn = 0.0
                             status = f"TARGET #{follow.target_id} TOF WAIT"
+                            stop_reason = "TOF_UNAVAILABLE"
                         elif (distance_mm <= args.tof_obstacle_stop_mm
                               and kind != "OBJECT"):
                             obstacle_planner.reset()
                             forward = turn = 0.0
                             status = f"TARGET #{follow.target_id} WAIT {kind} | TOF {distance_mm} MM"
+                            stop_reason = f"{kind}_TOO_CLOSE"
                         else:
                             # Only confirmed non-person evidence may override a close-range HOLD.
                             if " HOLD " in status and kind == "OBJECT":
@@ -143,10 +153,22 @@ def run_follow(
                             )
                             if avoid_status is not None:
                                 status = f"TARGET #{follow.target_id} | {avoid_status}"
+                            if avoid_status == "AVOID BLOCKED":
+                                stop_reason = "NO_CLEAR_CORRIDOR"
+                            elif avoid_status == "AVOID TOF WAIT":
+                                stop_reason = "TOF_CORRIDOR_INVALID"
+                            elif (
+                                forward == 0.0 and obstacle_planner.direction
+                                and distance_mm <= obstacle_planner.stop_distance_mm
+                            ):
+                                stop_reason = "OBSTACLE_TOO_CLOSE"
+                            elif forward == 0.0 and turn == 0.0:
+                                stop_reason = "DISTANCE_HOLD"
 
                     if camera.detection_error:
                         forward = turn = 0.0
                         status = f"PERSON DETECT UNAVAILABLE: {camera.detection_error}"
+                        stop_reason = "CAMERA_UNAVAILABLE"
 
                     if follow.enabled or not engine.is_idle_ready():
                         pose = engine.update(forward, turn_cmd=turn)
@@ -162,12 +184,46 @@ def run_follow(
                             association.reset()
                         pose = backend.current_pose
                         status = f"FALL: {fall_safety.reason}"
+                        stop_reason = "FALL_SAFETY"
                     elif previous_fall_active:
                         pose = dict(STANDING)
                         status = "UPRIGHT - ARMS RETURNED"
                     previous_fall_active = fall_active
                     pose[25] = STANDING[25]
                     backend.send(pose, duration_ms=args.update_ms)
+                    if fall_active:
+                        motion = "FALL HOLD"
+                    elif not follow.enabled:
+                        motion = "IDLE"
+                    elif forward == 0.0 and turn == 0.0:
+                        motion = "STOPPED" if engine.is_idle_ready() else "HOLD"
+                    elif forward == 0.0:
+                        motion = "AVOID TURN" if obstacle_planner.direction else "ALIGN TURN"
+                    else:
+                        motion = "MOVING"
+                    hold = (motion, stop_reason) if stop_reason and motion != "IDLE" else None
+                    now = time.monotonic()
+                    if now >= next_tof_log or hold != previous_hold:
+                        corridors = obstacle_planner._corridors(depth) if depth is not None else (None,) * 3
+                        ranges = "/".join(str(value) if value is not None else "--" for value in corridors)
+                        # Angular grid coverage is not a calibrated physical obstacle width.
+                        near_cols = sum(
+                            any(20 <= depth.distances_mm[row * 8 + col] <= obstacle_planner.stop_distance_mm
+                                for row in range(1, 7))
+                            for col in range(8)
+                        ) if depth is not None else "--"
+                        resuming = previous_hold is not None and hold is None and follow.enabled
+                        print(
+                            f"[follow] {'RESUME ' if resuming else ''}{motion} "
+                            f"reason={stop_reason or 'NONE'} | target={follow.target_id} kind={kind} "
+                            f"tof={distance_mm if distance_mm is not None else '--'}mm "
+                            f"stop(person/object)={follow.target_distance_mm}/{obstacle_planner.stop_distance_mm}mm "
+                            f"corridors(L/C/R)={ranges}mm clear>={obstacle_planner.side_clear_mm}mm "
+                            f"near-cols={near_cols}/8 | {status}",
+                            flush=True,
+                        )
+                        next_tof_log = now + 2.0
+                    previous_hold = hold
                     dashboard.publish(
                         pose=backend.current_pose,
                         gait=engine.telemetry_snapshot(),
@@ -193,5 +249,7 @@ def run_follow(
                     if not handling_error:
                         raise
     finally:
+        if sensor_hub is not None:
+            sensor_hub.log_depth = previous_depth_logging
         dashboard.set_runtime("idle", "Person follow stopped")
         print("[follow] Person Follow exited.")
