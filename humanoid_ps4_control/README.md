@@ -281,7 +281,7 @@ cơ khí đã xác nhận của mọi khớp.
 | `walk_step_length_mm` | 24.0 | Khoảng tiến giữa đích chân swing và chân trụ; tăng để bước dài hơn |
 | `walk_turn_length_mm` | 8.1 | Biên độ lệch bước quay Manual; là mm, không phải góc yaw |
 | `walk_side_length_mm` | 18.15 | Sải ngang Manual; tăng để chân swing mở rộng hơn |
-| `walk_step_time_s` | 0.69 | Thời gian một bước Manual; giảm để toàn bộ bước nhanh hơn |
+| `walk_step_time_s` | 1.725 | Thời gian một bước Manual; tốc độ khoảng 40% so với chu kỳ 0.69 s, giữ nguyên sải và độ nâng |
 | `walk_settle_time_s` | 0.81 | Thời gian về standing sau bước cuối; không phải tốc độ từng bước |
 | `side_swing_tempo` | 2.25 | Tăng để vung chân ngang nhanh hơn trong cùng chu kỳ; code không nhận dưới 1 |
 | `walk_step_height_mm` | 58.24 | Độ nâng mục tiêu của bước tiến/lùi; dùng chung với Follow |
