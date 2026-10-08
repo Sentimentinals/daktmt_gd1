@@ -3,6 +3,8 @@ from __future__ import annotations
 import threading
 import time
 
+from .person_follow import PERSON_FRAME_MAX_AGE_S
+
 
 class HeadlessCamera:
     def __init__(
@@ -137,12 +139,13 @@ class HeadlessCamera:
                 detector = self._detector
                 sequence = self._detection_sequence
                 frame = self._detection_frame
+                captured_at = self._frame_at
             if detector is None or frame is None or sequence == observed_sequence:
                 time.sleep(0.01)
                 continue
             observed_sequence = sequence
             try:
-                detection = detector.detect(frame)
+                detection = detector.detect(frame, captured_at=captured_at)
             except Exception as exc:
                 with self._lock:
                     if detector is not self._detector:
@@ -255,7 +258,7 @@ class HeadlessCamera:
         with self._lock:
             return (
                 self._person_frame is not None
-                and time.monotonic() - self._person_frame.captured_at < 0.8
+                and 0 <= time.monotonic() - self._person_frame.captured_at <= PERSON_FRAME_MAX_AGE_S
                 and self._person_frame.single_person is not None
                 and self._person_stable_frames >= self.stable_frames
                 and not self._person_ignored

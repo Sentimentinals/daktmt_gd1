@@ -92,7 +92,16 @@ class PersonDetector:
                 f"Person detector model missing: {prototxt} or {model}"
             )
         self._cv2 = cv2
-        self._net = cv2.dnn.readNet(str(model), str(prototxt))
+        try:
+            self._net = cv2.dnn.readNet(str(model), str(prototxt))
+        except cv2.error as exc:
+            if "Caffe importer has been removed" in str(exc):
+                raise RuntimeError(
+                    "MobileNet-SSD Caffe needs OpenCV 4.x. On Pi use "
+                    "python3-opencv from apt with system-site-packages; "
+                    "do not override it with opencv-python 5.x."
+                ) from exc
+            raise
         self.confidence = max(0.0, min(1.0, confidence))
         self.detect_every_frames = max(1, detect_every_frames)
         self._frame_count = 0
@@ -108,7 +117,7 @@ class PersonDetector:
         crop = frame[body_top:body_bottom, x1:x2]
         if crop.size == 0:
             return None
-        hsv = self._cv2.cvtColor(crop, self._cv2.COLOR_RGB2HSV)
+        hsv = self._cv2.cvtColor(crop, self._cv2.COLOR_BGR2HSV)
         histogram = self._cv2.calcHist([hsv], [0, 1], None, [8, 8], [0, 180, 0, 256])
         self._cv2.normalize(histogram, histogram)
         return histogram
@@ -200,7 +209,10 @@ class PersonDetector:
             )
         return tracked_people
 
-    def detect(self, frame) -> PersonFrame:
+    def detect(self, frame, *, captured_at: float | None = None) -> PersonFrame:
+        if frame is None or frame.ndim != 3 or frame.shape[2] != 3 or frame.size == 0:
+            raise ValueError("Person detector expects a non-empty three-channel camera frame")
+        captured_at = time.monotonic() if captured_at is None else captured_at
         self._frame_count += 1
         if self._frame_count % self.detect_every_frames:
             return self._last
@@ -239,7 +251,7 @@ class PersonDetector:
 
         people = self._assign_track_ids(people, appearances)
         people.sort(key=lambda person: person.confidence, reverse=True)
-        self._last = PersonFrame(tuple(people), time.monotonic())
+        self._last = PersonFrame(tuple(people), captured_at)
         return self._last
 
 

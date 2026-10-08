@@ -114,12 +114,7 @@ def run_terrain_auto(
 
             while True:
                 loop_started = time.monotonic()
-                control = dashboard.control_state()
-                if control.reset:
-                    stepper.reset()
-                    approach.reset()
-                    backend.send(STANDING, duration_ms=args.stop_ms, force=True)
-                    break
+                control = dashboard.control_state("terrain")
                 if not control.armed or control.mode != "terrain":
                     break
 
@@ -168,7 +163,7 @@ def run_terrain_auto(
                 stair_frame = camera.stair_frame()
                 detection = stair_frame.primary_stair if stair_frame is not None else None
                 detection_timestamp = stair_frame.captured_at if detection is not None else None
-                if stair_frame is not None and now - stair_frame.captured_at > 0.8:
+                if stair_frame is not None and not 0 <= now - stair_frame.captured_at <= 0.8:
                     detection = None
                     detection_timestamp = None
 
@@ -259,7 +254,7 @@ def run_terrain_auto(
                         pause_reason = "IMU NOT CALIBRATED"
                     elif depth is None or depth.center_distance_mm is None:
                         pause_reason = "TOF LOST"
-                    elif stair_frame is None or now - stair_frame.captured_at > 0.8:
+                    elif stair_frame is None or not 0 <= now - stair_frame.captured_at <= 0.8:
                         pause_reason = "CAMERA LOST"
                     elif max(abs(roll_delta), abs(pitch_delta)) > args.terrain_balance_limit_deg:
                         pause_reason = "TILT LIMIT"
@@ -290,7 +285,7 @@ def run_terrain_auto(
                     status = "WAITING FOR UPRIGHT IMU AND BALANCE"
                 elif enabled and detector_error:
                     status = f"STAIR VISION UNAVAILABLE | {detector_error}"
-                elif enabled and (stair_frame is None or now - stair_frame.captured_at > 0.8):
+                elif enabled and (stair_frame is None or not 0 <= now - stair_frame.captured_at <= 0.8):
                     status = "WAITING FOR LIVE CAMERA"
                 elif enabled and depth is None:
                     status = "WAITING FOR LIVE TOF"
@@ -367,6 +362,7 @@ def run_terrain_auto(
                 last_balance_at = now
                 balance_active = (
                     balance_enabled and balance is not None and imu is not None
+                    and imu.balance_ready(args.imu_min_gyro_cal, args.imu_min_accel_cal)
                     and not fall_active and not enabled and not stepper.active
                     and approach.is_idle_ready() and gait["phase"] == "terrain-wait"
                     and now >= cooldown_until

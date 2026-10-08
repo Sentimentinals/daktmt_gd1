@@ -71,9 +71,10 @@ class StairDetector:
     def model_ready(self) -> bool:
         return self._net is not None
 
-    def detect(self, frame) -> StairFrame:
-        if frame is None or frame.ndim != 3 or frame.shape[2] != 3:
-            raise ValueError("Stair detector expects a three-channel camera frame")
+    def detect(self, frame, *, captured_at: float | None = None) -> StairFrame:
+        if frame is None or frame.ndim != 3 or frame.shape[2] != 3 or frame.size == 0:
+            raise ValueError("Stair detector expects a non-empty three-channel camera frame")
+        captured_at = time.monotonic() if captured_at is None else captured_at
         self._frame_count += 1
         if self._frame_count % self.detect_every_frames:
             return self._last
@@ -93,7 +94,7 @@ class StairDetector:
             detection = model_detection or line_detection
 
         stairs = (detection,) if detection is not None else ()
-        self._last = StairFrame(stairs, time.monotonic())
+        self._last = StairFrame(stairs, captured_at)
         return self._last
 
     def _detect_model(self, frame) -> Optional[StairDetection]:
@@ -108,7 +109,7 @@ class StairDetector:
                 confidence=self.confidence,
                 iou_threshold=self.iou_threshold,
             )
-        except self._cv2.error as exc:
+        except (self._cv2.error, RuntimeError) as exc:
             self._net = None
             print(f"[stair] ONNX inference unavailable; using line detection: {exc}")
             return None
