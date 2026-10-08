@@ -248,6 +248,40 @@ def run_manual(
         print("[main] Manual web control exited.")
 
 
+def _configure_camera(args: Config, camera, mode: str) -> None:
+    # Perception follows the selected card, independently of servo authorization.
+    root = Path(__file__).resolve().parent.parent
+    try:
+        detector = None
+        stable_frames = None
+        if mode == "follow":
+            from .person_follow import PersonDetector
+
+            detector = PersonDetector(
+                prototxt_path=str((root / args.person_detect_prototxt).resolve()),
+                model_path=str((root / args.person_detect_model).resolve()),
+                confidence=args.person_detect_confidence,
+                detect_every_frames=args.person_detect_every_frames,
+            )
+            stable_frames = args.person_detect_stable_frames
+        elif mode == "terrain":
+            from .stair_perception import StairDetector
+
+            detector = StairDetector(
+                model_path=str(root / args.stair_model),
+                confidence=args.stair_model_confidence,
+                iou_threshold=args.stair_model_iou_threshold,
+                input_size=args.stair_model_input_size,
+                detect_every_frames=args.stair_detect_every_frames,
+            )
+            stable_frames = args.stair_detect_stable_frames
+        camera.set_detector(detector, stable_frames=stable_frames)
+    except Exception as exc:
+        camera.set_detector(None)
+        camera.detection_error = str(exc)
+        print(f"[vision] {mode} detector unavailable: {exc}")
+
+
 def main() -> None:
     from .camera import HeadlessCamera
     from .fall_safety import FallSafety, PriorityBackend
@@ -335,8 +369,12 @@ def main() -> None:
             print("[main] Open the dashboard from a laptop on the same LAN, then enable control.")
 
             last_idle_publish = 0.0
+            vision_mode = None
             while True:
                 state = dashboard.control_payload()
+                if state["mode"] != vision_mode:
+                    _configure_camera(args, camera, state["mode"])
+                    vision_mode = state["mode"]
                 if not state["armed"]:
                     now = time.monotonic()
                     if now - last_idle_publish >= 0.10:
@@ -346,6 +384,8 @@ def main() -> None:
                             status = "FALL DETECTED - ARMS FORWARD"
                         elif status == "FALL DETECTED - ARMS FORWARD":
                             status = "UPRIGHT - STANDING"
+                        if camera.detection_error and not fall_active:
+                            status = f"{state['mode'].upper()} VISION UNAVAILABLE: {camera.detection_error}"
                         dashboard.publish(
                             pose=backend.current_pose,
                             gait=stationary_gait("fall" if fall_active else "idle"),

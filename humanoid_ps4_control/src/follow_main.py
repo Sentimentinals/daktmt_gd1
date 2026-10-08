@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import sys
 import time
-from pathlib import Path
 
 from .config import Config, STANDING
 from .person_follow import (
-    PersonDetector,
     PersonFollowController,
     PersonFrame,
     PersonObstaclePlanner,
@@ -24,14 +22,6 @@ def run_follow(
     fall_safety,
 ) -> None:
     dashboard.set_runtime("follow", "Starting Person Follow")
-    package_root = Path(__file__).resolve().parent.parent
-    detector = PersonDetector(
-        prototxt_path=str((package_root / args.person_detect_prototxt).resolve()),
-        model_path=str((package_root / args.person_detect_model).resolve()),
-        confidence=args.person_detect_confidence,
-        detect_every_frames=args.person_detect_every_frames,
-    )
-    camera.set_detector(detector, stable_frames=args.person_detect_stable_frames)
     follow = PersonFollowController(
         turn_deadband=args.person_follow_turn_deadband,
         target_distance_mm=args.tof_obstacle_stop_mm,
@@ -155,6 +145,10 @@ def run_follow(
                             if avoid_status is not None:
                                 status = f"TARGET #{follow.target_id} | {avoid_status}"
 
+                    if camera.detection_error:
+                        forward = turn = 0.0
+                        status = f"PERSON DETECT UNAVAILABLE: {camera.detection_error}"
+
                     if follow.enabled or not engine.is_idle_ready():
                         pose = engine.update(forward, turn_cmd=turn)
                     else:
@@ -200,6 +194,5 @@ def run_follow(
                     if not handling_error:
                         raise
     finally:
-        camera.set_detector(None)
         dashboard.set_runtime("idle", "Person follow stopped")
         print("[follow] Person Follow exited.")

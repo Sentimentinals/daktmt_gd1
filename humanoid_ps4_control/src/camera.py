@@ -22,6 +22,7 @@ class HeadlessCamera:
         self._frame = None
         self._frame_at = 0.0
         self.error = None
+        self.detection_error = None
         self._frame_sequence = 0
         self._jpeg_frame = None
         self._jpeg_sequence = -1
@@ -100,6 +101,7 @@ class HeadlessCamera:
     def set_detector(self, detector, stable_frames: int | None = None) -> None:
         with self._lock:
             self._detector = detector
+            self.detection_error = None
             if stable_frames is not None:
                 self.stable_frames = max(1, stable_frames)
             self._person_frame = None
@@ -150,12 +152,22 @@ class HeadlessCamera:
                 with self._lock:
                     if detector is not self._detector:
                         continue
-                    self.set_detector(None)
-                print(f"[camera] Detection stopped: {exc}")
+                    changed = self.detection_error != str(exc)
+                    self.detection_error = str(exc)
+                    self._person_frame = self._stair_frame = None
+                    self._person_stable_frames = 0
+                    self._last_person_timestamp = None
+                    self._jpeg_sequence = -1
+                if changed:
+                    print(f"[camera] Detection retry: {exc}")
+                self._stop.wait(0.1)
                 continue
             with self._lock:
                 if detector is not self._detector:
                     continue
+                if self.detection_error and detection.captured_at != captured_at:
+                    continue
+                self.detection_error = None
                 if hasattr(detection, "people"):
                     previous = self._person_frame.single_person if self._person_frame is not None else None
                     self._person_frame = detection

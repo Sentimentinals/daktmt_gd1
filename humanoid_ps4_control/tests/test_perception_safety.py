@@ -1,7 +1,7 @@
 import math
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 
@@ -148,6 +148,72 @@ class DetectionTests(unittest.TestCase):
                 c._person_frame = PersonFrame((person,), stamp)
                 self.assertEqual(c.person_ready(), expected)
 
+    def test_detection_error_retries_and_discards_old_person(self):
+        c = HeadlessCamera(320, 240, 12)
+        c._detection_frame, c._frame_at, c._detection_sequence = self.image, 10.0, 1
+        person = PersonDetection((100, 20, 220, 230), .9, 320, 240, 1)
+        c._person_frame, c._person_stable_frames = PersonFrame((person,), 9), 3
+        def detect(frame, *, captured_at):
+            if c._detection_sequence == 1:
+                raise RuntimeError('temporary inference failure')
+            if c._detection_sequence == 2:
+                c._detection_sequence += 1
+                return PersonFrame((person,), 9)
+            c._stop.set()
+            return PersonFrame((person,), captured_at)
+        c._detector = Mock(detect=Mock(side_effect=detect))
+        def retry(_):
+            self.assertIsNone(c._person_frame)
+            self.assertEqual(c._person_stable_frames, 0)
+            c._detection_sequence += 1
+        with patch.object(c._stop, 'wait', side_effect=retry):
+            c._detect_loop()
+        self.assertEqual(c._detector.detect.call_count, 3)
+        self.assertIsNone(c.detection_error)
+        self.assertEqual(c._person_stable_frames, 1)
+
+    def test_selected_card_detects_while_disarmed_without_reloading_on_arm(self):
+        from src.main import main
+        args = Config()
+        args.sensor_use_imu = args.sensor_use_foot_fsr = args.sensor_use_depth = False
+        args.fall_detection_enabled = False
+        camera = Mock(detection_error=None)
+        dashboard, raw = Mock(), MagicMock()
+        states = [('follow', False), ('follow', False), ('follow', True),
+                  ('follow', False), ('terrain', False), ('terrain', True), ('manual', False)]
+        index = [-1]
+        def control():
+            index[0] += 1
+            if index[0] == 1:
+                person.assert_called_once()
+            if index[0] >= len(states):
+                raise KeyboardInterrupt
+            mode, armed = states[index[0]]
+            return dict(mode=mode, armed=armed, runtime_status='Ready')
+        dashboard.control_payload.side_effect = control
+        safety = Mock(active=False, status='FALL OFF')
+        with patch('src.main.Config', return_value=args), \
+             patch('src.main.make_backend', return_value=raw), \
+             patch('src.main.time.sleep'), \
+             patch('src.camera.HeadlessCamera', return_value=camera), \
+             patch('src.gait_dashboard.GaitDashboard', return_value=dashboard), \
+             patch('src.gait_anomaly.GaitHealthMonitor'), \
+             patch('src.fall_safety.FallSafety', return_value=safety), \
+             patch('src.person_follow.PersonDetector') as person, \
+             patch('src.stair_perception.StairDetector') as stair, \
+             patch('src.follow_main.run_follow') as follow, \
+             patch('src.stair_main.run_terrain_auto') as terrain, \
+             patch('src.main.run_manual') as manual:
+            main()
+        person.assert_called_once()
+        stair.assert_called_once()
+        self.assertEqual([call.args[0] for call in camera.set_detector.call_args_list],
+                         [person.return_value, stair.return_value, None])
+        follow.assert_called_once()
+        terrain.assert_called_once()
+        manual.assert_not_called()
+        raw.send.assert_called_once_with(STANDING, duration_ms=1200, force=True)
+
 
 class FollowTests(unittest.TestCase):
     def setUp(self):
@@ -290,6 +356,7 @@ class TerrainRuntimeTests(unittest.TestCase):
             def disarm(self, *args):
                 pass
         camera = Mock()
+        camera.detection_error = None
         camera.stair_frame.side_effect = lambda: camera_frames[index[0]] if camera_frames else None
         sensors = Mock()
         sensors.read.side_effect = lambda: readings[index[0]]
@@ -300,7 +367,7 @@ class TerrainRuntimeTests(unittest.TestCase):
             backend.trigger_fall(30)
         fake_time = SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda s: clock.__setitem__(0, clock[0]+s))
         real_factory = StairStepEngine
-        with patch('src.stair_main.StairDetector'), patch('src.stair_main.time', fake_time), \
+        with patch('src.stair_main.time', fake_time), \
              patch('src.stair_main.StairStepEngine', side_effect=lambda **kw: engine or real_factory(**kw)):
             run_terrain_auto(config or Config(), Dashboard(), camera, backend, sensors, safety)
         self.assertTrue(all(mode == 'terrain' for mode in calls))
@@ -386,7 +453,7 @@ class TerrainRuntimeTests(unittest.TestCase):
         self.assertEqual(code, 200)
         backend = PriorityBackend(Mock(), Config.fall_arm_forward_pwm)
         safety = SimpleNamespace(active=False, reference=(0, 0))
-        with patch('src.stair_main.StairDetector'), patch('src.stair_main.time.sleep'):
+        with patch('src.stair_main.time.sleep'):
             run_terrain_auto(Config(), dashboard, Mock(), backend, None, safety)
         self.assertTrue(dashboard.control_state('manual').reset)
 

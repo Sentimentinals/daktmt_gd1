@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import time
-from pathlib import Path
 
 from .balance import (
     BalanceConfig,
@@ -12,7 +11,7 @@ from .balance import (
 from .config import Config, ROBOT, STANDING
 from .gait_dashboard import stationary_gait
 from .stair_motion import StairStepEngine
-from .stair_perception import StairDetector, estimate_stair_geometry
+from .stair_perception import estimate_stair_geometry
 from .walking_engine import DynamicWalkingEngine
 
 
@@ -25,25 +24,6 @@ def run_terrain_auto(
     fall_safety,
 ) -> None:
     dashboard.set_runtime("terrain", "Starting Terrain Auto")
-    model_path = Path(__file__).resolve().parent.parent / args.stair_model
-    detector_error = ""
-    try:
-        detector = StairDetector(
-            model_path=str(model_path),
-            confidence=args.stair_model_confidence,
-            iou_threshold=args.stair_model_iou_threshold,
-            input_size=args.stair_model_input_size,
-            detect_every_frames=args.stair_detect_every_frames,
-        )
-    except Exception as exc:
-        detector = None
-        detector_error = str(exc)
-        print(f"[terrain] Stair vision unavailable: {exc}. IMU balance remains available.")
-    camera.set_detector(detector, stable_frames=args.stair_detect_stable_frames)
-    if detector is not None:
-        mode = "ONNX+geometry" if detector.model_ready else "geometry fallback"
-        print(f"[terrain] Stair detector configured ({mode}).")
-
     approach = DynamicWalkingEngine(
         dt=args.update_ms / 1000.0,
         step_time_s=args.auto_step_time_s,
@@ -283,8 +263,8 @@ def run_terrain_auto(
                     or abs(roll_delta) > 3.0 or abs(pitch_delta) > 3.0
                 ):
                     status = "WAITING FOR UPRIGHT IMU AND BALANCE"
-                elif enabled and detector_error:
-                    status = f"STAIR VISION UNAVAILABLE | {detector_error}"
+                elif enabled and camera.detection_error:
+                    status = f"STAIR VISION UNAVAILABLE | {camera.detection_error}"
                 elif enabled and (stair_frame is None or not 0 <= now - stair_frame.captured_at <= 0.8):
                     status = "WAITING FOR LIVE CAMERA"
                 elif enabled and depth is None:
@@ -399,7 +379,6 @@ def run_terrain_auto(
             backend.send(backend.current_pose if holding else STANDING, duration_ms=args.stop_ms, force=True)
             time.sleep(args.stop_ms / 1000.0)
     finally:
-        camera.set_detector(None)
         holding = stepper.active or not approach.is_idle_ready() or fall_safety.active
         status = "STAIR HOLD | SUPPORT ROBOT BEFORE RESET" if holding else "Terrain Auto stopped"
         if holding:
