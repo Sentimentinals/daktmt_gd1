@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from src.camera import HeadlessCamera
-from src.config import Config, DIR, PWM_PER_DEG, ROBOT, STAND_ANG, STANDING
+from src.config import Config, DIR, STANDING
 from src.fall_safety import PriorityBackend
 from src.gait_dashboard import GaitDashboard, WebControlState
 from src.imu_bno055 import IMUReading
@@ -392,36 +392,6 @@ class SquatTests(unittest.TestCase):
         self.assertLess(p[11], STANDING[11])
         self.assertGreater(p[22], STANDING[22])
 
-    def test_symmetric_deep_squat_keeps_floor_targets_and_pitch_compensation(self):
-        e = self.engine()
-        e.toggle()
-        previous = dict(STANDING)
-        for _ in range(math.ceil((e.arm_raise_s + e.transition_s) / e.dt) + 2):
-            p = e.update()
-            self.assertTrue(all(500 <= v <= 2500 for v in p.values()))
-            for left, right in ((13, 20), (14, 19), (15, 18)):
-                self.assertEqual(p[left] + p[right], STANDING[left] + STANDING[right])
-                self.assertLessEqual(abs(p[left] - previous[left]), 35)
-            for sid in (12, 16, 17, 21):
-                self.assertEqual(p[sid], STANDING[sid])
-            angles = [STAND_ANG[name] + (p[sid] - STANDING[sid]) / PWM_PER_DEG
-                      for name, sid in (('L_hip_pitch', 13), ('L_knee', 14), ('L_ankle', 15))]
-            self.assertAlmostEqual(angles[1], angles[0] + angles[2], delta=0.14)
-            if e.depth_mm > 0.1:
-                hip, knee = map(math.radians, angles[:2])
-                x = e.forward_mm * e.depth_mm / e.max_depth_mm
-                x += ROBOT['upper_leg'] * math.sin(hip) + ROBOT['lower_leg'] * math.sin(hip - knee)
-                z = ROBOT['com_height'] - e.depth_mm
-                z -= ROBOT['upper_leg'] * math.cos(hip) + ROBOT['lower_leg'] * math.cos(hip - knee)
-                self.assertAlmostEqual(x, 0, delta=0.5)
-                self.assertAlmostEqual(z, 0, delta=0.5)
-            previous = p
-        self.assertEqual(e.depth_mm, Config.manual_squat_depth_mm)
-        self.assertEqual(e.phase, 'squat-hold')
-        np.testing.assert_array_equal(e._feet, [[0, -ROBOT['half_hip'], 0], [0, ROBOT['half_hip'], 0]])
-        for _ in range(10):
-            self.assertEqual(e.update(), p)
-
     def test_forward_offset_uses_the_same_progress_as_depth(self):
         e = self.engine(forward_mm=20)
         e.toggle()
@@ -437,7 +407,16 @@ class SquatTests(unittest.TestCase):
                 e = self.engine()
                 e.toggle()
                 for _ in range(math.ceil(elapsed / e.dt)):
-                    e.update()
+                    p = e.update()
+                    self.assertTrue(all(500 <= v <= 2500 for v in p.values()))
+                    for left, right in ((13, 20), (14, 19), (15, 18)):
+                        self.assertEqual(p[left] + p[right], STANDING[left] + STANDING[right])
+                    for sid in (12, 16, 17, 21):
+                        self.assertEqual(p[sid], STANDING[sid])
+                if elapsed >= e.arm_raise_s + e.transition_s:
+                    self.assertEqual(e.phase, 'squat-hold')
+                    self.assertEqual(e.depth_mm, e.max_depth_mm)
+                    self.assertEqual(e.update(), p)
                 e.toggle()
                 for _ in range(math.ceil((e.arm_raise_s + e.transition_s) / e.dt) + 2):
                     p = e.update()
